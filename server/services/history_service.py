@@ -53,6 +53,11 @@ class HistoryService:
             self._db.row_factory = aiosqlite.Row
         return self._db
 
+    async def close(self) -> None:
+        if self._db is not None:
+            await self._db.close()
+            self._db = None
+
     async def create_processing(self, job: Any) -> GenerationRecord:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()

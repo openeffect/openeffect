@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import time
 from typing import Any, AsyncIterator
@@ -28,8 +27,9 @@ class GenerationJob:
         self.message = "Starting..."
         self.video_url: str | None = None
         self.error: str | None = None
-        self.events: asyncio.Queue = asyncio.Queue()
+        self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         self.started_at = time.time()
+        self.image_ref_ids: list[str] = []
 
 
 class GenerationService:
@@ -65,10 +65,8 @@ class GenerationService:
         )
         self._jobs[job_id] = job
 
-        # Create history record immediately
         await self._history.create_processing(job)
 
-        # Run in background
         asyncio.create_task(self._run_job(job, request, manifest))
 
         return job_id
@@ -77,7 +75,6 @@ class GenerationService:
         job = self._jobs.get(job_id)
 
         if not job:
-            # Check if it's a completed/failed job in history
             record = await self._history.get_by_id(job_id)
             if record:
                 if record.status == "completed":
@@ -88,41 +85,39 @@ class GenerationService:
                 yield {"event": "failed", "data": {"job_id": job_id, "error": "Job not found", "code": "JOB_NOT_FOUND"}}
             return
 
-        # Stream events from the queue
-        while True:
-            event = await job.events.get()
-            yield event
-            if event["event"] in ("completed", "failed"):
-                break
+        # Stream events, then evict job from memory
+        try:
+            while True:
+                event = await job.events.get()
+                yield event
+                if event["event"] in ("completed", "failed"):
+                    break
+        finally:
+            self._jobs.pop(job_id, None)
 
     async def _run_job(self, job: GenerationJob, request: Any, manifest: Any) -> None:
         try:
-            # Build prompt (layer 1 - inputs only)
             prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
-
-            # Build params (layer 2 - model params only)
             params = PromptBuilder.build_params(manifest, request.model_id, request.user_params)
 
-            # Get negative prompt
             negative_prompt = manifest.generation.negative_prompt
             if "negative_prompt" in params:
                 negative_prompt = str(params.pop("negative_prompt"))
 
-            # Resolve image ref_ids to paths
+            # Resolve image ref_ids to paths, track for cleanup
             images: list[str] = []
             for key, field in manifest.inputs.items():
                 if field.type == "image" and key in request.inputs:
                     ref_id = request.inputs[key]
+                    job.image_ref_ids.append(ref_id)
                     file_path = self._storage.get_path(ref_id)
                     if file_path:
                         images.append(str(file_path))
 
-            # Create provider
             api_key = self._config.get_api_key()
             models_dir = self._model_service._models_dir if hasattr(self._model_service, '_models_dir') else None
             provider = ModelProviderFactory.create(request.model_id, api_key=api_key, models_dir=models_dir)
 
-            # Build provider input
             provider_input = ProviderInput(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
@@ -133,7 +128,6 @@ class GenerationService:
                 effect_type=manifest.effect_type,
             )
 
-            # Run generation
             async for event in provider.generate(provider_input):
                 if event.type == "progress":
                     job.progress = event.progress or 0
@@ -170,3 +164,7 @@ class GenerationService:
                 "event": "failed",
                 "data": {"job_id": job.job_id, "error": str(e), "code": "INTERNAL_ERROR"},
             })
+        finally:
+            # Clean up tmp files
+            for ref_id in job.image_ref_ids:
+                await self._storage.cleanup(ref_id)

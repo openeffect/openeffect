@@ -53,6 +53,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Cleanup
+    await history_service.close()
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="OpenEffect", version="0.1.0", lifespan=lifespan)
@@ -60,7 +63,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

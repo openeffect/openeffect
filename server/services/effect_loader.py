@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 import yaml
 from effects.validator import EffectManifest
@@ -6,10 +7,18 @@ from effects.validator import EffectManifest
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class LoadedEffect:
+    """Wraps a validated manifest with loader-specific metadata."""
+    manifest: EffectManifest
+    full_id: str
+    folder_path: Path
+
+
 class EffectLoaderService:
     def __init__(self, effects_dir: Path):
         self._effects_dir = effects_dir
-        self._cache: dict[str, EffectManifest] = {}
+        self._cache: dict[str, LoadedEffect] = {}
 
     async def load_all(self) -> None:
         self._cache.clear()
@@ -26,29 +35,26 @@ class EffectLoaderService:
 
                 manifest = EffectManifest(**raw)
 
-                # Verify folder name matches id
                 folder_name = manifest_path.parent.name
                 if manifest.id != folder_name:
                     logger.warning(f"Skipping {manifest_path}: id '{manifest.id}' doesn't match folder '{folder_name}'")
                     failed += 1
                     continue
 
-                # Verify thumbnail exists
                 thumb = manifest_path.parent / manifest.assets.thumbnail
                 if not thumb.exists():
                     logger.warning(f"Skipping {manifest_path}: thumbnail not found at {thumb}")
                     failed += 1
                     continue
 
-                # Build full effect ID: type/name
                 effect_type_dir = manifest_path.parent.parent.name
                 full_id = f"{effect_type_dir}/{manifest.id}"
 
-                # Store the full path for asset resolution
-                manifest._folder_path = manifest_path.parent  # type: ignore
-                manifest._full_id = full_id  # type: ignore
-
-                self._cache[full_id] = manifest
+                self._cache[full_id] = LoadedEffect(
+                    manifest=manifest,
+                    full_id=full_id,
+                    folder_path=manifest_path.parent,
+                )
 
             except Exception as e:
                 logger.warning(f"Failed to load {manifest_path}: {e}")
@@ -57,19 +63,18 @@ class EffectLoaderService:
         logger.info(f"Loaded {len(self._cache)} effects ({failed} failed validation)")
 
     def get_all(self) -> list[EffectManifest]:
-        return list(self._cache.values())
+        return [e.manifest for e in self._cache.values()]
 
     def get_by_id(self, effect_id: str) -> EffectManifest | None:
-        return self._cache.get(effect_id)
+        loaded = self._cache.get(effect_id)
+        return loaded.manifest if loaded else None
 
     def get_asset_path(self, effect_id: str, filename: str) -> Path | None:
-        manifest = self._cache.get(effect_id)
-        if not manifest:
+        loaded = self._cache.get(effect_id)
+        if not loaded:
             return None
 
-        folder = getattr(manifest, "_folder_path", None)
-        if not folder:
-            return None
+        folder = loaded.folder_path
 
         # Directory traversal protection
         safe_path = (folder / filename).resolve()

@@ -56,7 +56,7 @@ export function Layout() {
                   boxShadow: '-4px 0 24px rgba(0,0,0,0.1)',
                 }}
               >
-                <EffectPanel />
+                <EffectPanel key={selectedEffect.id} />
               </motion.div>
             )}
           </AnimatePresence>

@@ -13,6 +13,7 @@ export function useSse(jobId: string | null) {
 
     let es: EventSource | null = null
     let retries = 0
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
     const MAX_RETRIES = 3
 
     function connect() {
@@ -40,7 +41,7 @@ export function useSse(jobId: string | null) {
         es?.close()
         if (retries < MAX_RETRIES) {
           retries++
-          setTimeout(connect, 1000 * retries)
+          retryTimer = setTimeout(connect, 1000 * retries)
         } else {
           failJob(currentJobId, 'Connection lost. Check the History panel.')
         }
@@ -50,6 +51,7 @@ export function useSse(jobId: string | null) {
     connect()
     return () => {
       es?.close()
+      if (retryTimer) clearTimeout(retryTimer)
     }
   }, [jobId, updateJobProgress, completeJob, failJob])
 }

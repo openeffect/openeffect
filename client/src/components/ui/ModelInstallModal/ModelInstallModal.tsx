@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Monitor } from 'lucide-react'
 import { ProgressBar } from '@/components/primitives/ProgressBar/ProgressBar'
@@ -15,13 +15,16 @@ export function ModelInstallModal({ isOpen, onClose, modelId }: ModelInstallModa
   const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const esRef = useRef<EventSource | null>(null)
 
   const handleInstall = async () => {
     setInstalling(true)
     setError(null)
     try {
       const { install_job_id } = await api.installModel(modelId)
+      esRef.current?.close()
       const es = new EventSource(`/api/models/install/${install_job_id}/stream`)
+      esRef.current = es
 
       es.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data)
@@ -45,6 +48,10 @@ export function ModelInstallModal({ isOpen, onClose, modelId }: ModelInstallModa
       setInstalling(false)
     }
   }
+
+  useEffect(() => {
+    return () => { esRef.current?.close() }
+  }, [])
 
   if (!isOpen) return null
 

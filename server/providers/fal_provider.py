@@ -22,8 +22,8 @@ class FalProvider(BaseProvider):
         return self.ENDPOINTS.get(key, model_id)
 
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
-        import os
-        os.environ["FAL_KEY"] = self._api_key
+        # Pass key via fal_client config — never set on os.environ
+        fal_client.api_key = self._api_key
 
         endpoint = self._get_endpoint(input.parameters.get("_model_id", "fal-ai/wan-2.2"), input.effect_type)
 

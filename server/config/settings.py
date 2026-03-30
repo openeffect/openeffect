@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    effects_dir: Path = Path(__file__).parent.parent.parent.parent / "effects"
+    effects_dir: Path = Path(__file__).parent.parent.parent / "effects"
     user_data_dir: Path = Path.home() / ".openeffect"
     server_port: int = 3131
     server_host: str = "127.0.0.1"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Cloud, Monitor, ExternalLink, Loader2, Sparkles } from 'lucide-react'
 import { useConfigStore } from '@/store/configStore'
@@ -8,6 +8,8 @@ export function OnboardingModal() {
   const [apiKey, setApiKey] = useState('')
   const [savingKey, setSavingKey] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const esRef = useRef<EventSource | null>(null)
+
   const [installProgress, setInstallProgress] = useState(0)
   const [installMsg, setInstallMsg] = useState('')
 
@@ -30,7 +32,9 @@ export function OnboardingModal() {
     setInstalling(true)
     try {
       const { install_job_id } = await api.installModel('local/wan-2.2')
+      esRef.current?.close()
       const es = new EventSource(`/api/models/install/${install_job_id}/stream`)
+      esRef.current = es
       es.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data)
         setInstallProgress(data.progress)
@@ -51,6 +55,11 @@ export function OnboardingModal() {
       setInstalling(false)
     }
   }
+
+  // Close EventSource on unmount
+  useEffect(() => {
+    return () => { esRef.current?.close() }
+  }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>

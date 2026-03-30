@@ -13,9 +13,6 @@ __pycache__/
 client/dist/
 *.tsbuildinfo
 
-# uv
-uv.lock
-
 # IDE
 .vscode/
 .idea/

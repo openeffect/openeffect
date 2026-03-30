@@ -27,7 +27,7 @@ export function ResultViewer({ jobId }: ResultViewerProps) {
         </h3>
         <button
           onClick={closeJob}
-          className="rounded-lg p-1.5 transition-colors hover:opacity-80"
+          className="rounded-lg p-1.5 transition-colors"
           style={{ color: 'var(--text-tertiary)' }}
         >
           <X size={18} />

@@ -19,7 +19,7 @@ export function GenerationProgress({ jobId }: GenerationProgressProps) {
     <div className="flex h-full flex-col items-center justify-center p-12">
       <button
         onClick={closeJob}
-        className="absolute right-4 top-4 rounded-lg p-2 transition-colors hover:opacity-80"
+        className="absolute right-4 top-4 rounded-lg p-2 transition-colors"
         style={{ color: 'var(--text-tertiary)' }}
       >
         <X size={18} />

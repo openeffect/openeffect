@@ -8,7 +8,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:brightness-125"
+      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
       style={{ background: 'var(--surface-elevated)', color: 'var(--text-secondary)' }}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
     >

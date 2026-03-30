@@ -78,7 +78,7 @@ function HeaderButton({ icon, onClick, title }: { icon: React.ReactNode; onClick
     <button
       onClick={onClick}
       title={title}
-      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:brightness-125"
+      className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
       style={{ background: 'var(--surface-elevated)', color: 'var(--text-secondary)' }}
     >
       {icon}

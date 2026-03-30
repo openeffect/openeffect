@@ -5,7 +5,6 @@ import { api } from '@/lib/api'
 import { useGenerationStore } from '@/store/generationStore'
 import { ProgressBar } from '@/components/primitives/ProgressBar/ProgressBar'
 import { VideoPlayer } from '@/components/primitives/VideoPlayer/VideoPlayer'
-import { formatEffectType } from '@/lib/formatters'
 
 interface EffectHeroProps {
   effect: EffectManifest
@@ -143,27 +142,6 @@ function HeroPreview({
       animate={{ opacity: 1, transition: { duration: 0.2 } }}
       exit={{ opacity: 0, transition: { duration: 0.12 } }}
     >
-      {/* Title row */}
-      <motion.div
-        initial={{ y: 6, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.05, duration: 0.25 }}
-        className="mb-4 flex items-center gap-2.5"
-      >
-        <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-          {effect.name}
-        </h2>
-        <span
-          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-          style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
-        >
-          {formatEffectType(effect.effect_type)}
-        </span>
-        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          &mdash; {effect.description.length > 70 ? effect.description.slice(0, 70) + '...' : effect.description}
-        </span>
-      </motion.div>
-
       {/* Pipeline blocks */}
       <div className="flex items-stretch gap-3" style={{ height: 340 }}>
         <PipelineBlocks
@@ -315,7 +293,7 @@ function HeroProgress({
     >
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-all hover:brightness-125"
+        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-all"
         style={{ background: 'var(--surface-elevated)', color: 'var(--text-tertiary)' }}
       >
         <X size={16} />
@@ -384,7 +362,7 @@ function HeroResult({
           )}
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md transition-all hover:brightness-125"
+            className="flex h-7 w-7 items-center justify-center rounded-md transition-all"
             style={{ background: 'var(--surface-elevated)', color: 'var(--text-tertiary)' }}
           >
             <X size={14} />
@@ -416,7 +394,7 @@ function HeroFailed({
     >
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-all hover:brightness-125"
+        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-all"
         style={{ background: 'var(--surface-elevated)', color: 'var(--text-tertiary)' }}
       >
         <X size={16} />
@@ -429,7 +407,7 @@ function HeroFailed({
       </p>
       <button
         onClick={onClose}
-        className="rounded-lg px-5 py-2 text-sm font-medium transition-colors hover:brightness-110"
+        className="rounded-lg px-5 py-2 text-sm font-medium transition-colors"
         style={{ background: 'var(--surface-elevated)', color: 'var(--text-primary)' }}
       >
         Back to Gallery

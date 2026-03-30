@@ -158,7 +158,7 @@ export function OnboardingModal() {
               ) : (
                 <button
                   onClick={handleInstallLocal}
-                  className="rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:brightness-110"
+                  className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
                   style={{ background: 'var(--background)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
                 >
                   Install Wan 2.2

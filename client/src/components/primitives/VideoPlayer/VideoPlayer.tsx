@@ -71,7 +71,7 @@ export function VideoPlayer({ src, autoPlay = true }: VideoPlayerProps) {
       <div className="flex items-center gap-3 p-3" style={{ borderTop: '1px solid var(--border)' }}>
         <button
           onClick={togglePlay}
-          className="rounded-full p-1.5 transition-colors hover:opacity-80"
+          className="rounded-full p-1.5 transition-colors"
           style={{ backgroundColor: 'var(--accent)', color: 'white' }}
         >
           {isPlaying ? <Pause size={16} /> : <Play size={16} />}
@@ -88,7 +88,7 @@ export function VideoPlayer({ src, autoPlay = true }: VideoPlayerProps) {
         <span className="text-xs tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
-        <button onClick={fullscreen} className="p-1 opacity-60 hover:opacity-100">
+        <button onClick={fullscreen} className="p-1 opacity-60">
           <Maximize2 size={14} />
         </button>
       </div>

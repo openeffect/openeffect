@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import { Upload, X, ImageIcon } from 'lucide-react'
 
 interface ImageUploaderProps {
@@ -61,17 +60,16 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
       <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
         {label}
       </label>
-      <motion.div
+      <div
         onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className="relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed p-5 text-center transition-all"
+        className="relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed p-5 text-center"
         style={{
           borderColor: dragActive ? 'var(--accent)' : 'var(--border)',
           background: dragActive ? 'var(--accent-dim)' : 'var(--surface-elevated)',
         }}
-        whileHover={{ borderColor: 'var(--accent)' }}
       >
         <input ref={inputRef} type="file" accept={acceptStr} onChange={handleChange} className="hidden" />
         {preview ? (
@@ -97,7 +95,7 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
             </p>
           </div>
         )}
-      </motion.div>
+      </div>
       {hint && (
         <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
           {hint}

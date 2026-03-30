@@ -14,6 +14,8 @@
   --success: #23a559;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --hover-brightness: 1.15;
+  --active-brightness: 0.92;
 }
 
 [data-theme="light"] {
@@ -31,4 +33,6 @@
   --success: #1a8a44;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --hover-brightness: 0.93;
+  --active-brightness: 0.88;
 }

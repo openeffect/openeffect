@@ -4,6 +4,7 @@ import { useSelectedEffect, useEffectsStore } from '@/store/effectsStore'
 import { useGenerationStore } from '@/store/generationStore'
 import { useConfigStore } from '@/store/configStore'
 import { api } from '@/lib/api'
+import { formatEffectType } from '@/lib/formatters'
 import { EffectFormRenderer } from '@/effects/EffectFormRenderer'
 import { ModelSelector } from '@/effects/components/ModelSelector'
 import { AspectRatioSelector } from '@/effects/components/AspectRatioSelector'
@@ -91,9 +92,17 @@ export function EffectPanel() {
         style={{ borderBottom: '1px solid var(--border)' }}
       >
         <div>
-          <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-            {manifest.name}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+              {manifest.name}
+            </h2>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
+            >
+              {formatEffectType(manifest.effect_type)}
+            </span>
+          </div>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
             {manifest.description.slice(0, 60)}
             {manifest.description.length > 60 ? '...' : ''}
@@ -101,7 +110,7 @@ export function EffectPanel() {
         </div>
         <button
           onClick={() => selectEffect(null)}
-          className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:brightness-125"
+          className="flex h-7 w-7 items-center justify-center rounded-md transition-colors"
           style={{ background: 'var(--surface-elevated)', color: 'var(--text-tertiary)' }}
         >
           <X size={14} />

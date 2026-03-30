@@ -118,7 +118,7 @@ export function HistoryModal() {
                         )}
                         <button
                           onClick={() => deleteItem(item.id)}
-                          className="rounded-lg p-1.5 transition-colors hover:opacity-80"
+                          className="rounded-lg p-1.5 transition-colors"
                           style={{ color: 'var(--text-tertiary)' }}
                           title="Delete"
                         >

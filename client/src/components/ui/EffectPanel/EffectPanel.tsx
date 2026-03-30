@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { useSelectedEffect, useEffectsStore } from '@/store/effectsStore'
 import { useGenerationStore } from '@/store/generationStore'
@@ -25,6 +25,48 @@ export function EffectPanel() {
   const [duration, setDuration] = useState(manifest?.output.default_duration ?? 5)
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
   const [isGenerating, setIsGenerating] = useState(false)
+
+  // Track effect changes — keep matching fields, reset the rest
+  const prevEffectId = useRef(manifest?.id)
+  useEffect(() => {
+    if (!manifest || manifest.id === prevEffectId.current) return
+    prevEffectId.current = manifest.id
+
+    // Keep values for fields that exist in the new manifest with the same type
+    setValues((prev) => {
+      const next: Record<string, unknown> = {}
+      for (const [key, schema] of Object.entries(manifest.inputs)) {
+        if (key in prev && prev[key] != null) {
+          next[key] = prev[key]
+        }
+        // Pre-fill select defaults if not carried over
+        if (!(key in next) && schema.type === 'select' && 'default' in schema) {
+          next[key] = schema.default
+        }
+      }
+      return next
+    })
+
+    // Keep model/ratio/duration if the new manifest supports them, otherwise reset
+    setSelectedModel((prev) =>
+      manifest.generation.supported_models.includes(prev) ? prev : manifest.generation.default_model
+    )
+    setAspectRatio((prev) =>
+      manifest.output.aspect_ratios.includes(prev) ? prev : manifest.output.default_aspect_ratio
+    )
+    setDuration((prev) =>
+      manifest.output.durations.includes(prev) ? prev : manifest.output.default_duration
+    )
+    // Keep advanced values for keys that exist in the new manifest's advanced_parameters
+    setAdvancedValues((prev) => {
+      const validKeys = new Set(manifest.generation.advanced_parameters.map((p) => p.key))
+      const next: Record<string, unknown> = {}
+      for (const [key, val] of Object.entries(prev)) {
+        if (validKeys.has(key)) next[key] = val
+      }
+      return next
+    })
+  }, [manifest])
 
   const handleChange = useCallback((key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }))

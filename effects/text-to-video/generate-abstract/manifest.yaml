@@ -1,0 +1,86 @@
+id: generate-abstract
+name: Abstract Loop
+description: Generate psychedelic abstract visuals from your text description.
+version: "1.0.0"
+author: openeffect-team
+effect_type: text_to_video
+category: generative
+tags: [abstract, psychedelic, creative, loop]
+
+assets:
+  thumbnail: thumbnail.jpg
+  preview: preview.mp4
+  example:
+    output: example_output.mp4
+
+inputs:
+  prompt:
+    type: text
+    required: true
+    label: Describe your vision
+    placeholder: "Flowing neon fractals merging with liquid gold..."
+    hint: Describe colors, patterns, and motion you want to see.
+    max_length: 600
+    multiline: true
+  style:
+    type: select
+    required: false
+    label: Visual style
+    default: fractal
+    options:
+      - value: fractal
+        label: Fractal
+      - value: liquid
+        label: Liquid
+      - value: geometric
+        label: Geometric
+      - value: neon
+        label: Neon
+
+output:
+  aspect_ratios: ["1:1", "9:16", "16:9"]
+  default_aspect_ratio: "1:1"
+  durations: [3, 5, 10]
+  default_duration: 5
+
+generation:
+  prompt_template: >
+    Abstract {style} visuals. {prompt}
+    Psychedelic, mesmerizing, seamless motion, vibrant colors,
+    high quality, smooth animation.
+  negative_prompt: >
+    realistic, photographic, people, faces,
+    low quality, blurry, static, text overlay
+  supported_models: [fal-ai/wan-2.2, fal-ai/kling-v3]
+  default_model: fal-ai/wan-2.2
+  parameters:
+    guidance_scale: 7.5
+    num_inference_steps: 30
+  advanced_parameters:
+    - key: guidance_scale
+      label: Guidance scale
+      type: slider
+      min: 1.0
+      max: 20.0
+      step: 0.5
+      default: 7.5
+      hint: Higher = closer to prompt
+    - key: num_inference_steps
+      label: Quality steps
+      type: slider
+      min: 10
+      max: 50
+      step: 5
+      default: 30
+      hint: More steps = better quality but slower
+    - key: negative_prompt
+      label: Negative prompt
+      type: text
+      multiline: true
+      default: "realistic, photographic, people, faces, low quality"
+      hint: What to avoid in the result
+    - key: seed
+      label: Seed
+      type: number
+      default: -1
+      hint: "-1 = random"

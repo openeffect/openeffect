@@ -1,0 +1,97 @@
+id: teleport-scenes
+name: Teleport
+description: Particle burst transition seamlessly between two scenes.
+version: "1.0.0"
+author: openeffect-team
+effect_type: image_transition
+category: transition
+tags: [trending, tiktok, viral, 2-photos]
+
+assets:
+  thumbnail: thumbnail.jpg
+  preview: preview.mp4
+  example:
+    input_1: example_input_1.jpg
+    input_2: example_input_2.jpg
+    output: example_output.mp4
+
+inputs:
+  image_start:
+    type: image
+    required: true
+    label: Starting scene
+    hint: Where you begin
+    accept: [image/jpeg, image/png, image/webp]
+    max_size_mb: 10
+  image_end:
+    type: image
+    required: true
+    label: Ending scene
+    hint: Where you end up
+    accept: [image/jpeg, image/png, image/webp]
+    max_size_mb: 10
+  style:
+    type: select
+    required: false
+    label: Transition style
+    default: particles
+    options:
+      - value: particles
+        label: Particles
+      - value: glitch
+        label: Glitch
+      - value: liquid
+        label: Liquid
+      - value: light
+        label: Light burst
+  prompt:
+    type: text
+    required: false
+    label: Additional description
+    placeholder: "Fast and dramatic..."
+    max_length: 300
+    multiline: false
+
+output:
+  aspect_ratios: ["9:16", "1:1", "16:9"]
+  default_aspect_ratio: "9:16"
+  durations: [3, 5]
+  default_duration: 5
+
+generation:
+  prompt_template: >
+    Cinematic {style} particle burst transition
+    from first scene to second scene.
+    {prompt} Seamless, smooth, high quality, dynamic motion.
+  negative_prompt: abrupt cut, jump cut, low quality, static
+  supported_models: [fal-ai/wan-2.2, fal-ai/kling-v3, local/wan-2.2]
+  default_model: fal-ai/kling-v3
+  model_overrides:
+    fal-ai/kling-v3:
+      parameters:
+        guidance_scale: 8.0
+  parameters:
+    guidance_scale: 7.5
+    num_inference_steps: 30
+  advanced_parameters:
+    - key: guidance_scale
+      label: Guidance scale
+      type: slider
+      min: 1.0
+      max: 20.0
+      step: 0.5
+      default: 7.5
+      hint: Higher = closer to prompt
+    - key: num_inference_steps
+      label: Quality steps
+      type: slider
+      min: 10
+      max: 50
+      step: 5
+      default: 30
+      hint: More steps = better quality but slower
+    - key: seed
+      label: Seed
+      type: number
+      default: -1
+      hint: "-1 = random"

@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import yaml
-from app.effects.validator import EffectManifest
+from effects.validator import EffectManifest
 
 logger = logging.getLogger(__name__)
 

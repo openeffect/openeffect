@@ -1,6 +1,6 @@
 import fal_client
 from typing import AsyncIterator, Any
-from app.providers.base import BaseProvider, ProviderInput, ProviderEvent
+from providers.base import BaseProvider, ProviderInput, ProviderEvent
 
 
 class FalProvider(BaseProvider):

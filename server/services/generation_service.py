@@ -5,14 +5,14 @@ import time
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
-from app.services.effect_loader import EffectLoaderService
-from app.services.history_service import HistoryService
-from app.services.model_service import ModelService
-from app.services.storage_service import StorageService
-from app.services.prompt_builder import PromptBuilder
-from app.config.config_service import ConfigService
-from app.providers.factory import ModelProviderFactory
-from app.providers.base import ProviderInput
+from services.effect_loader import EffectLoaderService
+from services.history_service import HistoryService
+from services.model_service import ModelService
+from services.storage_service import StorageService
+from effects.prompt_builder import PromptBuilder
+from config.config_service import ConfigService
+from providers.factory import ModelProviderFactory
+from providers.base import ProviderInput
 
 logger = logging.getLogger(__name__)
 

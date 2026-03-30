@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 from typing import AsyncIterator
-from app.providers.base import BaseProvider, ProviderInput, ProviderEvent
+from providers.base import BaseProvider, ProviderInput, ProviderEvent
 
 
 class LocalProvider(BaseProvider):

@@ -1,7 +1,7 @@
 import re
 from typing import Any
-from app.effects.validator import EffectManifest
-from app.providers.model_params import KNOWN_MODEL_PARAMS
+from effects.validator import EffectManifest
+from providers.model_params import KNOWN_MODEL_PARAMS
 
 
 class PromptBuilder:

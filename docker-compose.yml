@@ -1,0 +1,20 @@
+services:
+  openeffect:
+    image: openeffect/openeffect:latest
+    # Uncomment to build locally instead of pulling:
+    # build: .
+    ports:
+      - "3131:3131"
+    volumes:
+      - ${OPENEFFECT_DATA_DIR:-~/.openeffect}:/root/.openeffect
+    environment:
+      - FAL_KEY=${FAL_KEY:-}
+      - OPENEFFECT_PORT=${OPENEFFECT_PORT:-3131}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:3131/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

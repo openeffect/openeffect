@@ -3,22 +3,21 @@
 dev:
 	@echo "Starting OpenEffect in development mode..."
 	@trap 'kill %1 %2' EXIT; \
-	  (cd server && uv run fastapi dev --port 3131) & \
+	  (cd server && uv run uvicorn main:app --reload --port 3131) & \
 	  (cd client && pnpm dev) & \
 	  wait
 
 test:
-	cd server && uv run pytest
+	uv run pytest
 	cd client && pnpm test
 
 lint:
-	cd server && uv run ruff check . && uv run mypy .
+	uv run ruff check server/
 	cd client && pnpm eslint . && pnpm tsc --noEmit
 
 install:
-	cd server && uv sync
+	uv sync --all-extras
 	cd client && pnpm install
-	cd cli && npm install
 
 build:
 	cd client && pnpm build

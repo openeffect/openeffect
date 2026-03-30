@@ -1,7 +1,7 @@
 from pathlib import Path
-from app.providers.base import BaseProvider
-from app.providers.fal_provider import FalProvider
-from app.providers.local_provider import LocalProvider
+from providers.base import BaseProvider
+from providers.fal_provider import FalProvider
+from providers.local_provider import LocalProvider
 
 
 class ModelProviderFactory:

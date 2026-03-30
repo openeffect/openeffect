@@ -1,7 +1,7 @@
 """Tests for PromptBuilder - build_prompt() and build_params() separately."""
 import pytest
-from app.services.prompt_builder import PromptBuilder
-from app.effects.validator import (
+from effects.prompt_builder import PromptBuilder
+from effects.validator import (
     EffectManifest,
     InputFieldSchema,
     SelectOption,

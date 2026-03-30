@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from app.config.config_service import ConfigService
+from config.config_service import ConfigService
 
 
 @pytest.fixture

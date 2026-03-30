@@ -1,7 +1,7 @@
 """Tests for effect manifest validation."""
 import pytest
 from pydantic import ValidationError
-from app.effects.validator import (
+from effects.validator import (
     EffectManifest,
     InputFieldSchema,
     Assets,

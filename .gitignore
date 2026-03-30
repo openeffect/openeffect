@@ -14,8 +14,7 @@ client/dist/
 *.tsbuildinfo
 
 # uv
-server/uv.lock
-server/.venv/
+uv.lock
 
 # IDE
 .vscode/

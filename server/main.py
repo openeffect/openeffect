@@ -4,15 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config.settings import get_settings
-from app.config.config_service import ConfigService
-from app.services.effect_loader import EffectLoaderService
-from app.services.generation_service import GenerationService
-from app.services.history_service import HistoryService
-from app.services.model_service import ModelService
-from app.services.storage_service import StorageService
-from app.db.database import init_db
-from app.routes import register_routes
+from config.settings import get_settings
+from config.config_service import ConfigService
+from services.effect_loader import EffectLoaderService
+from services.generation_service import GenerationService
+from services.history_service import HistoryService
+from services.model_service import ModelService
+from services.storage_service import StorageService
+from db.database import init_db
+from routes import register_routes
 
 
 @asynccontextmanager
@@ -68,9 +68,9 @@ def create_app() -> FastAPI:
     register_routes(app)
 
     # Serve static frontend in production
-    client_dist = Path(__file__).parent.parent.parent / "client" / "dist"
-    if client_dist.exists():
-        app.mount("/", StaticFiles(directory=str(client_dist), html=True), name="static")
+    static_dir = Path(__file__).parent.parent / "client" / "dist"
+    if static_dir.exists():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
 

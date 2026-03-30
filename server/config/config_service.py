@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -30,13 +31,17 @@ class ConfigService:
     def get_public_config(self) -> dict[str, Any]:
         raw = self._read_raw()
         return {
-            "has_api_key": bool(raw.get("fal_api_key")),
+            "has_api_key": bool(self.get_api_key()),
             "default_model": raw.get("default_model", "fal-ai/wan-2.2"),
             "theme": raw.get("theme", "dark"),
             "history_limit": raw.get("history_limit", 50),
         }
 
     def get_api_key(self) -> str | None:
+        # FAL_KEY env var takes precedence (used in Docker)
+        env_key = os.environ.get("FAL_KEY", "")
+        if env_key:
+            return env_key
         raw = self._read_raw()
         key = raw.get("fal_api_key", "")
         return key if key else None

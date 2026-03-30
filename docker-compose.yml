@@ -1,6 +1,6 @@
 services:
   openeffect:
-    image: openeffect/openeffect:latest
+    image: ghcr.io/openeffect/openeffect:nightly
     # Uncomment to build locally instead of pulling:
     # build: .
     ports:

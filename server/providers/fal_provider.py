@@ -1,3 +1,4 @@
+import os
 import fal_client
 from typing import AsyncIterator, Any
 from providers.base import BaseProvider, ProviderInput, ProviderEvent
@@ -5,10 +6,10 @@ from providers.base import BaseProvider, ProviderInput, ProviderEvent
 
 class FalProvider(BaseProvider):
     ENDPOINTS = {
-        "fal-ai/wan-2.2": "fal-ai/wan-i2v/v2.2/1.3b",
-        "fal-ai/kling-v3": "fal-ai/kling-video/v2/standard/image-to-video",
-        "fal-ai/wan-2.2/t2v": "fal-ai/wan-t2v/v2.2/1.3b",
-        "fal-ai/kling-v3/t2v": "fal-ai/kling-video/v2/standard/text-to-video",
+        "fal-ai/wan-2.2": "fal-ai/wan/v2.2-a14b/image-to-video",
+        "fal-ai/kling-v3": "fal-ai/kling-video/v3/pro/image-to-video",
+        "fal-ai/wan-2.2/t2v": "fal-ai/wan/v2.2-a14b/text-to-video",
+        "fal-ai/kling-v3/t2v": "fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
     }
 
     def __init__(self, api_key: str):
@@ -22,8 +23,8 @@ class FalProvider(BaseProvider):
         return self.ENDPOINTS.get(key, model_id)
 
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
-        # Pass key via fal_client config — never set on os.environ
-        fal_client.api_key = self._api_key
+        # fal_client reads FAL_KEY from env — set it for this process
+        os.environ["FAL_KEY"] = self._api_key
 
         endpoint = self._get_endpoint(input.parameters.get("_model_id", "fal-ai/wan-2.2"), input.effect_type)
 
@@ -35,18 +36,24 @@ class FalProvider(BaseProvider):
         if input.negative_prompt:
             arguments["negative_prompt"] = input.negative_prompt
 
-        if input.images:
-            arguments["image_url"] = input.images[0]
-            if len(input.images) > 1:
-                arguments["image_url_2"] = input.images[1]
-
         if input.aspect_ratio:
             arguments["aspect_ratio"] = input.aspect_ratio
 
         if input.duration:
             arguments["duration"] = input.duration
 
-        yield ProviderEvent(type="progress", progress=10, message="Sending to fal.ai...")
+        # Upload local images to fal.ai storage
+        yield ProviderEvent(type="progress", progress=5, message="Uploading images...")
+        if input.images:
+            uploaded = []
+            for local_path in input.images:
+                url = await fal_client.upload_file_async(local_path)
+                uploaded.append(url)
+            arguments["image_url"] = uploaded[0]
+            if len(uploaded) > 1:
+                arguments["image_url_2"] = uploaded[1]
+
+        yield ProviderEvent(type="progress", progress=15, message="Generating video...")
 
         try:
             result = await fal_client.subscribe_async(

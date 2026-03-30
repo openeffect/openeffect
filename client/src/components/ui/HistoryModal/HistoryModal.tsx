@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, AlertCircle, Loader2, Download, Trash2, ExternalLink } from 'lucide-react'
+import { X, Check, AlertCircle, Loader2, Download, Trash2 } from 'lucide-react'
 import { useHistoryStore } from '@/store/historyStore'
 import { useGenerationStore } from '@/store/generationStore'
 import { ProgressBar } from '@/components/primitives/ProgressBar/ProgressBar'
@@ -104,7 +104,7 @@ export function HistoryModal() {
                     )}
 
                     {item.status !== 'processing' && (
-                      <div className="mt-2 flex justify-end gap-2">
+                      <div className="mt-2 flex items-center justify-end gap-2">
                         {item.status === 'completed' && item.video_url && (
                           <a
                             href={item.video_url}

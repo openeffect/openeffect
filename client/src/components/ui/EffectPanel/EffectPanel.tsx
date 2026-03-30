@@ -47,7 +47,6 @@ export function EffectPanel() {
       return next
     })
 
-    // Keep model/ratio/duration if the new manifest supports them, otherwise reset
     setSelectedModel((prev) =>
       manifest.generation.supported_models.includes(prev) ? prev : manifest.generation.default_model
     )

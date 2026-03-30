@@ -1,4 +1,4 @@
-import { RefreshCw, History, Settings, Sparkles } from 'lucide-react'
+import { RefreshCw, History, Settings } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ThemeToggle } from '@/components/primitives/ThemeToggle/ThemeToggle'
 import { useGenerationStore } from '@/store/generationStore'
@@ -21,12 +21,7 @@ export function Header({ onSettingsOpen }: HeaderProps) {
     >
       {/* Logo */}
       <div className="flex items-center gap-2.5">
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-lg"
-          style={{ background: 'var(--accent-dim)' }}
-        >
-          <Sparkles size={16} style={{ color: 'var(--accent)' }} />
-        </div>
+        <img src="/logo.png" alt="OpenEffect" className="h-8 w-8 rounded-lg" />
         <span className="text-base font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
           OpenEffect
         </span>

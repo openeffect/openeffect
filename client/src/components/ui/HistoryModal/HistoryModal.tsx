@@ -132,11 +132,12 @@ export function HistoryPopup() {
                       </p>
                     )}
 
-                    <div className="mt-1.5 flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1.5 flex items-center justify-end gap-1.5">
                       {item.status === 'completed' && item.video_url && (
                         <a
                           href={item.video_url}
                           download
+                          onClick={(e) => e.stopPropagation()}
                           className="rounded p-1"
                           style={{ color: 'var(--text-tertiary)' }}
                           title="Download"
@@ -148,7 +149,7 @@ export function HistoryPopup() {
                         confirmDeleteId === item.id ? (
                           <>
                             <button
-                              onClick={() => handleDelete(item.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(item.id) }}
                               className="rounded p-1"
                               style={{ color: 'var(--danger)' }}
                               title="Confirm delete"
@@ -156,7 +157,7 @@ export function HistoryPopup() {
                               <Check size={12} />
                             </button>
                             <button
-                              onClick={() => setConfirmDeleteId(null)}
+                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
                               className="rounded p-1"
                               style={{ color: 'var(--text-tertiary)' }}
                               title="Cancel"
@@ -166,7 +167,7 @@ export function HistoryPopup() {
                           </>
                         ) : (
                           <button
-                            onClick={() => setConfirmDeleteId(item.id)}
+                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(item.id) }}
                             className="rounded p-1"
                             style={{ color: 'var(--text-tertiary)' }}
                             title="Delete"

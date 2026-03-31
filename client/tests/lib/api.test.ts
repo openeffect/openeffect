@@ -95,7 +95,8 @@ describe('api', () => {
       })
       const result = await api.generate({
         effect_id: 'single-image/zoom-from-space',
-        model_id: 'fal-ai/wan-2.2',
+        model_id: 'wan-2.2',
+        provider_id: 'fal',
         inputs: { image: 'ref-123' },
         output: { aspect_ratio: '9:16', duration: 5 },
       })

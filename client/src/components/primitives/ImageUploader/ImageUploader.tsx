@@ -4,14 +4,12 @@ import { Upload, X, ImageIcon } from 'lucide-react'
 interface ImageUploaderProps {
   label: string
   hint?: string
-  accept?: string[]
-  maxSizeMb?: number
   value: File | null
   onChange: (file: File | null) => void
   restoredUrl?: string | null
 }
 
-export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onChange, restoredUrl }: ImageUploaderProps) {
+export function ImageUploader({ label, hint, value, onChange, restoredUrl }: ImageUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
 
@@ -28,15 +26,11 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
 
   const handleFile = useCallback(
     (file: File) => {
-      if (maxSizeMb && file.size > maxSizeMb * 1024 * 1024) {
-        alert(`File too large. Maximum size is ${maxSizeMb}MB.`)
-        return
-      }
       onChange(file)
       const url = URL.createObjectURL(file)
       setPreview(url)
     },
-    [maxSizeMb, onChange],
+    [onChange],
   )
 
   const handleDrop = useCallback(
@@ -64,8 +58,6 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
     if (inputRef.current) inputRef.current.value = ''
   }, [onChange, preview])
 
-  const acceptStr = accept?.join(',') ?? 'image/*'
-
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
@@ -82,7 +74,7 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
           background: dragActive ? 'var(--accent-dim)' : 'var(--surface-elevated)',
         }}
       >
-        <input ref={inputRef} type="file" accept={acceptStr} onChange={handleChange} className="hidden" />
+        <input ref={inputRef} type="file" accept="image/*" onChange={handleChange} className="hidden" />
         {displayPreview ? (
           <div className="relative inline-block">
             <img src={displayPreview} alt="Preview" loading="lazy" decoding="async" className="mx-auto max-h-36 rounded-lg object-cover" style={{ boxShadow: 'var(--shadow)' }} />

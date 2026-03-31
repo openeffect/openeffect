@@ -12,10 +12,11 @@ export function EffectCard({ effect }: EffectCardProps) {
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const selectedId = useEffectsStore((s) => s.selectedEffectId)
 
-  const fullId = `${effect.effect_type.replace(/_/g, '-')}/${effect.id}`
+  const fullId = `${effect.type}/${effect.id}`
   const isSelected = selectedId === fullId
-  const thumbnailUrl = api.getAssetUrl(fullId, effect.assets.thumbnail)
-  const previewUrl = effect.assets.preview ? api.getAssetUrl(fullId, effect.assets.preview) : null
+  const firstInputFile = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp')) : null
+  const posterUrl = firstInputFile ? api.getAssetUrl(fullId, firstInputFile) : null
+  const previewUrl = effect.assets.output ? api.getAssetUrl(fullId, effect.assets.output) : null
 
   return (
     <motion.div
@@ -29,13 +30,15 @@ export function EffectCard({ effect }: EffectCardProps) {
       whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
     >
       <div className="relative aspect-[3/4] overflow-hidden">
-        {/* Static thumbnail as fallback */}
-        <img
-          src={thumbnailUrl}
-          alt={effect.name}
-          className="absolute inset-0 h-full w-full object-cover"
-          loading="lazy"
-        />
+        {/* Static poster as fallback */}
+        {posterUrl && (
+          <img
+            src={posterUrl}
+            alt={effect.name}
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+          />
+        )}
         {/* Preview video plays on top */}
         {previewUrl && (
           <video
@@ -58,7 +61,7 @@ export function EffectCard({ effect }: EffectCardProps) {
           className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/90"
           style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
         >
-          {formatEffectType(effect.effect_type)}
+          {formatEffectType(effect.type)}
         </span>
       </div>
       <div className="p-3">

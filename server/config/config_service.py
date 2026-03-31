@@ -5,7 +5,7 @@ from typing import Any
 
 DEFAULT_CONFIG = {
     "fal_api_key": "",
-    "default_model": "fal-ai/wan-2.2",
+    "default_model": "wan-2.2",
     "theme": "dark",
     "server_port": 3131,
     "history_limit": 50,
@@ -32,7 +32,7 @@ class ConfigService:
         raw = self._read_raw()
         return {
             "has_api_key": bool(self.get_api_key()),
-            "default_model": raw.get("default_model", "fal-ai/wan-2.2"),
+            "default_model": raw.get("default_model", "wan-2.2"),
             "theme": raw.get("theme", "dark"),
             "history_limit": raw.get("history_limit", 50),
         }

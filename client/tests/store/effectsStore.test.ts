@@ -11,7 +11,7 @@ const mockEffects: EffectManifest[] = [
     description: 'A dramatic zoom from outer space down to a portrait',
     version: '1.0.0',
     author: 'openeffect',
-    effect_type: 'single_image',
+    type: 'single-image',
     category: 'cinematic',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
@@ -22,8 +22,6 @@ const mockEffects: EffectManifest[] = [
         type: 'image',
         required: true,
         label: 'Photo',
-        accept: ['image/jpeg', 'image/png'],
-        max_size_mb: 10,
       },
     },
     output: {
@@ -35,8 +33,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt_template: 'zoom from space to {image}',
       negative_prompt: 'blurry, low quality',
-      supported_models: ['fal-ai/wan-2.2'],
-      default_model: 'fal-ai/wan-2.2',
+      supported_models: ['wan-2.2'],
+      default_model: 'wan-2.2',
       parameters: { guidance_scale: 7.5 },
       model_overrides: {},
       advanced_parameters: [],
@@ -48,7 +46,7 @@ const mockEffects: EffectManifest[] = [
     description: 'Two people share a warm embrace',
     version: '1.0.0',
     author: 'openeffect',
-    effect_type: 'image_transition',
+    type: 'image-transition',
     category: 'emotional',
     tags: ['hug', 'embrace', 'love'],
     assets: {
@@ -60,15 +58,13 @@ const mockEffects: EffectManifest[] = [
         type: 'image',
         required: true,
         label: 'Person A',
-        accept: ['image/jpeg'],
-        max_size_mb: 10,
+        role: 'start_frame',
       },
       image_b: {
         type: 'image',
         required: true,
         label: 'Person B',
-        accept: ['image/jpeg'],
-        max_size_mb: 10,
+        role: 'end_frame',
       },
     },
     output: {
@@ -80,8 +76,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt_template: '{image_a} hugs {image_b}',
       negative_prompt: '',
-      supported_models: ['fal-ai/wan-2.2'],
-      default_model: 'fal-ai/wan-2.2',
+      supported_models: ['wan-2.2'],
+      default_model: 'wan-2.2',
       parameters: {},
       model_overrides: {},
       advanced_parameters: [],
@@ -93,7 +89,7 @@ const mockEffects: EffectManifest[] = [
     description: 'A seamless dancing loop animation',
     version: '1.0.0',
     author: 'openeffect',
-    effect_type: 'single_image',
+    type: 'single-image',
     category: 'fun',
     tags: ['dance', 'loop', 'animation'],
     assets: {
@@ -104,8 +100,6 @@ const mockEffects: EffectManifest[] = [
         type: 'image',
         required: true,
         label: 'Photo',
-        accept: ['image/jpeg', 'image/png'],
-        max_size_mb: 10,
       },
     },
     output: {
@@ -117,8 +111,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt_template: '{image} dancing',
       negative_prompt: 'static',
-      supported_models: ['fal-ai/wan-2.2'],
-      default_model: 'fal-ai/wan-2.2',
+      supported_models: ['wan-2.2'],
+      default_model: 'wan-2.2',
       parameters: { guidance_scale: 5 },
       model_overrides: {},
       advanced_parameters: [],
@@ -136,8 +130,7 @@ function getFilteredEffects(): EffectManifest[] {
   const { effects, searchQuery, activeCategory } = useEffectsStore.getState()
   return effects.filter((e) => {
     if (activeCategory !== 'all') {
-      const typeCategory = e.effect_type.replace(/_/g, '-')
-      if (typeCategory !== activeCategory && e.category !== activeCategory) {
+      if (e.type !== activeCategory && e.category !== activeCategory) {
         return false
       }
     }
@@ -158,7 +151,7 @@ function getSelectedEffect(): EffectManifest | null {
   if (!selectedEffectId) return null
   return (
     effects.find((e) => {
-      const fullId = `${e.effect_type.replace(/_/g, '-')}/${e.id}`
+      const fullId = `${e.type}/${e.id}`
       return fullId === selectedEffectId
     }) ?? null
   )
@@ -234,12 +227,12 @@ describe('effectsStore', () => {
       expect(filtered[0].id).toBe('dance-loop')
     })
 
-    it('category "single-image" returns only single_image effects', () => {
+    it('category "single-image" returns only single-image effects', () => {
       useEffectsStore.setState({ effects: mockEffects })
       useEffectsStore.getState().setActiveCategory('single-image')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(2)
-      expect(filtered.every((e) => e.effect_type === 'single_image')).toBe(true)
+      expect(filtered.every((e) => e.type === 'single-image')).toBe(true)
     })
 
     it('category "all" returns everything', () => {
@@ -304,14 +297,14 @@ describe('effectsStore', () => {
       expect(selected).toBeNull()
     })
 
-    it('matches effect using effect_type/id format with underscore-to-hyphen conversion', () => {
+    it('matches effect using type/id format', () => {
       useEffectsStore.setState({
         effects: mockEffects,
         selectedEffectId: 'image-transition/hug-effect',
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
-      expect(selected!.effect_type).toBe('image_transition')
+      expect(selected!.type).toBe('image-transition')
     })
   })
 })

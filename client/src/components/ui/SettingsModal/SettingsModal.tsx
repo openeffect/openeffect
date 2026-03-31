@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Eye, EyeOff } from 'lucide-react'
+import { X, Eye, EyeOff, Cloud, Monitor, Check, Download } from 'lucide-react'
 import { useConfigStore } from '@/store/configStore'
 
 const modalVariants = {
@@ -19,6 +19,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const theme = useConfigStore((s) => s.theme)
   const setTheme = useConfigStore((s) => s.setTheme)
   const updateConfig = useConfigStore((s) => s.updateConfig)
+  const availableModels = useConfigStore((s) => s.availableModels)
 
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -117,6 +118,79 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 ))}
               </div>
             </div>
+
+            {/* Models */}
+            {availableModels.length > 0 && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  Models
+                </label>
+                <div className="space-y-3">
+                  {availableModels.map((model) => (
+                    <div
+                      key={model.id}
+                      className="rounded-lg p-3"
+                      style={{ backgroundColor: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
+                    >
+                      <div className="mb-2">
+                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {model.name}
+                        </span>
+                        {model.description && (
+                          <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            {model.description}
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {model.providers.map((provider) => (
+                          <div key={provider.id} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {provider.type === 'cloud' ? (
+                                <Cloud size={12} style={{ color: 'var(--text-tertiary)' }} />
+                              ) : (
+                                <Monitor size={12} style={{ color: 'var(--text-tertiary)' }} />
+                              )}
+                              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                {provider.name}
+                              </span>
+                              {provider.cost && (
+                                <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                                  {provider.cost}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              {provider.is_available ? (
+                                <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--success)' }}>
+                                  <Check size={12} />
+                                  Ready
+                                </span>
+                              ) : provider.type === 'local' ? (
+                                <button
+                                  className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
+                                  style={{
+                                    backgroundColor: 'var(--accent-dim)',
+                                    color: 'var(--accent)',
+                                  }}
+                                >
+                                  <Download size={12} />
+                                  Install
+                                </button>
+                              ) : (
+                                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                  Needs API key
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </div>
         </motion.div>

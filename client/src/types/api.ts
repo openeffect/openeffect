@@ -1,5 +1,3 @@
-export type EffectType = 'single_image' | 'image_transition' | 'image_loop' | 'text_to_video'
-
 export interface SelectOption {
   value: string
   label: string
@@ -11,8 +9,7 @@ export type InputFieldSchema =
       required: boolean
       label: string
       hint?: string
-      accept: string[]
-      max_size_mb: number
+      role?: string
     }
   | {
       type: 'text'
@@ -22,6 +19,7 @@ export type InputFieldSchema =
       hint?: string
       max_length?: number
       multiline: boolean
+      role?: string
     }
   | {
       type: 'select'
@@ -29,6 +27,7 @@ export type InputFieldSchema =
       label: string
       default: string
       options: SelectOption[]
+      role?: string
     }
   | {
       type: 'slider'
@@ -40,6 +39,7 @@ export type InputFieldSchema =
       default: number
       unit?: string
       hint?: string
+      role?: string
     }
   | {
       type: 'number'
@@ -47,6 +47,7 @@ export type InputFieldSchema =
       label: string
       default: number
       hint?: string
+      role?: string
     }
 
 export interface AdvancedParameter {
@@ -61,23 +62,16 @@ export interface AdvancedParameter {
   multiline?: boolean
 }
 
-export interface AssetExample {
-  input_1?: string
-  input_2?: string
-  output?: string
-}
-
 export interface Assets {
-  thumbnail: string
-  preview?: string
-  example?: AssetExample
+  inputs?: Record<string, string>    // keyed by input field name → filename in assets/
+  output?: string                     // result video filename in assets/
 }
 
 export interface OutputConfig {
-  aspect_ratios: string[]
-  default_aspect_ratio: string
-  durations: number[]
-  default_duration: number
+  aspect_ratios?: string[]
+  default_aspect_ratio?: string
+  durations?: number[]
+  default_duration?: number
 }
 
 export interface ModelOverride {
@@ -101,7 +95,7 @@ export interface EffectManifest {
   description: string
   version: string
   author: string
-  effect_type: EffectType
+  type: string
   category: string
   tags: string[]
   assets: Assets
@@ -127,13 +121,34 @@ export interface GenerationRecord {
   duration_ms: number | null
 }
 
+export interface ModelParam {
+  key: string
+  label: string
+  type: 'select' | 'slider' | 'number' | 'text'
+  default: string | number
+  options?: { value: string | number; label: string }[]
+  min?: number
+  max?: number
+  step?: number
+  hint?: string
+  multiline?: boolean
+}
+
+export interface ModelProvider {
+  id: string           // "fal" or "local"
+  name: string         // "fal.ai" or "Local"
+  type: 'cloud' | 'local'
+  cost?: string        // "~$0.10/sec"
+  is_available: boolean
+}
+
 export interface ModelInfo {
-  id: string
+  id: string           // "wan-2.2" (plain, no prefix)
   name: string
-  provider: 'fal' | 'local'
-  is_installed: boolean
   description: string
-  cost_per_sec?: string
+  providers: ModelProvider[]
+  output_params?: ModelParam[]
+  advanced_params?: ModelParam[]
 }
 
 export interface AppConfig {
@@ -155,11 +170,9 @@ export interface UploadResponse {
 export interface GenerationRequest {
   effect_id: string
   model_id: string
+  provider_id: string   // "fal" or "local"
   inputs: Record<string, string>
-  output: {
-    aspect_ratio: string
-    duration: number
-  }
+  output: Record<string, string | number>
   user_params?: Record<string, number | string>
 }
 

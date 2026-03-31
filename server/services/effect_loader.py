@@ -41,12 +41,6 @@ class EffectLoaderService:
                     failed += 1
                     continue
 
-                thumb = manifest_path.parent / manifest.assets.thumbnail
-                if not thumb.exists():
-                    logger.warning(f"Skipping {manifest_path}: thumbnail not found at {thumb}")
-                    failed += 1
-                    continue
-
                 effect_type_dir = manifest_path.parent.parent.name
                 full_id = f"{effect_type_dir}/{manifest.id}"
 
@@ -74,11 +68,12 @@ class EffectLoaderService:
         if not loaded:
             return None
 
-        folder = loaded.folder_path
+        # Assets live in the assets/ subfolder
+        assets_dir = loaded.folder_path / "assets"
 
         # Directory traversal protection
-        safe_path = (folder / filename).resolve()
-        if not str(safe_path).startswith(str(folder.resolve())):
+        safe_path = (assets_dir / filename).resolve()
+        if not str(safe_path).startswith(str(assets_dir.resolve())):
             return None
 
         if not safe_path.exists():

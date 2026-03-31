@@ -1,0 +1,69 @@
+id: zoom-from-space
+name: Zoom from Space
+description: >
+  Camera flies in from outer space and zooms
+  into your subject with cinematic depth.
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: camera
+tags:
+  - trending
+  - tiktok
+  - cinematic
+  - viral
+
+assets:
+  inputs:
+    image: input.jpg
+  output: output.mp4
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits or landscape shots"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A person standing on a mountain peak..."
+    max_length: 500
+    multiline: false
+
+output:
+  default_aspect_ratio: "9:16"
+  default_duration: 5
+
+generation:
+  prompt_template: >
+    Cinematic drone shot starting from outer space,
+    rapidly zooming into Earth and then into the subject.
+    {scene_prompt}
+    Epic, dramatic, high quality, 4K resolution.
+
+  negative_prompt: >
+    low quality, blurry, static camera, shaky,
+    distorted, watermark, text overlay
+
+  supported_models:
+    - wan-2.2
+    - kling-v3
+  default_model: wan-2.2
+
+  parameters:
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt_template: >
+        Epic space-to-earth zoom, starting from stars
+        and rushing into the subject. {prompt}
+        Cinematic quality, smooth motion.
+      parameters:
+        guidance_scale: 8.0

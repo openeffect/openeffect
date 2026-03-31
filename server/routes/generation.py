@@ -9,6 +9,7 @@ router = APIRouter()
 class GenerationRequest(BaseModel):
     effect_id: str
     model_id: str
+    provider_id: str  # "fal" or "local"
     inputs: dict[str, str]
     output: dict[str, str | int]
     user_params: dict[str, float | int | str] | None = None

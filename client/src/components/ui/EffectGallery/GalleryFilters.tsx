@@ -1,19 +1,19 @@
 import { Search } from 'lucide-react'
 import { useEffectsStore } from '@/store/effectsStore'
-
-const CATEGORIES = [
-  { id: 'all', label: 'All' },
-  { id: 'single-image', label: 'Single Image' },
-  { id: 'image-transition', label: 'Transition' },
-  { id: 'image-loop', label: 'Loop' },
-  { id: 'text-to-video', label: 'Text to Video' },
-]
+import { formatEffectType } from '@/lib/formatters'
 
 export function GalleryFilters() {
+  const effects = useEffectsStore((s) => s.effects)
   const searchQuery = useEffectsStore((s) => s.searchQuery)
   const setSearchQuery = useEffectsStore((s) => s.setSearchQuery)
   const activeCategory = useEffectsStore((s) => s.activeCategory)
   const setActiveCategory = useEffectsStore((s) => s.setActiveCategory)
+
+  const categories = [
+    { id: 'all', label: 'All' },
+    ...Array.from(new Set(effects.map(e => e.type)))
+      .map(t => ({ id: t, label: formatEffectType(t) }))
+  ]
 
   return (
     <div className="space-y-3 px-6 pb-3 pt-3">
@@ -37,7 +37,7 @@ export function GalleryFilters() {
         />
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {CATEGORIES.map((cat) => {
+        {categories.map((cat) => {
           const isActive = activeCategory === cat.id
           return (
             <button

@@ -41,7 +41,7 @@ interface EffectsStore {
 }
 
 function isValidEffectId(effects: EffectManifest[], id: string): boolean {
-  return effects.some((e) => `${e.effect_type.replace(/_/g, '-')}/${e.id}` === id)
+  return effects.some((e) => `${e.type}/${e.id}` === id)
 }
 
 export const useEffectsStore = create<EffectsStore>((set) => ({
@@ -124,8 +124,7 @@ export function useFilteredEffects(): EffectManifest[] {
 
   return effects.filter((e) => {
     if (activeCategory !== 'all') {
-      const typeCategory = e.effect_type.replace(/_/g, '-')
-      if (typeCategory !== activeCategory && e.category !== activeCategory) {
+      if (e.type !== activeCategory && e.category !== activeCategory) {
         return false
       }
     }
@@ -146,7 +145,7 @@ export function useSelectedEffect(): EffectManifest | null {
   const selectedId = useEffectsStore((s) => s.selectedEffectId)
   if (!selectedId) return null
   return effects.find((e) => {
-    const fullId = `${e.effect_type.replace(/_/g, '-')}/${e.id}`
+    const fullId = `${e.type}/${e.id}`
     return fullId === selectedId
   }) ?? null
 }

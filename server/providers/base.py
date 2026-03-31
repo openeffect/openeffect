@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import AsyncIterator, Any, Literal
 
 
@@ -7,11 +7,9 @@ from typing import AsyncIterator, Any, Literal
 class ProviderInput:
     prompt: str
     negative_prompt: str
-    images: list[str]
-    aspect_ratio: str
-    duration: int
+    image_inputs: dict[str, str]
+    output: dict[str, Any]
     parameters: dict[str, Any]
-    effect_type: str
 
 
 @dataclass

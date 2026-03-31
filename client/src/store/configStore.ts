@@ -31,7 +31,7 @@ interface ConfigStore {
 
 export const useConfigStore = create<ConfigStore>((set) => ({
   hasApiKey: false,
-  defaultModel: 'fal-ai/wan-2.2',
+  defaultModel: 'wan-2.2',
   theme: 'auto',
   availableModels: [],
   updateAvailable: null,
@@ -41,7 +41,7 @@ export const useConfigStore = create<ConfigStore>((set) => ({
     try {
       const config = await api.getConfig()
       const showOnboarding = !config.has_api_key && !config.available_models.some(
-        (m) => m.provider === 'local' && m.is_installed,
+        (m) => m.providers.some((p) => p.type === 'local' && p.is_available),
       )
       const theme = (config.theme === 'auto' || config.theme === 'dark' || config.theme === 'light')
         ? config.theme as ThemeSetting

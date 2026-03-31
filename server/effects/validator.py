@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, field_validator, model_validator
 
-EffectType = Literal["single_image", "image_transition", "image_loop", "text_to_video"]
+VALID_ROLES = ("start_frame", "end_frame", "reference", "prompt_input")
 
 
 class SelectOption(BaseModel):
@@ -14,10 +14,9 @@ class InputFieldSchema(BaseModel):
     type: Literal["image", "text", "select", "slider", "number"]
     required: bool = False
     label: str
+    role: str = "prompt_input"
     hint: str | None = None
     placeholder: str | None = None
-    accept: list[str] | None = None
-    max_size_mb: int | None = None
     max_length: int | None = None
     multiline: bool | None = None
     default: Any = None
@@ -26,6 +25,13 @@ class InputFieldSchema(BaseModel):
     max: float | None = None
     step: float | None = None
     unit: str | None = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in VALID_ROLES:
+            raise ValueError(f"Invalid role '{v}'. Must be one of: {', '.join(VALID_ROLES)}")
+        return v
 
 
 class AdvancedParameter(BaseModel):
@@ -40,31 +46,16 @@ class AdvancedParameter(BaseModel):
     multiline: bool | None = None
 
 
-class AssetExample(BaseModel):
-    input_1: str | None = None
-    input_2: str | None = None
-    output: str | None = None
-
-
 class Assets(BaseModel):
-    thumbnail: str
-    preview: str | None = None
-    example: AssetExample | None = None
+    inputs: dict[str, str] = {}       # keyed by input field name → filename in assets/
+    output: str | None = None         # result video filename in assets/
 
 
 class OutputConfig(BaseModel):
-    aspect_ratios: list[str]
-    default_aspect_ratio: str
-    durations: list[int]
-    default_duration: int
-
-    @model_validator(mode="after")
-    def validate_defaults(self) -> OutputConfig:
-        if self.default_aspect_ratio not in self.aspect_ratios:
-            raise ValueError(f"default_aspect_ratio '{self.default_aspect_ratio}' not in aspect_ratios")
-        if self.default_duration not in self.durations:
-            raise ValueError(f"default_duration {self.default_duration} not in durations")
-        return self
+    aspect_ratios: list[str] | None = None      # None = use model defaults
+    default_aspect_ratio: str | None = None
+    durations: list[int] | None = None           # None = use model defaults
+    default_duration: int | None = None
 
 
 class ModelOverride(BaseModel):
@@ -94,7 +85,7 @@ class EffectManifest(BaseModel):
     description: str
     version: str = "1.0.0"
     author: str = "openeffect-team"
-    effect_type: EffectType
+    type: str
     category: str
     tags: list[str] = []
     assets: Assets
@@ -103,14 +94,12 @@ class EffectManifest(BaseModel):
     generation: GenerationConfig
 
     @model_validator(mode="after")
-    def validate_type_specific(self) -> EffectManifest:
-        if self.effect_type == "image_transition":
-            input_keys = set(self.inputs.keys())
-            if "image_start" not in input_keys or "image_end" not in input_keys:
-                raise ValueError("image_transition effects must have 'image_start' and 'image_end' input fields")
-        if self.effect_type == "text_to_video":
-            if "prompt" not in self.inputs:
-                raise ValueError("text_to_video effects must have a 'prompt' input field")
-            if not self.inputs["prompt"].required:
-                raise ValueError("text_to_video effects must have 'prompt' with required=true")
+    def validate_roles(self) -> EffectManifest:
+        role_counts: dict[str, int] = {}
+        for field in self.inputs.values():
+            role_counts[field.role] = role_counts.get(field.role, 0) + 1
+        if role_counts.get("start_frame", 0) > 1:
+            raise ValueError("At most 1 input may have role 'start_frame'")
+        if role_counts.get("end_frame", 0) > 1:
+            raise ValueError("At most 1 input may have role 'end_frame'")
         return self

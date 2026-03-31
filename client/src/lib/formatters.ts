@@ -30,7 +30,7 @@ export function formatFileSize(bytes: number): string {
 
 export function formatEffectType(type: string): string {
   return type
-    .split('_')
+    .split(/[-_]/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 }

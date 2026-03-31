@@ -20,8 +20,6 @@ export function EffectFormField({ fieldKey, schema, value, onChange }: EffectFor
         <ImageUploader
           label={schema.label}
           hint={schema.hint}
-          accept={schema.accept}
-          maxSizeMb={schema.max_size_mb}
           value={isRestored ? null : (value as File | null)}
           onChange={onChange}
           restoredUrl={restoredUrl}

@@ -94,6 +94,7 @@ class GenerationService:
             "request": {
                 "effect_id": request.effect_id,
                 "model_id": request.model_id,
+                "provider_id": request.provider_id,
                 "inputs": saved_inputs,
                 "output": request.output,
                 "user_params": request.user_params,
@@ -173,26 +174,25 @@ class GenerationService:
                 negative_prompt = str(params.pop("negative_prompt"))
 
             # Resolve image ref_ids to paths using content-addressable store
-            images: list[str] = []
+            image_inputs: dict[str, str] = {}
             for key, field in manifest.inputs.items():
                 if field.type == "image" and key in request.inputs:
+                    role = getattr(field, 'role', 'start_frame')
                     ref_id = request.inputs[key]
                     file_path = self._storage.get_upload_path(ref_id)
                     if file_path:
-                        images.append(str(file_path))
+                        image_inputs[role] = str(file_path)
 
             api_key = self._config.get_api_key()
             models_dir = self._model_service._models_dir if hasattr(self._model_service, '_models_dir') else None
-            provider = ModelProviderFactory.create(request.model_id, api_key=api_key, models_dir=models_dir)
+            provider = ModelProviderFactory.create(request.model_id, request.provider_id, api_key=api_key, models_dir=models_dir)
 
             provider_input = ProviderInput(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
-                images=images,
-                aspect_ratio=str(request.output.get("aspect_ratio", "9:16")),
-                duration=int(request.output.get("duration", 5)),
+                image_inputs=image_inputs,
+                output=dict(request.output) if request.output else {},
                 parameters={**params, "_model_id": request.model_id},
-                effect_type=manifest.effect_type,
             )
 
             async for event in provider.generate(provider_input):

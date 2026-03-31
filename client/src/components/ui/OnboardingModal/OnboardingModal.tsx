@@ -31,7 +31,7 @@ export function OnboardingModal() {
   const handleInstallLocal = async () => {
     setInstalling(true)
     try {
-      const { install_job_id } = await api.installModel('local/wan-2.2')
+      const { install_job_id } = await api.installModel('wan-2.2')
       esRef.current?.close()
       const es = new EventSource(`/api/models/install/${install_job_id}/stream`)
       esRef.current = es

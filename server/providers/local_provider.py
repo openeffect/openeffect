@@ -24,7 +24,7 @@ class LocalProvider(BaseProvider):
         request_data = {
             "prompt": input.prompt,
             "negative_prompt": input.negative_prompt,
-            "images": input.images,
+            "image_inputs": input.image_inputs,
             "parameters": {k: v for k, v in input.parameters.items() if not k.startswith("_")},
             "output_path": str(output_path),
         }

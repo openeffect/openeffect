@@ -58,7 +58,7 @@ async def service(db_path):
 
 
 def _make_job(job_id: str = "job-001", effect_id: str = "single-image/hdr",
-              effect_name: str = "HDR", model_id: str = "fal-ai/wan-2.2") -> FakeJob:
+              effect_name: str = "HDR", model_id: str = "wan-2.2") -> FakeJob:
     return FakeJob(job_id=job_id, effect_id=effect_id,
                    effect_name=effect_name, model_id=model_id)
 
@@ -71,7 +71,7 @@ class TestCreateProcessing:
         assert record.status == "processing"
         assert record.effect_id == "single-image/hdr"
         assert record.effect_name == "HDR"
-        assert record.model_id == "fal-ai/wan-2.2"
+        assert record.model_id == "wan-2.2"
 
     async def test_sets_initial_progress(self, service):
         job = _make_job("job-create-2")
@@ -357,7 +357,7 @@ class TestGenerationRecordToDict:
     async def test_to_dict_parses_manifest_json_string(self, service):
         """manifest_json stored as string should be returned as parsed dict."""
         import json
-        manifest = {"effect": {"id": "test"}, "request": {"model_id": "fal-ai/wan-2.2"}}
+        manifest = {"effect": {"id": "test"}, "request": {"model_id": "wan-2.2"}}
         job = _make_job("job-manifest-parse")
         await service.create_processing(job, manifest_json=json.dumps(manifest))
         record = await service.get_by_id("job-manifest-parse")

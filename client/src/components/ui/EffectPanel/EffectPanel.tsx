@@ -7,25 +7,51 @@ import { api } from '@/lib/api'
 import { formatEffectType } from '@/lib/formatters'
 import { EffectFormRenderer } from '@/effects/EffectFormRenderer'
 import { ModelSelector } from '@/effects/components/ModelSelector'
-import { AspectRatioSelector } from '@/effects/components/AspectRatioSelector'
-import { DurationSelector } from '@/effects/components/DurationSelector'
 import { AdvancedSettings } from '@/effects/components/AdvancedSettings'
 import { GenerateButton } from '@/effects/components/GenerateButton'
-import type { GenerationRequest } from '@/types/api'
+import type { GenerationRequest, ModelParam } from '@/types/api'
 
 export function EffectPanel() {
   const manifest = useSelectedEffect()
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const startGeneration = useGenerationStore((s) => s.startGeneration)
   const restoredParams = useGenerationStore((s) => s.restoredParams)
-  const hasApiKey = useConfigStore((s) => s.hasApiKey)
+  const availableModels = useConfigStore((s) => s.availableModels)
 
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [selectedModel, setSelectedModel] = useState(manifest?.generation.default_model ?? '')
-  const [aspectRatio, setAspectRatio] = useState(manifest?.output.default_aspect_ratio ?? '9:16')
-  const [duration, setDuration] = useState(manifest?.output.default_duration ?? 5)
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [outputValues, setOutputValues] = useState<Record<string, string | number>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
   const [isGenerating, setIsGenerating] = useState(false)
+
+  // Get model params
+  const modelInfo = availableModels.find((m) => m.id === selectedModel)
+  const outputParams = modelInfo?.output_params ?? []
+  const advancedParams = (modelInfo?.advanced_params ?? []).map((p) => {
+    // Apply manifest default overrides
+    const manifestDefault = manifest?.generation?.parameters?.[p.key]
+    return manifestDefault !== undefined ? { ...p, default: manifestDefault } : p
+  })
+
+  // Initialize output values and auto-select first available provider when model changes
+  const prevModelRef = useRef(selectedModel)
+  useEffect(() => {
+    if (selectedModel === prevModelRef.current) return
+    prevModelRef.current = selectedModel
+    const defaults: Record<string, string | number> = {}
+    for (const param of outputParams) {
+      defaults[param.key] = param.default
+    }
+    setOutputValues(defaults)
+    setAdvancedValues({})  // reset so manifest defaults apply for the new model
+
+    // Auto-select first available provider for the new model
+    if (modelInfo) {
+      const firstAvailable = modelInfo.providers.find((p) => p.is_available)
+      setSelectedProvider(firstAvailable?.id ?? modelInfo.providers[0]?.id ?? '')
+    }
+  }, [selectedModel, outputParams, modelInfo])
 
   // Track effect changes — keep matching fields, reset the rest
   const prevEffectId = useRef(manifest?.id)
@@ -33,14 +59,12 @@ export function EffectPanel() {
     if (!manifest || manifest.id === prevEffectId.current) return
     prevEffectId.current = manifest.id
 
-    // Keep values for fields that exist in the new manifest with the same type
     setValues((prev) => {
       const next: Record<string, unknown> = {}
       for (const [key, schema] of Object.entries(manifest.inputs)) {
         if (key in prev && prev[key] != null) {
           next[key] = prev[key]
         }
-        // Pre-fill select defaults if not carried over
         if (!(key in next) && schema.type === 'select' && 'default' in schema) {
           next[key] = schema.default
         }
@@ -51,13 +75,6 @@ export function EffectPanel() {
     setSelectedModel((prev) =>
       manifest.generation.supported_models.includes(prev) ? prev : manifest.generation.default_model
     )
-    setAspectRatio((prev) =>
-      manifest.output.aspect_ratios.includes(prev) ? prev : manifest.output.default_aspect_ratio
-    )
-    setDuration((prev) =>
-      manifest.output.durations.includes(prev) ? prev : manifest.output.default_duration
-    )
-    // Keep advanced values for keys that exist in the new manifest's advanced_parameters
     setAdvancedValues((prev) => {
       const validKeys = new Set(manifest.generation.advanced_parameters.map((p) => p.key))
       const next: Record<string, unknown> = {}
@@ -68,30 +85,20 @@ export function EffectPanel() {
     })
   }, [manifest])
 
-  // Consume restoredParams when they are set — fully replaces all form state
+  // Consume restoredParams
   useEffect(() => {
     if (!restoredParams || !manifest) return
 
-    // Apply restored model
     setSelectedModel(
       restoredParams.modelId && manifest.generation.supported_models.includes(restoredParams.modelId)
         ? restoredParams.modelId
         : manifest.generation.default_model
     )
 
-    // Apply restored output settings
-    setAspectRatio(
-      restoredParams.output && manifest.output.aspect_ratios.includes(restoredParams.output.aspect_ratio)
-        ? restoredParams.output.aspect_ratio
-        : manifest.output.default_aspect_ratio
-    )
-    setDuration(
-      restoredParams.output && manifest.output.durations.includes(restoredParams.output.duration)
-        ? restoredParams.output.duration
-        : manifest.output.default_duration
-    )
+    if (restoredParams.output) {
+      setOutputValues(restoredParams.output as Record<string, string | number>)
+    }
 
-    // Apply restored inputs — fully replace values
     const next: Record<string, unknown> = {}
     if (restoredParams.inputs) {
       for (const [key, schema] of Object.entries(manifest.inputs)) {
@@ -106,10 +113,7 @@ export function EffectPanel() {
     }
     setValues(next)
 
-    // Apply restored user params
     setAdvancedValues(restoredParams.userParams ?? {})
-
-    // Clear restoredParams after consuming
     useGenerationStore.setState({ restoredParams: null })
   }, [restoredParams, manifest])
 
@@ -117,13 +121,37 @@ export function EffectPanel() {
     setValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
+  // Auto-detect aspect ratio from uploaded image (if model supports aspect_ratio param)
+  const hasAspectRatioParam = outputParams.some((p) => p.key === 'aspect_ratio')
+  useEffect(() => {
+    if (!manifest || !hasAspectRatioParam) return
+    for (const [key, schema] of Object.entries(manifest.inputs)) {
+      if (schema.type === 'image') {
+        const val = values[key]
+        if (val instanceof File) {
+          const img = new window.Image()
+          img.onload = () => {
+            const ratio = img.naturalWidth / img.naturalHeight
+            let ar = '1:1'
+            if (ratio > 1.2) ar = '16:9'
+            else if (ratio < 0.8) ar = '9:16'
+            setOutputValues((prev) => ({ ...prev, aspect_ratio: ar }))
+            URL.revokeObjectURL(img.src)
+          }
+          img.src = URL.createObjectURL(val)
+          break
+        }
+      }
+    }
+  }, [values, manifest, hasAspectRatioParam])
+
   const handleAdvancedChange = useCallback((key: string, value: unknown) => {
     setAdvancedValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
   if (!manifest) return null
 
-  const fullId = `${manifest.effect_type.replace(/_/g, '-')}/${manifest.id}`
+  const fullId = `${manifest.type}/${manifest.id}`
 
   const handleGenerate = async () => {
     setIsGenerating(true)
@@ -136,7 +164,6 @@ export function EffectPanel() {
             const uploaded = await api.upload(val)
             inputs[key] = uploaded.ref_id
           } else if (val && typeof val === 'object' && '__restored' in (val as Record<string, unknown>)) {
-            // Restored image — use the filename as-is (it was already uploaded)
             inputs[key] = (val as { filename: string }).filename
           } else if (schema.required) {
             alert(`Please upload ${schema.label}`)
@@ -156,8 +183,9 @@ export function EffectPanel() {
       const request: GenerationRequest = {
         effect_id: fullId,
         model_id: selectedModel || manifest.generation.default_model,
+        provider_id: selectedProvider,
         inputs,
-        output: { aspect_ratio: aspectRatio, duration },
+        output: outputValues,
         user_params:
           Object.keys(advancedValues).length > 0
             ? (advancedValues as Record<string, number | string>)
@@ -172,7 +200,9 @@ export function EffectPanel() {
     }
   }
 
-  const canGenerate = selectedModel.startsWith('local/') || hasApiKey
+  // Check if the selected provider is available
+  const selectedProviderInfo = modelInfo?.providers.find((p) => p.id === selectedProvider)
+  const canGenerate = selectedProviderInfo?.is_available === true
 
   return (
     <div className="flex h-full flex-col">
@@ -190,7 +220,7 @@ export function EffectPanel() {
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
               style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
             >
-              {formatEffectType(manifest.effect_type)}
+              {formatEffectType(manifest.type)}
             </span>
           </div>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -211,29 +241,37 @@ export function EffectPanel() {
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
         <ModelSelector
           models={manifest.generation.supported_models}
+          availableModels={availableModels}
           selectedModel={selectedModel || manifest.generation.default_model}
-          onChange={setSelectedModel}
+          selectedProvider={selectedProvider}
+          onModelChange={setSelectedModel}
+          onProviderChange={setSelectedProvider}
         />
         <EffectFormRenderer manifest={manifest} values={values} onChange={handleChange} />
 
-        <div className="flex gap-5">
-          <AspectRatioSelector
-            ratios={manifest.output.aspect_ratios}
-            selected={aspectRatio}
-            onChange={setAspectRatio}
-          />
-          <DurationSelector
-            durations={manifest.output.durations}
-            selected={duration}
-            onChange={setDuration}
-          />
-        </div>
+        {/* Model-driven output params */}
+        {outputParams.length > 0 && (
+          <div className="space-y-4">
+            {outputParams.map((param) => (
+              <ModelParamField
+                key={param.key}
+                param={param}
+                value={outputValues[param.key] ?? param.default}
+                onChange={(v) => setOutputValues((prev) => ({ ...prev, [param.key]: v }))}
+              />
+            ))}
+          </div>
+        )}
 
-        <AdvancedSettings
-          parameters={manifest.generation.advanced_parameters}
-          values={advancedValues}
-          onChange={handleAdvancedChange}
-        />
+        {/* Model-driven advanced settings */}
+        {advancedParams.length > 0 && (
+          <AdvancedSettings
+            parameters={advancedParams}
+            values={advancedValues}
+            onChange={handleAdvancedChange}
+            manifestDefaults={manifest.generation.parameters}
+          />
+        )}
       </div>
 
       {/* Footer */}
@@ -241,10 +279,92 @@ export function EffectPanel() {
         <GenerateButton onClick={handleGenerate} disabled={!canGenerate} loading={isGenerating} />
         {!canGenerate && (
           <p className="mt-2 text-center text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-            Add your fal.ai API key in Settings to generate
+            {selectedProviderInfo?.type === 'local'
+              ? 'Install this model in Settings to generate'
+              : 'Add your API key in Settings to generate'}
           </p>
         )}
       </div>
     </div>
   )
+}
+
+/* ─── Renders a single model parameter (select/number/slider) ─── */
+function ModelParamField({ param, value, onChange }: { param: ModelParam; value: string | number; onChange: (v: string | number) => void }) {
+  if (param.type === 'select' && param.options) {
+    return (
+      <div className="space-y-2">
+        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+          {param.label}
+        </label>
+        <div className="flex gap-1.5">
+          {param.options.map((opt) => {
+            const isActive = value === opt.value
+            return (
+              <button
+                key={String(opt.value)}
+                onClick={() => onChange(opt.value)}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium tabular-nums transition-all"
+                style={{
+                  background: isActive ? 'var(--accent)' : 'var(--surface-elevated)',
+                  color: isActive ? 'white' : 'var(--text-secondary)',
+                  border: isActive ? '1px solid transparent' : '1px solid var(--border)',
+                }}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  if (param.type === 'number') {
+    return (
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+          {param.label}
+        </label>
+        <input
+          type="number"
+          value={value}
+          min={param.min}
+          max={param.max}
+          step={param.step}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-24 rounded-lg px-3 py-2 text-sm tabular-nums outline-none"
+          style={{ background: 'var(--surface-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+        />
+        {param.hint && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{param.hint}</p>}
+      </div>
+    )
+  }
+
+  if (param.type === 'slider' && param.min != null && param.max != null) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+            {param.label}
+          </label>
+          <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+            {String(value)}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={param.min}
+          max={param.max}
+          step={param.step ?? 1}
+          value={Number(value)}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-full"
+        />
+        {param.hint && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{param.hint}</p>}
+      </div>
+    )
+  }
+
+  return null
 }

@@ -18,7 +18,7 @@ def make_valid_manifest(**overrides) -> dict:
         "description": "A test effect",
         "version": "1.0.0",
         "author": "test",
-        "effect_type": "single_image",
+        "type": "animation",
         "category": "test",
         "tags": [],
         "assets": {"thumbnail": "thumbnail.jpg"},
@@ -27,20 +27,17 @@ def make_valid_manifest(**overrides) -> dict:
                 "type": "image",
                 "required": True,
                 "label": "Photo",
-                "accept": ["image/jpeg"],
-                "max_size_mb": 10,
+                "role": "start_frame",
             },
         },
         "output": {
-            "aspect_ratios": ["9:16", "1:1"],
             "default_aspect_ratio": "9:16",
-            "durations": [3, 5],
             "default_duration": 5,
         },
         "generation": {
             "prompt_template": "A test prompt. {prompt}",
-            "supported_models": ["fal-ai/wan-2.2"],
-            "default_model": "fal-ai/wan-2.2",
+            "supported_models": ["wan-2.2"],
+            "default_model": "wan-2.2",
             "parameters": {},
         },
     }
@@ -53,7 +50,7 @@ class TestEffectValidator:
         data = make_valid_manifest()
         manifest = EffectManifest(**data)
         assert manifest.id == "test-effect"
-        assert manifest.effect_type == "single_image"
+        assert manifest.type == "animation"
 
     def test_missing_required_field(self):
         data = make_valid_manifest()
@@ -62,118 +59,151 @@ class TestEffectValidator:
             EffectManifest(**data)
         assert "name" in str(exc_info.value)
 
-    def test_invalid_effect_type(self):
-        data = make_valid_manifest(effect_type="invalid_type")
-        with pytest.raises(ValidationError):
-            EffectManifest(**data)
+    def test_free_form_type_accepts_any_string(self):
+        data = make_valid_manifest(type="custom_type")
+        manifest = EffectManifest(**data)
+        assert manifest.type == "custom_type"
 
     def test_default_model_not_in_supported(self):
         data = make_valid_manifest()
-        data["generation"]["default_model"] = "fal-ai/nonexistent"
+        data["generation"]["default_model"] = "nonexistent"
         with pytest.raises(ValidationError) as exc_info:
             EffectManifest(**data)
         assert "default_model" in str(exc_info.value)
 
-    def test_default_aspect_ratio_not_in_list(self):
+    def test_output_fields_are_optional(self):
         data = make_valid_manifest()
-        data["output"]["default_aspect_ratio"] = "4:3"
-        with pytest.raises(ValidationError) as exc_info:
-            EffectManifest(**data)
-        assert "default_aspect_ratio" in str(exc_info.value)
+        data["output"] = {}
+        manifest = EffectManifest(**data)
+        assert manifest.output.aspect_ratios is None
+        assert manifest.output.default_aspect_ratio is None
+        assert manifest.output.durations is None
+        assert manifest.output.default_duration is None
 
-    def test_default_duration_not_in_list(self):
-        data = make_valid_manifest()
-        data["output"]["default_duration"] = 10
-        with pytest.raises(ValidationError) as exc_info:
-            EffectManifest(**data)
-        assert "default_duration" in str(exc_info.value)
-
-    def test_image_transition_requires_image_start_and_end(self):
+    def test_role_defaults_to_prompt_input(self):
         data = make_valid_manifest(
-            effect_type="image_transition",
+            inputs={
+                "text_field": {
+                    "type": "text",
+                    "required": False,
+                    "label": "Prompt",
+                },
+            },
+        )
+        manifest = EffectManifest(**data)
+        assert manifest.inputs["text_field"].role == "prompt_input"
+
+    def test_invalid_role_rejected(self):
+        data = make_valid_manifest(
             inputs={
                 "image": {
                     "type": "image",
                     "required": True,
                     "label": "Photo",
-                    "accept": ["image/jpeg"],
-                    "max_size_mb": 10,
+                    "role": "invalid_role",
                 },
             },
         )
         with pytest.raises(ValidationError) as exc_info:
             EffectManifest(**data)
-        assert "image_start" in str(exc_info.value) or "image_end" in str(exc_info.value)
+        assert "role" in str(exc_info.value).lower()
 
-    def test_image_transition_with_correct_fields(self):
+    def test_max_one_start_frame(self):
         data = make_valid_manifest(
-            effect_type="image_transition",
+            inputs={
+                "image_a": {
+                    "type": "image",
+                    "required": True,
+                    "label": "Image A",
+                    "role": "start_frame",
+                },
+                "image_b": {
+                    "type": "image",
+                    "required": True,
+                    "label": "Image B",
+                    "role": "start_frame",
+                },
+            },
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "start_frame" in str(exc_info.value)
+
+    def test_max_one_end_frame(self):
+        data = make_valid_manifest(
+            inputs={
+                "image_a": {
+                    "type": "image",
+                    "required": True,
+                    "label": "Image A",
+                    "role": "end_frame",
+                },
+                "image_b": {
+                    "type": "image",
+                    "required": True,
+                    "label": "Image B",
+                    "role": "end_frame",
+                },
+            },
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "end_frame" in str(exc_info.value)
+
+    def test_start_and_end_frame_together_valid(self):
+        data = make_valid_manifest(
             inputs={
                 "image_start": {
                     "type": "image",
                     "required": True,
                     "label": "Start",
-                    "accept": ["image/jpeg"],
-                    "max_size_mb": 10,
+                    "role": "start_frame",
                 },
                 "image_end": {
                     "type": "image",
                     "required": True,
                     "label": "End",
-                    "accept": ["image/jpeg"],
-                    "max_size_mb": 10,
+                    "role": "end_frame",
                 },
             },
         )
         manifest = EffectManifest(**data)
-        assert manifest.effect_type == "image_transition"
+        assert manifest.inputs["image_start"].role == "start_frame"
+        assert manifest.inputs["image_end"].role == "end_frame"
 
-    def test_text_to_video_requires_prompt(self):
+    def test_multiple_prompt_inputs_valid(self):
         data = make_valid_manifest(
-            effect_type="text_to_video",
             inputs={
+                "prompt": {
+                    "type": "text",
+                    "required": False,
+                    "label": "Prompt",
+                    "role": "prompt_input",
+                },
                 "style": {
                     "type": "select",
                     "required": False,
                     "label": "Style",
+                    "role": "prompt_input",
                     "default": "cinematic",
                     "options": [{"value": "cinematic", "label": "Cinematic"}],
                 },
             },
         )
-        with pytest.raises(ValidationError) as exc_info:
-            EffectManifest(**data)
-        assert "prompt" in str(exc_info.value)
+        manifest = EffectManifest(**data)
+        assert manifest.inputs["prompt"].role == "prompt_input"
+        assert manifest.inputs["style"].role == "prompt_input"
 
-    def test_text_to_video_prompt_must_be_required(self):
+    def test_reference_role_valid(self):
         data = make_valid_manifest(
-            effect_type="text_to_video",
             inputs={
-                "prompt": {
-                    "type": "text",
+                "ref_image": {
+                    "type": "image",
                     "required": False,
-                    "label": "Prompt",
-                    "max_length": 300,
-                    "multiline": True,
-                },
-            },
-        )
-        with pytest.raises(ValidationError) as exc_info:
-            EffectManifest(**data)
-        assert "required" in str(exc_info.value).lower()
-
-    def test_text_to_video_valid(self):
-        data = make_valid_manifest(
-            effect_type="text_to_video",
-            inputs={
-                "prompt": {
-                    "type": "text",
-                    "required": True,
-                    "label": "Prompt",
-                    "max_length": 600,
-                    "multiline": True,
+                    "label": "Reference",
+                    "role": "reference",
                 },
             },
         )
         manifest = EffectManifest(**data)
-        assert manifest.effect_type == "text_to_video"
+        assert manifest.inputs["ref_image"].role == "reference"

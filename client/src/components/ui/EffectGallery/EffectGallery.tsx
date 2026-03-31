@@ -64,7 +64,7 @@ export function EffectGallery() {
                   style={{ color: 'var(--text-tertiary)' }}
                 >
                   <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
-                  {formatEffectType(type.replace(/-/g, '_'))}
+                  {formatEffectType(type)}
                   <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
                 </h2>
               )}
@@ -90,9 +90,9 @@ export function EffectGallery() {
 function groupByType(effects: ReturnType<typeof useFilteredEffects>) {
   const groups: Record<string, typeof effects> = {}
   for (const e of effects) {
-    const type = e.effect_type.replace(/_/g, '-')
-    if (!groups[type]) groups[type] = []
-    groups[type].push(e)
+    const t = e.type
+    if (!groups[t]) groups[t] = []
+    groups[t]!.push(e)
   }
   return groups
 }

@@ -279,7 +279,7 @@ export function EffectPanel() {
 
       {/* Footer */}
       <div className="shrink-0 p-4" style={{ borderTop: '1px solid var(--border)' }}>
-        <GenerateButton onClick={handleGenerate} disabled={!canGenerate} loading={isGenerating} />
+        <GenerateButton onClick={handleGenerate} disabled={!canGenerate} loading={isGenerating} cost={selectedProviderInfo?.cost} />
         {!canGenerate && (
           <p className="mt-2 text-center text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
             {selectedProviderInfo?.type === 'local'

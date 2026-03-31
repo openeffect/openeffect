@@ -1,10 +1,10 @@
-import { useEffect } from 'react'
-import { Cloud, Monitor } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Cloud, Monitor, ChevronRight, ChevronDown } from 'lucide-react'
 import type { ModelInfo, ModelProvider } from '@/types/api'
 
 interface ModelSelectorProps {
-  models: string[]               // supported model IDs from manifest
-  availableModels: ModelInfo[]   // from config store
+  models: string[]
+  availableModels: ModelInfo[]
   selectedModel: string
   selectedProvider: string
   onModelChange: (model: string) => void
@@ -16,10 +16,6 @@ const MODEL_LABELS: Record<string, string> = {
   'kling-v3': 'Kling v3',
 }
 
-function ProviderIcon({ type }: { type: 'cloud' | 'local' }) {
-  return type === 'cloud' ? <Cloud size={12} /> : <Monitor size={12} />
-}
-
 export function ModelSelector({
   models,
   availableModels,
@@ -28,130 +24,135 @@ export function ModelSelector({
   onModelChange,
   onProviderChange,
 }: ModelSelectorProps) {
-  // Filter availableModels to only those supported by the manifest
   const filteredModels = availableModels.filter((m) => models.includes(m.id))
-
-  // Get providers for the currently selected model
   const currentModelInfo = availableModels.find((m) => m.id === selectedModel)
   const providers = currentModelInfo?.providers ?? []
+  const selectedProviderInfo = providers.find((p) => p.id === selectedProvider)
+  const hasMultipleProviders = providers.filter((p) => p.is_available).length > 1
+
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Auto-select first available provider when model changes
   useEffect(() => {
     if (!currentModelInfo) return
-    const currentProviderStillValid = providers.some(
-      (p) => p.id === selectedProvider && p.is_available
-    )
-    if (!currentProviderStillValid) {
-      const firstAvailable = providers.find((p) => p.is_available)
-      if (firstAvailable) {
-        onProviderChange(firstAvailable.id)
-      } else if (providers.length > 0) {
-        onProviderChange(providers[0]!.id)
-      }
+    const stillValid = providers.some((p) => p.id === selectedProvider && p.is_available)
+    if (!stillValid) {
+      const first = providers.find((p) => p.is_available)
+      if (first) onProviderChange(first.id)
+      else if (providers.length > 0) onProviderChange(providers[0]!.id)
     }
   }, [selectedModel, currentModelInfo, providers, selectedProvider, onProviderChange])
 
-  return (
-    <div className="flex items-start gap-5">
-      {/* Model pills */}
-      <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-          Model
-        </label>
-        <div className="flex flex-wrap gap-1.5">
-          {filteredModels.map((model) => {
-            const isActive = selectedModel === model.id
-            return (
-              <button
-                key={model.id}
-                onClick={() => onModelChange(model.id)}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
-                style={{
-                  background: isActive ? 'var(--accent)' : 'var(--surface-elevated)',
-                  color: isActive ? 'white' : 'var(--text-secondary)',
-                  border: isActive ? '1px solid transparent' : '1px solid var(--border)',
-                  boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
-                }}
-              >
-                {MODEL_LABELS[model.id] ?? model.name}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+  // Close dropdown on click outside
+  useEffect(() => {
+    if (!dropdownOpen) return
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [dropdownOpen])
 
-      {/* Provider pills */}
-      {providers.length > 0 && (
-        <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-            Run on
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {providers.map((provider) => (
-              <ProviderPill
-                key={provider.id}
-                provider={provider}
-                isSelected={selectedProvider === provider.id}
-                onSelect={() => {
-                  if (provider.is_available) onProviderChange(provider.id)
-                }}
-              />
-            ))}
-          </div>
+  return (
+    <div className="flex items-center gap-2">
+      {/* Model pills */}
+      {filteredModels.map((model) => {
+        const isActive = selectedModel === model.id
+        return (
+          <button
+            key={model.id}
+            onClick={() => onModelChange(model.id)}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+            style={{
+              background: isActive ? 'var(--accent)' : 'var(--surface-elevated)',
+              color: isActive ? 'white' : 'var(--text-secondary)',
+              border: isActive ? '1px solid transparent' : '1px solid var(--border)',
+            }}
+          >
+            {MODEL_LABELS[model.id] ?? model.name}
+          </button>
+        )
+      })}
+
+      {/* Arrow */}
+      {selectedProviderInfo && (
+        <ChevronRight size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+      )}
+
+      {/* Provider text + dropdown */}
+      {selectedProviderInfo && (
+        <div className="relative" ref={dropdownRef}>
+          <span
+            onClick={hasMultipleProviders ? () => setDropdownOpen(!dropdownOpen) : undefined}
+            className="flex items-center gap-1 text-xs"
+            style={{
+              color: 'var(--text-secondary)',
+              cursor: hasMultipleProviders ? 'pointer' : 'default',
+            }}
+          >
+            {selectedProviderInfo.type === 'cloud' ? <Cloud size={12} /> : <Monitor size={12} />}
+            {selectedProviderInfo.name}
+            {selectedProviderInfo.cost && (
+              <span style={{ color: 'var(--text-tertiary)' }}>{selectedProviderInfo.cost}</span>
+            )}
+            {hasMultipleProviders && <ChevronDown size={11} style={{ color: 'var(--text-tertiary)' }} />}
+          </span>
+
+          {dropdownOpen && (
+            <div
+              className="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg py-1"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              }}
+            >
+              {providers.map((provider) => {
+                const isActive = selectedProvider === provider.id
+                return (
+                  <button
+                    key={provider.id}
+                    disabled={!provider.is_available}
+                    onClick={() => {
+                      if (provider.is_available) {
+                        onProviderChange(provider.id)
+                        setDropdownOpen(false)
+                      }
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                    style={{
+                      color: !provider.is_available
+                        ? 'var(--text-tertiary)'
+                        : isActive
+                          ? 'var(--accent)'
+                          : 'var(--text-primary)',
+                      opacity: provider.is_available ? 1 : 0.4,
+                      background: 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (provider.is_available) e.currentTarget.style.background = 'var(--surface-elevated)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    {provider.type === 'cloud' ? <Cloud size={12} /> : <Monitor size={12} />}
+                    <div>
+                      <div className="font-medium">{provider.name}</div>
+                      {provider.cost && (
+                        <div className="text-[10px] opacity-60">{provider.cost}</div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
-  )
-}
-
-function ProviderPill({
-  provider,
-  isSelected,
-  onSelect,
-}: {
-  provider: ModelProvider
-  isSelected: boolean
-  onSelect: () => void
-}) {
-  if (!provider.is_available) {
-    return (
-      <button
-        disabled
-        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium opacity-40"
-        style={{
-          background: 'var(--surface-elevated)',
-          color: 'var(--text-tertiary)',
-          border: '1px solid var(--border)',
-          cursor: 'not-allowed',
-        }}
-      >
-        <ProviderIcon type={provider.type} />
-        {provider.name}
-      </button>
-    )
-  }
-
-  return (
-    <button
-      onClick={onSelect}
-      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
-      style={{
-        background: isSelected ? 'var(--accent)' : 'var(--surface-elevated)',
-        color: isSelected ? 'white' : 'var(--text-secondary)',
-        border: isSelected ? '1px solid transparent' : '1px solid var(--border)',
-        boxShadow: isSelected ? 'var(--shadow-sm)' : 'none',
-      }}
-    >
-      <ProviderIcon type={provider.type} />
-      {provider.name}
-      {provider.cost && (
-        <span
-          className="text-[10px] opacity-70"
-          style={{ color: isSelected ? 'white' : 'var(--text-tertiary)' }}
-        >
-          {provider.cost}
-        </span>
-      )}
-    </button>
   )
 }

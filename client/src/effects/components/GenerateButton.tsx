@@ -5,9 +5,10 @@ interface GenerateButtonProps {
   onClick: () => void
   disabled: boolean
   loading: boolean
+  cost?: string
 }
 
-export function GenerateButton({ onClick, disabled, loading }: GenerateButtonProps) {
+export function GenerateButton({ onClick, disabled, loading, cost }: GenerateButtonProps) {
   return (
     <motion.button
       onClick={onClick}
@@ -22,6 +23,9 @@ export function GenerateButton({ onClick, disabled, loading }: GenerateButtonPro
     >
       {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
       {loading ? 'Generating...' : 'Generate Video'}
+      {!loading && cost && (
+        <span className="text-xs font-normal opacity-70">{cost}</span>
+      )}
     </motion.button>
   )
 }

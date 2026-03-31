@@ -28,8 +28,8 @@ def make_valid_manifest(**overrides) -> dict:
         },
         "generation": {
             "prompt": "A test prompt. {prompt}",
-            "models": ["wan-2.2"],
-            "default_model": "wan-2.2",
+            "models": ["kling-v3"],
+            "default_model": "kling-v3",
             "defaults": {},
         },
     }

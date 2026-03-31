@@ -14,11 +14,13 @@ class ProviderInput:
 
 @dataclass
 class ProviderEvent:
-    type: Literal["progress", "completed", "failed"]
+    type: Literal["progress", "completed", "failed", "submitted"]
     progress: int | None = None
     message: str | None = None
     video_url: str | None = None
     error: str | None = None
+    request_id: str | None = None
+    endpoint: str | None = None
 
 
 class BaseProvider(ABC):

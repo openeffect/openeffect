@@ -37,9 +37,9 @@ inputs:
 
 generation:
   models:
-    - wan-2.2
     - kling-v3
-  default_model: wan-2.2
+    - wan-2.2
+  default_model: kling-v3
 
   prompt: >
     Cinematic drone shot starting from outer space,

@@ -15,7 +15,7 @@ class TestConfigService:
         service = ConfigService(tmp_config)
         config = service.get_public_config()
         assert config["has_api_key"] is False
-        assert config["default_model"] == "wan-2.2"
+        assert config["default_model"] == "kling-v3"
         assert config["theme"] == "dark"
 
     def test_read_config_from_file(self, tmp_config: Path):

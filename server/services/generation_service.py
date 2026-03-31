@@ -196,7 +196,13 @@ class GenerationService:
             )
 
             async for event in provider.generate(provider_input):
-                if event.type == "progress":
+                if event.type == "submitted":
+                    # Store provider request_id for crash recovery
+                    if event.request_id:
+                        await self._history.set_provider_request(
+                            job.job_id, event.request_id, event.endpoint or ""
+                        )
+                elif event.type == "progress":
                     job.progress = event.progress or 0
                     job.message = event.message or ""
                     await self._history.update_progress(job.job_id, job.progress, job.message)
@@ -254,3 +260,52 @@ class GenerationService:
                 "event": "failed",
                 "data": {"job_id": job.job_id, "error": str(e), "code": "INTERNAL_ERROR"},
             })
+
+    async def recover_stuck_jobs(self) -> None:
+        """Recover jobs that were processing when the server crashed."""
+        stuck = await self._history.get_stuck_processing()
+        if not stuck:
+            return
+
+        logger.info(f"Found {len(stuck)} stuck processing jobs, attempting recovery...")
+        api_key = self._config.get_api_key()
+        if not api_key:
+            logger.warning("No API key — marking stuck fal.ai jobs as failed")
+            for record in stuck:
+                await self._history.fail(record.id, "Server restarted, no API key to recover")
+            return
+
+        from providers.fal_provider import FalProvider
+
+        for record in stuck:
+            if not record.provider_request_id or not record.provider_endpoint:
+                await self._history.fail(record.id, "Server restarted, no recovery info")
+                continue
+
+            logger.info(f"Recovering job {record.id} (request_id={record.provider_request_id})")
+            try:
+                event = await FalProvider.recover(
+                    api_key, record.provider_request_id, record.provider_endpoint,
+                )
+
+                if event.type == "completed" and event.video_url:
+                    # Download result
+                    gen_folder = GenerationRecord.generation_folder(record.id)
+                    gen_folder.mkdir(parents=True, exist_ok=True)
+                    result_path = gen_folder / "result.mp4"
+
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(event.video_url, follow_redirects=True, timeout=120.0)
+                        resp.raise_for_status()
+                        result_path.write_bytes(resp.content)
+
+                    api_video_url = f"/api/generations/{record.id}/result"
+                    await self._history.complete(record.id, api_video_url, 0)
+                    logger.info(f"Recovered job {record.id} — completed")
+                else:
+                    await self._history.fail(record.id, event.error or "Recovery failed")
+                    logger.warning(f"Recovery failed for {record.id}: {event.error}")
+
+            except Exception as e:
+                logger.error(f"Recovery error for {record.id}: {e}")
+                await self._history.fail(record.id, f"Recovery failed: {e}")

@@ -1,17 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cloud, Monitor, ExternalLink, Loader2, Sparkles } from 'lucide-react'
+import { Cloud, ExternalLink, Loader2, Sparkles } from 'lucide-react'
 import { useConfigStore } from '@/store/configStore'
-import { api } from '@/lib/api'
 
 export function OnboardingModal() {
   const [apiKey, setApiKey] = useState('')
   const [savingKey, setSavingKey] = useState(false)
-  const [installing, setInstalling] = useState(false)
-  const esRef = useRef<EventSource | null>(null)
-
-  const [installProgress, setInstallProgress] = useState(0)
-  const [installMsg, setInstallMsg] = useState('')
 
   const saveApiKey = useConfigStore((s) => s.saveApiKey)
   const dismissOnboarding = useConfigStore((s) => s.dismissOnboarding)
@@ -27,39 +21,6 @@ export function OnboardingModal() {
       setSavingKey(false)
     }
   }
-
-  const handleInstallLocal = async () => {
-    setInstalling(true)
-    try {
-      const { install_job_id } = await api.installModel('wan-2.2')
-      esRef.current?.close()
-      const es = new EventSource(`/api/models/install/${install_job_id}/stream`)
-      esRef.current = es
-      es.addEventListener('progress', (e) => {
-        const data = JSON.parse(e.data)
-        setInstallProgress(data.progress)
-        setInstallMsg(data.message)
-      })
-      es.addEventListener('completed', () => {
-        es.close()
-        dismissOnboarding()
-      })
-      es.addEventListener('failed', (e) => {
-        const data = JSON.parse(e.data)
-        es.close()
-        alert(`Installation failed: ${data.error}`)
-        setInstalling(false)
-      })
-    } catch {
-      alert('Failed to start installation')
-      setInstalling(false)
-    }
-  }
-
-  // Close EventSource on unmount
-  useEffect(() => {
-    return () => { esRef.current?.close() }
-  }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>
@@ -129,42 +90,6 @@ export function OnboardingModal() {
               </a>
             </div>
 
-            <p className="text-center text-[11px] font-medium" style={{ color: 'var(--text-tertiary)' }}>or</p>
-
-            {/* Local model option */}
-            <div
-              className="rounded-xl p-4"
-              style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
-            >
-              <div className="flex items-center gap-2">
-                <Monitor size={16} style={{ color: 'var(--accent)' }} />
-                <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Local model (Wan 2.2)</h3>
-              </div>
-              <p className="mb-3 mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                Free &middot; GPU required (8GB+) &middot; ~7.1 GB download
-              </p>
-              {installing ? (
-                <div className="space-y-1.5">
-                  <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--background)' }}>
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: 'var(--accent)' }}
-                      animate={{ width: `${installProgress}%` }}
-                      transition={{ duration: 0.4 }}
-                    />
-                  </div>
-                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{installMsg}</p>
-                </div>
-              ) : (
-                <button
-                  onClick={handleInstallLocal}
-                  className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-                  style={{ background: 'var(--background)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                >
-                  Install Wan 2.2
-                </button>
-              )}
-            </div>
           </div>
 
           <button

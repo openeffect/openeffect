@@ -89,11 +89,12 @@ export const api = {
   getModels: () =>
     request<{ models: AppConfig['available_models'] }>('/api/models').then((r) => r.models),
 
-  installModel: (modelId: string) =>
-    request<{ install_job_id: string; status: string }>('/api/models/install', {
-      method: 'POST',
-      body: JSON.stringify({ model_id: modelId }),
-    }),
+  // Local model install disabled for now
+  // installModel: (modelId: string) =>
+  //   request<{ install_job_id: string; status: string }>('/api/models/install', {
+  //     method: 'POST',
+  //     body: JSON.stringify({ model_id: modelId }),
+  //   }),
 }
 
 export { ApiError }

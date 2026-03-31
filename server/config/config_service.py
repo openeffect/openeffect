@@ -5,7 +5,7 @@ from typing import Any
 
 DEFAULT_CONFIG = {
     "fal_api_key": "",
-    "default_model": "wan-2.2",
+    "default_model": "kling-v3",
     "theme": "dark",
     "server_port": 3131,
     "history_limit": 50,

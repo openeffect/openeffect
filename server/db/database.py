@@ -25,9 +25,17 @@ async def init_db(db_path: Path) -> None:
                 error         TEXT,
                 created_at    TEXT NOT NULL,
                 updated_at    TEXT NOT NULL,
-                duration_ms   INTEGER
+                duration_ms   INTEGER,
+                provider_request_id TEXT,
+                provider_endpoint   TEXT
             )
         """)
+        # Add columns if they don't exist (for existing DBs)
+        for col in ["provider_request_id TEXT", "provider_endpoint TEXT"]:
+            try:
+                await db.execute(f"ALTER TABLE generations ADD COLUMN {col}")
+            except Exception:
+                pass  # Column already exists
         await db.execute("""
             CREATE TABLE IF NOT EXISTS uploads (
                 hash       TEXT PRIMARY KEY,

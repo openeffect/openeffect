@@ -10,24 +10,6 @@ logger = logging.getLogger(__name__)
 
 MODELS = [
     {
-        "id": "wan-2.2",
-        "name": "Wan 2.2",
-        "description": "Fast video generation",
-        "providers": [
-            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.10/sec"},
-            {"id": "local", "name": "Local", "type": "local"},
-        ],
-        "output_params": [
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 10, "step": 1},
-        ],
-        "advanced_params": [
-            {"key": "fps", "label": "Frames per second", "type": "slider", "default": 16, "min": 8, "max": 24, "step": 1, "hint": "Higher = smoother but slower"},
-            {"key": "guidance_scale", "label": "Guidance scale", "type": "slider", "default": 7.5, "min": 1.0, "max": 20.0, "step": 0.5, "hint": "Higher = closer to prompt"},
-            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 30, "min": 10, "max": 50, "step": 5, "hint": "More steps = better quality but slower"},
-            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
-        ],
-    },
-    {
         "id": "kling-v3",
         "name": "Kling v3",
         "description": "High-quality video generation",
@@ -41,6 +23,24 @@ MODELS = [
         ],
         "advanced_params": [
             {"key": "guidance_scale", "label": "Guidance scale", "type": "slider", "default": 8.0, "min": 1.0, "max": 20.0, "step": 0.5, "hint": "Higher = closer to prompt"},
+            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 30, "min": 10, "max": 50, "step": 5, "hint": "More steps = better quality but slower"},
+            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
+        ],
+    },
+    {
+        "id": "wan-2.2",
+        "name": "Wan 2.2",
+        "description": "Fast video generation",
+        "providers": [
+            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.10/sec"},
+            # {"id": "local", "name": "Local", "type": "local"},  # disabled for now
+        ],
+        "output_params": [
+            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 10, "step": 1},
+        ],
+        "advanced_params": [
+            {"key": "fps", "label": "Frames per second", "type": "slider", "default": 16, "min": 8, "max": 24, "step": 1, "hint": "Higher = smoother but slower"},
+            {"key": "guidance_scale", "label": "Guidance scale", "type": "slider", "default": 7.5, "min": 1.0, "max": 20.0, "step": 0.5, "hint": "Higher = closer to prompt"},
             {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 30, "min": 10, "max": 50, "step": 5, "hint": "More steps = better quality but slower"},
             {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
         ],

@@ -25,6 +25,8 @@ class GenerationRecord:
     created_at: str = ""
     updated_at: str = ""
     duration_ms: int | None = None
+    provider_request_id: str | None = None
+    provider_endpoint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # Parse manifest_json from string to dict for output
@@ -97,6 +99,23 @@ class HistoryService:
             (progress, msg, now, job_id),
         )
         await db.commit()
+
+    async def set_provider_request(self, job_id: str, request_id: str, endpoint: str) -> None:
+        db = await self._get_db()
+        await db.execute(
+            "UPDATE generations SET provider_request_id=?, provider_endpoint=? WHERE id=?",
+            (request_id, endpoint, job_id),
+        )
+        await db.commit()
+
+    async def get_stuck_processing(self) -> list[GenerationRecord]:
+        """Get all processing records that have a provider_request_id (recoverable)."""
+        db = await self._get_db()
+        cursor = await db.execute(
+            "SELECT * FROM generations WHERE status='processing' AND provider_request_id IS NOT NULL"
+        )
+        rows = await cursor.fetchall()
+        return [GenerationRecord(**dict(row)) for row in rows]
 
     async def complete(self, job_id: str, video_url: str, duration_ms: int) -> None:
         now = datetime.now(timezone.utc).isoformat()

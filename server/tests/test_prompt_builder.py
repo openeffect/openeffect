@@ -30,8 +30,8 @@ def make_manifest(**overrides) -> EffectManifest:
         "generation": GenerationConfig(
             prompt="A cinematic shot. {prompt} High quality.",
             negative_prompt="low quality, blurry",
-            models=["wan-2.2", "kling-v3"],
-            default_model="wan-2.2",
+            models=["kling-v3", "wan-2.2"],
+            default_model="kling-v3",
             defaults={"guidance_scale": 7.5, "num_inference_steps": 30},
             model_overrides={},
         ),
@@ -71,12 +71,12 @@ class TestBuildPrompt:
             },
             generation=GenerationConfig(
                 prompt="Shot with {mood} mood. High quality.",
-                models=["wan-2.2"],
-                default_model="wan-2.2",
+                models=["kling-v3"],
+                default_model="kling-v3",
                 defaults={},
             ),
         )
-        result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"mood": "dramatic"})
+        result = PromptBuilder.build_prompt(manifest, "kling-v3", {"mood": "dramatic"})
         assert "dramatic" in result
         assert "{mood}" not in result
 
@@ -97,12 +97,12 @@ class TestBuildPrompt:
             },
             generation=GenerationConfig(
                 prompt="Cinematic {style} transition.",
-                models=["wan-2.2"],
-                default_model="wan-2.2",
+                models=["kling-v3"],
+                default_model="kling-v3",
                 defaults={},
             ),
         )
-        result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"style": "liquid"})
+        result = PromptBuilder.build_prompt(manifest, "kling-v3", {"style": "liquid"})
         assert "Liquid Flow" in result
         assert "liquid" not in result.lower().replace("liquid flow", "")
 
@@ -110,8 +110,8 @@ class TestBuildPrompt:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="Default template. {prompt}",
-                models=["wan-2.2", "kling-v3"],
-                default_model="wan-2.2",
+                models=["kling-v3", "wan-2.2"],
+                default_model="kling-v3",
                 defaults={},
                 model_overrides={
                     "kling-v3": ModelOverride(prompt="Kling template. {prompt}"),
@@ -127,12 +127,12 @@ class TestBuildPrompt:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="Shot with {unknown_field} effect.",
-                models=["wan-2.2"],
-                default_model="wan-2.2",
+                models=["kling-v3"],
+                default_model="kling-v3",
                 defaults={},
             ),
         )
-        result = PromptBuilder.build_prompt(manifest, "wan-2.2", {})
+        result = PromptBuilder.build_prompt(manifest, "kling-v3", {})
         assert "{unknown_field}" not in result
         assert "  " not in result
 
@@ -140,12 +140,12 @@ class TestBuildPrompt:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="Start  {prompt}   end.",
-                models=["wan-2.2"],
-                default_model="wan-2.2",
+                models=["kling-v3"],
+                default_model="kling-v3",
                 defaults={},
             ),
         )
-        result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"prompt": ""})
+        result = PromptBuilder.build_prompt(manifest, "kling-v3", {"prompt": ""})
         assert "  " not in result
 
 
@@ -158,12 +158,12 @@ class TestBuildParams:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="test",
-                models=["wan-2.2"],
-                default_model="wan-2.2",
+                models=["kling-v3"],
+                default_model="kling-v3",
                 defaults={"guidance_scale": 7.5, "unknown_param": 42},
             ),
         )
-        result = PromptBuilder.build_params(manifest, "wan-2.2")
+        result = PromptBuilder.build_params(manifest, "kling-v3")
         assert "guidance_scale" in result
         assert "unknown_param" not in result
 
@@ -177,8 +177,8 @@ class TestBuildParams:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="test",
-                models=["wan-2.2", "kling-v3"],
-                default_model="wan-2.2",
+                models=["kling-v3", "wan-2.2"],
+                default_model="kling-v3",
                 defaults={"guidance_scale": 7.5},
                 model_overrides={
                     "kling-v3": ModelOverride(defaults={"guidance_scale": 9.0}),
@@ -213,12 +213,12 @@ class TestBuildParams:
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="test",
-                models=["unknown/model"],
-                default_model="unknown/model",
+                models=["unknown-model"],
+                default_model="unknown-model",
                 defaults={"guidance_scale": 7.5},
             ),
         )
-        result = PromptBuilder.build_params(manifest, "unknown/model")
+        result = PromptBuilder.build_params(manifest, "unknown-model")
         assert result == {}
 
     def test_prompt_inputs_never_in_params(self):

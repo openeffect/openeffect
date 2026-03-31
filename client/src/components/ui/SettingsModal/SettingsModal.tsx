@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Eye, EyeOff, Cloud, Monitor, Check, Download } from 'lucide-react'
+import { X, Eye, EyeOff, Cloud, Check } from 'lucide-react'
 import { useConfigStore } from '@/store/configStore'
 
 const modalVariants = {
@@ -146,11 +146,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {model.providers.map((provider) => (
                           <div key={provider.id} className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              {provider.type === 'cloud' ? (
-                                <Cloud size={12} style={{ color: 'var(--text-tertiary)' }} />
-                              ) : (
-                                <Monitor size={12} style={{ color: 'var(--text-tertiary)' }} />
-                              )}
+                              <Cloud size={12} style={{ color: 'var(--text-tertiary)' }} />
                               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                                 {provider.name}
                               </span>
@@ -166,17 +162,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                   <Check size={12} />
                                   Ready
                                 </span>
-                              ) : provider.type === 'local' ? (
-                                <button
-                                  className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors"
-                                  style={{
-                                    backgroundColor: 'var(--accent-dim)',
-                                    color: 'var(--accent)',
-                                  }}
-                                >
-                                  <Download size={12} />
-                                  Install
-                                </button>
                               ) : (
                                 <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                                   Needs API key

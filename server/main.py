@@ -47,6 +47,9 @@ async def lifespan(app: FastAPI):
         model_service=model_service,
     )
 
+    # Recover any stuck processing jobs from a previous crash
+    await generation_service.recover_stuck_jobs()
+
     # Store services on app state
     app.state.settings = settings
     app.state.config_service = config_service

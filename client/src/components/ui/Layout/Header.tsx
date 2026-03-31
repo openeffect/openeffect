@@ -1,9 +1,10 @@
-import { RefreshCw, History, Settings } from 'lucide-react'
+import { RefreshCw, History, Settings, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ThemeToggle } from '@/components/primitives/ThemeToggle/ThemeToggle'
 import { useGenerationStore } from '@/store/generationStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { useConfigStore } from '@/store/configStore'
+import { useEffectsStore } from '@/store/effectsStore'
+import { HistoryPopup } from '@/components/ui/HistoryModal/HistoryModal'
 
 interface HeaderProps {
   onSettingsOpen: () => void
@@ -11,6 +12,7 @@ interface HeaderProps {
 
 export function Header({ onSettingsOpen }: HeaderProps) {
   const activeCount = useGenerationStore((s) => s.activeCount())
+  const restoringFromUrl = useGenerationStore((s) => s.restoringFromUrl)
   const openHistory = useHistoryStore((s) => s.openModal)
   const updateAvailable = useConfigStore((s) => s.updateAvailable)
 
@@ -20,17 +22,32 @@ export function Header({ onSettingsOpen }: HeaderProps) {
       style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-2.5">
+      <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); useEffectsStore.getState().selectEffect(null) }}
+        className="flex items-center gap-2.5 no-underline"
+      >
         <img src="/logo.png" alt="OpenEffect" className="h-8 w-8 rounded-lg" />
         <span className="text-base font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
           OpenEffect
         </span>
-      </div>
+      </a>
 
-      {/* Update banner */}
-      <AnimatePresence>
-        {updateAvailable && (
+      {/* Center: loading indicator or update banner */}
+      <AnimatePresence mode="wait">
+        {restoringFromUrl ? (
           <motion.div
+            key="loading"
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
+          </motion.div>
+        ) : updateAvailable ? (
+          <motion.div
+            key="update"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
@@ -39,7 +56,7 @@ export function Header({ onSettingsOpen }: HeaderProps) {
           >
             v{updateAvailable} available
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       {/* Actions */}
@@ -65,9 +82,13 @@ export function Header({ onSettingsOpen }: HeaderProps) {
           )}
         </AnimatePresence>
 
-        <HeaderButton icon={<History size={16} />} onClick={openHistory} title="History" />
+        {/* History button + popup */}
+        <div className="relative">
+          <HeaderButton icon={<History size={16} />} onClick={openHistory} title="History" />
+          <HistoryPopup />
+        </div>
+
         <HeaderButton icon={<Settings size={16} />} onClick={onSettingsOpen} title="Settings" />
-        <ThemeToggle />
       </div>
     </header>
   )

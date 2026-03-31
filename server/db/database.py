@@ -20,12 +20,23 @@ async def init_db(db_path: Path) -> None:
                 progress_msg  TEXT,
                 video_url     TEXT,
                 thumbnail_url TEXT,
-                inputs_json   TEXT,
+                manifest_json TEXT,
                 prompt_used   TEXT,
                 error         TEXT,
                 created_at    TEXT NOT NULL,
                 updated_at    TEXT NOT NULL,
                 duration_ms   INTEGER
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS uploads (
+                hash       TEXT PRIMARY KEY,
+                filename   TEXT NOT NULL,
+                ext        TEXT NOT NULL,
+                mime       TEXT NOT NULL,
+                size       INTEGER NOT NULL,
+                ref_count  INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL
             )
         """)
         await db.commit()

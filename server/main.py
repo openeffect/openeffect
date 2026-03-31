@@ -21,18 +21,23 @@ async def lifespan(app: FastAPI):
 
     # Init user data dir
     settings.user_data_dir.mkdir(parents=True, exist_ok=True)
-    (settings.user_data_dir / "tmp").mkdir(exist_ok=True)
+    (settings.user_data_dir / "uploads").mkdir(exist_ok=True)
+    (settings.user_data_dir / "generations").mkdir(exist_ok=True)
 
     # Init DB
-    await init_db(settings.user_data_dir / "openeffect.db")
+    db_path = settings.user_data_dir / "openeffect.db"
+    await init_db(db_path)
 
     # Init services
     config_service = ConfigService(settings.user_data_dir / "config.json")
     effect_loader = EffectLoaderService(settings.effects_dir)
     await effect_loader.load_all()
 
-    storage_service = StorageService(settings.user_data_dir / "tmp")
-    history_service = HistoryService(settings.user_data_dir / "openeffect.db")
+    storage_service = StorageService(
+        uploads_dir=settings.user_data_dir / "uploads",
+        db_path=db_path,
+    )
+    history_service = HistoryService(db_path)
     model_service = ModelService(settings.user_data_dir / "models")
     generation_service = GenerationService(
         effect_loader=effect_loader,

@@ -10,17 +10,24 @@ interface EffectFormFieldProps {
 
 export function EffectFormField({ fieldKey, schema, value, onChange }: EffectFormFieldProps) {
   switch (schema.type) {
-    case 'image':
+    case 'image': {
+      // Check if this is a restored image from a previous generation
+      const isRestored = value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)
+      const restored = isRestored ? (value as { filename: string }) : null
+      const restoredUrl = restored ? `/api/uploads/${restored.filename}` : null
+
       return (
         <ImageUploader
           label={schema.label}
           hint={schema.hint}
           accept={schema.accept}
           maxSizeMb={schema.max_size_mb}
-          value={value as File | null}
+          value={isRestored ? null : (value as File | null)}
           onChange={onChange}
+          restoredUrl={restoredUrl}
         />
       )
+    }
 
     case 'text':
       return (

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Sparkles, AlertCircle, Download } from 'lucide-react'
+import { Sparkles, AlertCircle, Download } from 'lucide-react'
 import { useGenerationStore } from '@/store/generationStore'
 import { ProgressBar } from '@/components/primitives/ProgressBar/ProgressBar'
 import { VideoPlayer } from '@/components/primitives/VideoPlayer/VideoPlayer'
@@ -7,7 +7,6 @@ import { VideoPlayer } from '@/components/primitives/VideoPlayer/VideoPlayer'
 export function GenerationView() {
   const viewingJobId = useGenerationStore((s) => s.viewingJobId)
   const activeJobs = useGenerationStore((s) => s.activeJobs)
-  const closeJob = useGenerationStore((s) => s.closeJob)
 
   const job = viewingJobId ? activeJobs.get(viewingJobId) : null
   if (!job) return null
@@ -16,40 +15,24 @@ export function GenerationView() {
     <div className="flex h-full flex-col" style={{ background: 'var(--background)' }}>
       <AnimatePresence mode="wait">
         {job.status === 'processing' && (
-          <ProgressView key="progress" job={job} onClose={closeJob} />
+          <ProgressView key="progress" job={job} />
         )}
         {job.status === 'completed' && (
-          <ResultView key="result" job={job} onClose={closeJob} />
+          <ResultView key="result" job={job} />
         )}
         {job.status === 'failed' && (
-          <FailedView key="failed" job={job} onClose={closeJob} />
+          <FailedView key="failed" job={job} />
         )}
       </AnimatePresence>
     </div>
   )
 }
 
-/* ─── Close button (top-right, consistent across all views) ─── */
-function CloseButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="absolute left-5 top-5 flex h-8 w-8 items-center justify-center rounded-full"
-      style={{ background: 'var(--surface-elevated)', color: 'var(--text-tertiary)', border: '1px solid var(--border)' }}
-      title="Back to effects"
-    >
-      <ArrowLeft size={15} />
-    </button>
-  )
-}
-
 /* ─── Processing ─── */
 function ProgressView({
   job,
-  onClose,
 }: {
   job: { effectName: string; progress: number; message: string | null }
-  onClose: () => void
 }) {
   return (
     <motion.div
@@ -59,8 +42,6 @@ function ProgressView({
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="relative flex flex-1 flex-col items-center justify-center p-12"
     >
-      <CloseButton onClick={onClose} />
-
       <motion.div
         animate={{ rotate: [0, 180, 360] }}
         transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
@@ -96,10 +77,8 @@ function ProgressView({
 /* ─── Result ─── */
 function ResultView({
   job,
-  onClose,
 }: {
   job: { effectName: string; videoUrl: string | null }
-  onClose: () => void
 }) {
   const handleDownload = () => {
     if (!job.videoUrl) return
@@ -117,8 +96,6 @@ function ResultView({
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="relative flex flex-1 flex-col"
     >
-      <CloseButton onClick={onClose} />
-
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 px-6 py-4">
         <div className="h-2 w-2 rounded-full" style={{ background: 'var(--success)' }} />
@@ -128,7 +105,7 @@ function ResultView({
         {job.videoUrl && (
           <button
             onClick={handleDownload}
-            className="ml-auto mr-10 flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white"
+            className="ml-auto flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white"
             style={{ background: 'var(--accent)', boxShadow: '0 2px 8px rgba(74,144,226,0.3)' }}
           >
             <Download size={14} />
@@ -150,10 +127,8 @@ function ResultView({
 /* ─── Failed ─── */
 function FailedView({
   job,
-  onClose,
 }: {
   job: { effectName: string; error: string | null }
-  onClose: () => void
 }) {
   return (
     <motion.div
@@ -163,8 +138,6 @@ function FailedView({
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="relative flex flex-1 flex-col items-center justify-center p-12"
     >
-      <CloseButton onClick={onClose} />
-
       <div
         className="mb-6 flex h-16 w-16 items-center justify-center rounded-full"
         style={{ background: 'rgba(224,77,77,0.1)' }}

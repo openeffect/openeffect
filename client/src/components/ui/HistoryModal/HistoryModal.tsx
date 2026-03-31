@@ -1,138 +1,188 @@
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Check, AlertCircle, Loader2, Download, Trash2 } from 'lucide-react'
+import { Check, X, AlertCircle, Loader2, Download, Trash2 } from 'lucide-react'
 import { useHistoryStore } from '@/store/historyStore'
-import { useGenerationStore } from '@/store/generationStore'
 import { ProgressBar } from '@/components/primitives/ProgressBar/ProgressBar'
 import { formatRelativeTime } from '@/lib/formatters'
 
-const modalVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
-  exit: { opacity: 0, y: 8, transition: { duration: 0.15 } },
-}
-
-export function HistoryModal() {
+export function HistoryPopup() {
   const isOpen = useHistoryStore((s) => s.isOpen)
   const items = useHistoryStore((s) => s.items)
   const closeModal = useHistoryStore((s) => s.closeModal)
   const deleteItem = useHistoryStore((s) => s.deleteItem)
-  const openJob = useGenerationStore((s) => s.openJob)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
-  if (!isOpen) return null
+  // Close on click outside
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        closeModal()
+      }
+    }
+    const timer = setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handler)
+    }
+  }, [isOpen, closeModal])
 
-  const handleOpenJob = (id: string) => {
-    openJob(id)
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmDeleteId) {
+          setConfirmDeleteId(null)
+        } else {
+          closeModal()
+        }
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [isOpen, closeModal, confirmDeleteId])
+
+  // Clear confirmation when popup closes
+  useEffect(() => {
+    if (!isOpen) setConfirmDeleteId(null)
+  }, [isOpen])
+
+  const handleOpen = (id: string) => {
+    window.location.hash = `#generations/${id}`
     closeModal()
   }
 
+  const handleDelete = async (id: string) => {
+    await deleteItem(id)
+    setConfirmDeleteId(null)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeModal}>
-      <AnimatePresence>
+    <AnimatePresence>
+      {isOpen && (
         <motion.div
-          variants={modalVariants}
-          initial="hidden"
-          animate="visible"
-          exit="exit"
-          onClick={(e) => e.stopPropagation()}
-          className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl"
-          style={{ backgroundColor: 'var(--surface)' }}
+          ref={popupRef}
+          initial={{ opacity: 0, y: -8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.96 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          className="absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-xl"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
+          }}
         >
-          <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: 'var(--border)' }}>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
               History
-            </h2>
-            <button onClick={closeModal} className="p-1" style={{ color: 'var(--text-tertiary)' }}>
-              <X size={18} />
-            </button>
+            </h3>
+            <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+              {items.length} generations
+            </span>
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto p-4">
+          <div className="max-h-[400px] overflow-y-auto p-2">
             {items.length === 0 ? (
-              <p className="py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                No generation history yet
+              <p className="py-6 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                No generations yet
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-1">
                 {items.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-xl p-4"
-                    style={{ backgroundColor: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
+                    className="cursor-pointer rounded-lg p-3 transition-colors"
+                    style={{ background: 'var(--surface)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-elevated)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--surface)')}
+                    onClick={() => handleOpen(item.id)}
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {item.status === 'processing' && (
-                          <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                          <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent)' }} />
                         )}
                         {item.status === 'completed' && (
-                          <Check size={16} style={{ color: 'var(--success)' }} />
+                          <Check size={13} style={{ color: 'var(--success)' }} />
                         )}
                         {item.status === 'failed' && (
-                          <AlertCircle size={16} style={{ color: 'var(--danger)' }} />
+                          <AlertCircle size={13} style={{ color: 'var(--danger)' }} />
                         )}
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                           {item.effect_name}
                         </span>
                       </div>
-                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                      <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                         {formatRelativeTime(item.created_at)}
                       </span>
                     </div>
 
-                    <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      {item.model_id}
-                      {item.status === 'processing' && ` · ${item.progress_msg || 'Generating...'} ${item.progress}%`}
-                    </p>
-
                     {item.status === 'processing' && (
-                      <div className="mt-2 flex items-center gap-3">
-                        <ProgressBar progress={item.progress} className="flex-1" />
-                        <button
-                          onClick={() => handleOpenJob(item.id)}
-                          className="rounded-lg px-3 py-1 text-xs font-medium"
-                          style={{ backgroundColor: 'var(--accent)', color: 'white' }}
-                        >
-                          Open
-                        </button>
+                      <div className="mt-1.5">
+                        <ProgressBar progress={item.progress} />
                       </div>
                     )}
 
                     {item.status === 'failed' && item.error && (
-                      <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>
+                      <p className="mt-1 truncate text-[10px]" style={{ color: 'var(--danger)' }}>
                         {item.error}
                       </p>
                     )}
 
-                    {item.status !== 'processing' && (
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        {item.status === 'completed' && item.video_url && (
-                          <a
-                            href={item.video_url}
-                            download
-                            className="rounded-lg p-1.5"
-                            style={{ color: 'var(--text-secondary)' }}
-                            title="Download"
-                          >
-                            <Download size={14} />
-                          </a>
-                        )}
-                        <button
-                          onClick={() => deleteItem(item.id)}
-                          className="rounded-lg p-1.5 transition-colors"
+                    <div className="mt-1.5 flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {item.status === 'completed' && item.video_url && (
+                        <a
+                          href={item.video_url}
+                          download
+                          className="rounded p-1"
                           style={{ color: 'var(--text-tertiary)' }}
-                          title="Delete"
+                          title="Download"
                         >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
+                          <Download size={12} />
+                        </a>
+                      )}
+                      {item.status !== 'processing' && (
+                        confirmDeleteId === item.id ? (
+                          <>
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="rounded p-1"
+                              style={{ color: 'var(--danger)' }}
+                              title="Confirm delete"
+                            >
+                              <Check size={12} />
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="rounded p-1"
+                              style={{ color: 'var(--text-tertiary)' }}
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(item.id)}
+                            className="rounded p-1"
+                            style={{ color: 'var(--text-tertiary)' }}
+                            title="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
         </motion.div>
-      </AnimatePresence>
-    </div>
+      )}
+    </AnimatePresence>
   )
 }

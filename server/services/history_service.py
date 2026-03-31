@@ -1,8 +1,11 @@
+import json
 import aiosqlite
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from config.settings import get_settings
 
 
 @dataclass
@@ -16,7 +19,7 @@ class GenerationRecord:
     progress_msg: str | None = None
     video_url: str | None = None
     thumbnail_url: str | None = None
-    inputs_json: str | None = None
+    manifest_json: str | None = None
     prompt_used: str | None = None
     error: str | None = None
     created_at: str = ""
@@ -24,6 +27,14 @@ class GenerationRecord:
     duration_ms: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        # Parse manifest_json from string to dict for output
+        manifest = None
+        if self.manifest_json:
+            try:
+                manifest = json.loads(self.manifest_json)
+            except (json.JSONDecodeError, TypeError):
+                manifest = self.manifest_json
+
         return {
             "id": self.id,
             "effect_id": self.effect_id,
@@ -34,12 +45,17 @@ class GenerationRecord:
             "progress_msg": self.progress_msg,
             "video_url": self.video_url,
             "thumbnail_url": self.thumbnail_url,
-            "inputs_summary": self.inputs_json or "",
+            "manifest_json": manifest,
             "error": self.error,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "duration_ms": self.duration_ms,
         }
+
+    @staticmethod
+    def generation_folder(job_id: str) -> Path:
+        settings = get_settings()
+        return settings.user_data_dir / "generations" / job_id
 
 
 class HistoryService:
@@ -58,18 +74,19 @@ class HistoryService:
             await self._db.close()
             self._db = None
 
-    async def create_processing(self, job: Any) -> GenerationRecord:
+    async def create_processing(self, job: Any, manifest_json: str | None = None, prompt_used: str | None = None) -> GenerationRecord:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            """INSERT INTO generations (id, effect_id, effect_name, model_id, status, progress, progress_msg, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?)""",
-            (job.job_id, job.effect_id, job.effect_name, job.model_id, now, now),
+            """INSERT INTO generations (id, effect_id, effect_name, model_id, status, progress, progress_msg, manifest_json, prompt_used, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?, ?)""",
+            (job.job_id, job.effect_id, job.effect_name, job.model_id, manifest_json, prompt_used, now, now),
         )
         await db.commit()
         return GenerationRecord(
             id=job.job_id, effect_id=job.effect_id, effect_name=job.effect_name,
-            model_id=job.model_id, status="processing", created_at=now, updated_at=now,
+            model_id=job.model_id, status="processing", manifest_json=manifest_json,
+            created_at=now, updated_at=now,
         )
 
     async def update_progress(self, job_id: str, progress: int, msg: str) -> None:
@@ -100,6 +117,8 @@ class HistoryService:
         await db.commit()
 
     async def get_all(self, limit: int = 50, offset: int = 0) -> list[GenerationRecord]:
+        limit = max(1, min(limit, 1000))
+        offset = max(0, offset)
         db = await self._get_db()
         cursor = await db.execute(
             "SELECT * FROM generations ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -127,6 +146,19 @@ class HistoryService:
         cursor = await db.execute("SELECT COUNT(*) FROM generations WHERE status='processing'")
         row = await cursor.fetchone()
         return row[0] if row else 0
+
+    async def get_overflow_ids(self, max_items: int = 100) -> list[str]:
+        """Return IDs of oldest non-processing generations that exceed max_items."""
+        db = await self._get_db()
+        cursor = await db.execute(
+            """SELECT id FROM generations
+               WHERE status != 'processing'
+               ORDER BY created_at DESC
+               LIMIT -1 OFFSET ?""",
+            (max_items,),
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
 
     async def delete(self, job_id: str) -> None:
         db = await self._get_db()

@@ -1,11 +1,17 @@
 import asyncio
+import json
 import logging
+import shutil
 import time
+from pathlib import Path
 from typing import Any, AsyncIterator
-from uuid import uuid4
 
+import httpx
+import uuid_utils
+
+from config.settings import get_settings
 from services.effect_loader import EffectLoaderService
-from services.history_service import HistoryService
+from services.history_service import GenerationRecord, HistoryService
 from services.model_service import ModelService
 from services.storage_service import StorageService
 from effects.prompt_builder import PromptBuilder
@@ -29,7 +35,6 @@ class GenerationJob:
         self.error: str | None = None
         self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         self.started_at = time.time()
-        self.image_ref_ids: list[str] = []
 
 
 class GenerationService:
@@ -56,7 +61,7 @@ class GenerationService:
         if request.model_id not in manifest.generation.supported_models:
             raise ValueError(f"Model {request.model_id} not supported by this effect")
 
-        job_id = str(uuid4())
+        job_id = str(uuid_utils.uuid7())
         job = GenerationJob(
             job_id=job_id,
             effect_id=request.effect_id,
@@ -65,11 +70,74 @@ class GenerationService:
         )
         self._jobs[job_id] = job
 
-        await self._history.create_processing(job)
+        # Create the generation folder
+        gen_folder = GenerationRecord.generation_folder(job_id)
+        gen_folder.mkdir(parents=True, exist_ok=True)
+
+        # Store hash references directly from request.inputs
+        # Increment ref_count for each image input
+        saved_inputs: dict[str, str] = {}
+        for key, field in manifest.inputs.items():
+            if field.type == "image" and key in request.inputs:
+                ref_id = request.inputs[key]
+                await self._storage.increment_ref(ref_id)
+                saved_inputs[key] = ref_id
+            elif key in request.inputs:
+                saved_inputs[key] = request.inputs[key]
+
+        # Build the prompt for manifest_json
+        prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
+
+        # Build manifest_json with effect manifest (without assets), request params, and built prompt
+        manifest_data = {
+            "effect": manifest.model_dump(exclude={"assets"}),
+            "request": {
+                "effect_id": request.effect_id,
+                "model_id": request.model_id,
+                "inputs": saved_inputs,
+                "output": request.output,
+                "user_params": request.user_params,
+            },
+            "prompt": prompt,
+        }
+        manifest_json_str = json.dumps(manifest_data)
+
+        await self._history.create_processing(job, manifest_json=manifest_json_str, prompt_used=prompt)
 
         asyncio.create_task(self._run_job(job, request, manifest))
 
+        # Auto-cleanup in background (don't block the response)
+        asyncio.create_task(self._cleanup_overflow())
+
         return job_id
+
+    async def _cleanup_overflow(self) -> None:
+        """Delete oldest non-processing generations beyond 100."""
+        try:
+            overflow_ids = await self._history.get_overflow_ids(max_items=100)
+            for old_id in overflow_ids:
+                old_record = await self._history.get_by_id(old_id)
+                if old_record and old_record.manifest_json:
+                    try:
+                        old_manifest = json.loads(old_record.manifest_json)
+                        # Use effect input types to find image fields
+                        effect_inputs = old_manifest.get("effect", {}).get("inputs", {})
+                        request_inputs = old_manifest.get("request", {}).get("inputs", {})
+                        hashes = [
+                            request_inputs[key]
+                            for key, schema in effect_inputs.items()
+                            if schema.get("type") == "image" and key in request_inputs
+                        ]
+                        if hashes:
+                            await self._storage.decrement_refs_and_cleanup(hashes)
+                    except (json.JSONDecodeError, TypeError, KeyError) as e:
+                        logger.warning(f"Failed to parse manifest for cleanup of {old_id}: {e}")
+                await self._history.delete(old_id)
+                gen_folder = GenerationRecord.generation_folder(old_id)
+                if gen_folder.exists():
+                    shutil.rmtree(str(gen_folder), ignore_errors=True)
+        except Exception as e:
+            logger.error(f"Overflow cleanup failed: {e}")
 
     async def stream(self, job_id: str) -> AsyncIterator[dict[str, Any]]:
         job = self._jobs.get(job_id)
@@ -104,13 +172,12 @@ class GenerationService:
             if "negative_prompt" in params:
                 negative_prompt = str(params.pop("negative_prompt"))
 
-            # Resolve image ref_ids to paths, track for cleanup
+            # Resolve image ref_ids to paths using content-addressable store
             images: list[str] = []
             for key, field in manifest.inputs.items():
                 if field.type == "image" and key in request.inputs:
                     ref_id = request.inputs[key]
-                    job.image_ref_ids.append(ref_id)
-                    file_path = self._storage.get_path(ref_id)
+                    file_path = self._storage.get_upload_path(ref_id)
                     if file_path:
                         images.append(str(file_path))
 
@@ -141,10 +208,33 @@ class GenerationService:
                     duration_ms = int((time.time() - job.started_at) * 1000)
                     job.status = "completed"
                     job.video_url = event.video_url
-                    await self._history.complete(job.job_id, event.video_url or "", duration_ms)
+
+                    # Download/copy result video to generation folder
+                    video_url = event.video_url or ""
+                    gen_folder = GenerationRecord.generation_folder(job.job_id)
+                    result_path = gen_folder / "result.mp4"
+
+                    if video_url.startswith("http://") or video_url.startswith("https://"):
+                        # Remote URL (e.g. fal CDN) - download it
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(video_url, follow_redirects=True, timeout=120.0)
+                                resp.raise_for_status()
+                                result_path.write_bytes(resp.content)
+                        except Exception as dl_err:
+                            logger.warning(f"Failed to download result video for {job.job_id}: {dl_err}")
+                    elif video_url:
+                        # Local path - copy to generation folder
+                        src = Path(video_url)
+                        if src.exists():
+                            shutil.copy2(str(src), str(result_path))
+
+                    # Update the DB record to point to our API endpoint
+                    api_video_url = f"/api/generations/{job.job_id}/result"
+                    await self._history.complete(job.job_id, api_video_url, duration_ms)
                     await job.events.put({
                         "event": "completed",
-                        "data": {"job_id": job.job_id, "video_url": event.video_url, "duration_ms": duration_ms},
+                        "data": {"job_id": job.job_id, "video_url": api_video_url, "duration_ms": duration_ms},
                     })
                 elif event.type == "failed":
                     job.status = "failed"
@@ -164,7 +254,3 @@ class GenerationService:
                 "event": "failed",
                 "data": {"job_id": job.job_id, "error": str(e), "code": "INTERNAL_ERROR"},
             })
-        finally:
-            # Clean up tmp files
-            for ref_id in job.image_ref_ids:
-                await self._storage.cleanup(ref_id)

@@ -19,7 +19,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const theme = useConfigStore((s) => s.theme)
   const setTheme = useConfigStore((s) => s.setTheme)
   const updateConfig = useConfigStore((s) => s.updateConfig)
-  const historyLimit = useConfigStore((s) => s.historyLimit)
 
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -103,7 +102,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 Theme
               </label>
               <div className="flex gap-2">
-                {(['dark', 'light'] as const).map((t) => (
+                {(['auto', 'dark', 'light'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setTheme(t)}
@@ -113,32 +112,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       color: theme === t ? 'white' : 'var(--text-secondary)',
                     }}
                   >
-                    {t}
+                    {t === 'auto' ? 'System' : t}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* History Limit */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  History limit
-                </label>
-                <span className="text-xs tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
-                  {historyLimit}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={10}
-                max={200}
-                step={10}
-                value={historyLimit}
-                onChange={(e) => updateConfig({ history_limit: Number(e.target.value) })}
-                className="w-full"
-              />
-            </div>
           </div>
         </motion.div>
       </AnimatePresence>

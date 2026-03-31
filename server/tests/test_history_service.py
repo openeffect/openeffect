@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS generations (
     progress_msg  TEXT,
     video_url     TEXT,
     thumbnail_url TEXT,
-    inputs_json   TEXT,
+    manifest_json TEXT,
     prompt_used   TEXT,
     error         TEXT,
     created_at    TEXT NOT NULL,
@@ -342,14 +342,43 @@ class TestGenerationRecordToDict:
         expected_keys = {
             "id", "effect_id", "effect_name", "model_id", "status",
             "progress", "progress_msg", "video_url", "thumbnail_url",
-            "inputs_summary", "error", "created_at", "updated_at", "duration_ms",
+            "manifest_json", "error", "created_at", "updated_at", "duration_ms",
         }
         assert set(d.keys()) == expected_keys
 
     async def test_to_dict_does_not_expose_prompt_used(self, service):
-        """to_dict should expose inputs_summary but not prompt_used directly."""
+        """to_dict should expose manifest_json but not prompt_used directly."""
         await service.create_processing(_make_job("job-dict-2"))
         record = await service.get_by_id("job-dict-2")
         assert record is not None
         d = record.to_dict()
         assert "prompt_used" not in d
+
+    async def test_to_dict_parses_manifest_json_string(self, service):
+        """manifest_json stored as string should be returned as parsed dict."""
+        import json
+        manifest = {"effect": {"id": "test"}, "request": {"model_id": "fal-ai/wan-2.2"}}
+        job = _make_job("job-manifest-parse")
+        await service.create_processing(job, manifest_json=json.dumps(manifest))
+        record = await service.get_by_id("job-manifest-parse")
+        assert record is not None
+        d = record.to_dict()
+        assert isinstance(d["manifest_json"], dict)
+        assert d["manifest_json"]["effect"]["id"] == "test"
+
+    async def test_to_dict_handles_null_manifest_json(self, service):
+        """Null manifest_json should return None in to_dict."""
+        await service.create_processing(_make_job("job-null-manifest"))
+        record = await service.get_by_id("job-null-manifest")
+        assert record is not None
+        d = record.to_dict()
+        assert d["manifest_json"] is None
+
+    async def test_to_dict_handles_malformed_manifest_json(self, service):
+        """Malformed JSON string should be returned as-is, not crash."""
+        job = _make_job("job-bad-json")
+        await service.create_processing(job, manifest_json="not valid json {{{")
+        record = await service.get_by_id("job-bad-json")
+        assert record is not None
+        d = record.to_dict()
+        assert d["manifest_json"] == "not valid json {{{"

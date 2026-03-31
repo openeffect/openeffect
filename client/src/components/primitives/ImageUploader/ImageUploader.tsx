@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload, X, ImageIcon } from 'lucide-react'
 
 interface ImageUploaderProps {
@@ -8,12 +8,23 @@ interface ImageUploaderProps {
   maxSizeMb?: number
   value: File | null
   onChange: (file: File | null) => void
+  restoredUrl?: string | null
 }
 
-export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onChange }: ImageUploaderProps) {
+export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onChange, restoredUrl }: ImageUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
+
+  // Use restored URL as preview if no local preview
+  const displayPreview = preview || restoredUrl || null
   const [dragActive, setDragActive] = useState(false)
+
+  // Revoke blob URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
 
   const handleFile = useCallback(
     (file: File) => {
@@ -72,9 +83,9 @@ export function ImageUploader({ label, hint, accept, maxSizeMb = 10, value, onCh
         }}
       >
         <input ref={inputRef} type="file" accept={acceptStr} onChange={handleChange} className="hidden" />
-        {preview ? (
+        {displayPreview ? (
           <div className="relative inline-block">
-            <img src={preview} alt="Preview" className="mx-auto max-h-36 rounded-lg object-cover" style={{ boxShadow: 'var(--shadow)' }} />
+            <img src={displayPreview} alt="Preview" loading="lazy" decoding="async" className="mx-auto max-h-36 rounded-lg object-cover" style={{ boxShadow: 'var(--shadow)' }} />
             <button
               onClick={(e) => { e.stopPropagation(); clear() }}
               className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full text-white"

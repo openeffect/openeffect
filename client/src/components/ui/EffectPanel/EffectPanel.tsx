@@ -17,6 +17,7 @@ export function EffectPanel() {
   const manifest = useSelectedEffect()
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const startGeneration = useGenerationStore((s) => s.startGeneration)
+  const restoredParams = useGenerationStore((s) => s.restoredParams)
   const hasApiKey = useConfigStore((s) => s.hasApiKey)
 
   const [values, setValues] = useState<Record<string, unknown>>({})
@@ -67,6 +68,51 @@ export function EffectPanel() {
     })
   }, [manifest])
 
+  // Consume restoredParams when they are set — fully replaces all form state
+  useEffect(() => {
+    if (!restoredParams || !manifest) return
+
+    // Apply restored model
+    setSelectedModel(
+      restoredParams.modelId && manifest.generation.supported_models.includes(restoredParams.modelId)
+        ? restoredParams.modelId
+        : manifest.generation.default_model
+    )
+
+    // Apply restored output settings
+    setAspectRatio(
+      restoredParams.output && manifest.output.aspect_ratios.includes(restoredParams.output.aspect_ratio)
+        ? restoredParams.output.aspect_ratio
+        : manifest.output.default_aspect_ratio
+    )
+    setDuration(
+      restoredParams.output && manifest.output.durations.includes(restoredParams.output.duration)
+        ? restoredParams.output.duration
+        : manifest.output.default_duration
+    )
+
+    // Apply restored inputs — fully replace values
+    const next: Record<string, unknown> = {}
+    if (restoredParams.inputs) {
+      for (const [key, schema] of Object.entries(manifest.inputs)) {
+        if (key in restoredParams.inputs) {
+          if (schema.type === 'image') {
+            next[key] = { __restored: true, filename: restoredParams.inputs[key] }
+          } else {
+            next[key] = restoredParams.inputs[key]
+          }
+        }
+      }
+    }
+    setValues(next)
+
+    // Apply restored user params
+    setAdvancedValues(restoredParams.userParams ?? {})
+
+    // Clear restoredParams after consuming
+    useGenerationStore.setState({ restoredParams: null })
+  }, [restoredParams, manifest])
+
   const handleChange = useCallback((key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }))
   }, [])
@@ -85,10 +131,13 @@ export function EffectPanel() {
       const inputs: Record<string, string> = {}
       for (const [key, schema] of Object.entries(manifest.inputs)) {
         if (schema.type === 'image') {
-          const file = values[key] as File | null
-          if (file) {
-            const uploaded = await api.upload(file)
+          const val = values[key]
+          if (val instanceof File) {
+            const uploaded = await api.upload(val)
             inputs[key] = uploaded.ref_id
+          } else if (val && typeof val === 'object' && '__restored' in (val as Record<string, unknown>)) {
+            // Restored image — use the filename as-is (it was already uploaded)
+            inputs[key] = (val as { filename: string }).filename
           } else if (schema.required) {
             alert(`Please upload ${schema.label}`)
             setIsGenerating(false)

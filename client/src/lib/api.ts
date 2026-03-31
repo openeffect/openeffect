@@ -4,7 +4,8 @@ import type {
   UploadResponse,
   GenerateResponse,
   GenerationRequest,
-  HistoryResponse,
+  GenerationRecord,
+  GenerationsResponse,
 } from '@/types/api'
 
 class ApiError extends Error {
@@ -65,12 +66,15 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  // History
-  getHistory: (limit = 50, offset = 0) =>
-    request<HistoryResponse>(`/api/history?limit=${limit}&offset=${offset}`),
+  // Generations (was History)
+  getGenerations: (limit = 50, offset = 0) =>
+    request<GenerationsResponse>(`/api/generations?limit=${limit}&offset=${offset}`),
 
-  deleteHistory: (id: string) =>
-    request<{ ok: boolean }>(`/api/history/${id}`, { method: 'DELETE' }),
+  getGeneration: (id: string) =>
+    request<GenerationRecord>(`/api/generations/${id}`),
+
+  deleteGeneration: (id: string) =>
+    request<{ ok: boolean }>(`/api/generations/${id}`, { method: 'DELETE' }),
 
   // Config
   getConfig: () => request<AppConfig>('/api/config'),

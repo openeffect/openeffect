@@ -20,8 +20,8 @@ from routes.uploads import MAX_SIZE
 
 @pytest.fixture
 def storage_dir(tmp_path):
-    """Return the tmp storage directory for inspecting saved files."""
-    d = tmp_path / "tmp"
+    """Return the uploads storage directory for inspecting saved files."""
+    d = tmp_path / "uploads"
     d.mkdir()
     return d
 
@@ -44,7 +44,7 @@ def client(tmp_path, storage_dir):
     config_service = ConfigService(config_path)
     effect_loader = EffectLoaderService(effects_dir)
     asyncio.run(effect_loader.load_all())
-    storage_service = StorageService(storage_dir)
+    storage_service = StorageService(storage_dir, db_path)
     history_service = HistoryService(db_path)
     model_service = ModelService(models_dir)
 
@@ -66,7 +66,7 @@ def client(tmp_path, storage_dir):
 
 
 class TestPathTraversal:
-    def test_traversal_filename_stays_in_tmp(self, client, storage_dir):
+    def test_traversal_filename_stays_in_uploads(self, client, storage_dir):
         """A filename like ../../../etc/passwd must not write outside the storage dir."""
         content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
         resp = client.post(
@@ -78,8 +78,8 @@ class TestPathTraversal:
         if resp.status_code == 200:
             # Verify no file was created outside storage_dir
             assert not Path("/etc/passwd").exists() or Path("/etc/passwd").stat().st_size != len(content)
-            # All files in storage_dir should be UUIDs, not the traversal filename
-            saved_files = list(storage_dir.iterdir())
+            # All files in storage_dir should be hash-based, not the traversal filename
+            saved_files = [f for f in storage_dir.iterdir() if not f.name.endswith(".tmp")]
             for f in saved_files:
                 assert ".." not in f.name
 
@@ -91,10 +91,20 @@ class TestPathTraversal:
             files={"file": ("..\\..\\..\\etc\\passwd", io.BytesIO(content), "image/png")},
         )
         if resp.status_code == 200:
-            saved_files = list(storage_dir.iterdir())
+            saved_files = [f for f in storage_dir.iterdir() if not f.name.endswith(".tmp")]
             for f in saved_files:
                 resolved = f.resolve()
                 assert str(resolved).startswith(str(storage_dir.resolve()))
+
+    def test_serve_path_traversal_rejected(self, client):
+        """GET /api/uploads/ with traversal components should be rejected."""
+        resp = client.get("/api/uploads/../../../etc/passwd")
+        assert resp.status_code in (400, 404)
+
+    def test_serve_backslash_traversal_rejected(self, client):
+        """GET /api/uploads/ with backslash traversal should be rejected."""
+        resp = client.get("/api/uploads/..\\..\\etc\\passwd")
+        assert resp.status_code in (400, 404)
 
 
 class TestMaliciousFilenames:
@@ -108,7 +118,7 @@ class TestMaliciousFilenames:
         # Should either succeed safely or reject
         assert resp.status_code in (200, 400, 415, 422)
         if resp.status_code == 200:
-            saved_files = list(storage_dir.iterdir())
+            saved_files = [f for f in storage_dir.iterdir() if not f.name.endswith(".tmp")]
             for f in saved_files:
                 assert "\x00" not in f.name
 
@@ -124,6 +134,8 @@ class TestMaliciousFilenames:
             data = resp.json()
             assert "ref_id" in data
             assert len(data["ref_id"]) > 0
+            # ref_id should be a hash filename
+            assert "." in data["ref_id"]
 
     def test_very_long_filename(self, client, storage_dir):
         """A 1000-char filename should not crash the server."""
@@ -133,15 +145,15 @@ class TestMaliciousFilenames:
             "/api/upload",
             files={"file": (long_name, io.BytesIO(content), "image/png")},
         )
-        # Should either succeed (using UUID-based storage name) or reject gracefully
+        # Should either succeed (using hash-based storage name) or reject gracefully
         assert resp.status_code in (200, 400, 413, 422)
         if resp.status_code == 200:
             data = resp.json()
-            # The stored filename is UUID-based, so storage should be fine
+            # The stored filename is hash-based, so storage should be fine
             assert "ref_id" in data
-            saved_files = list(storage_dir.iterdir())
+            saved_files = [f for f in storage_dir.iterdir() if not f.name.endswith(".tmp")]
             for f in saved_files:
-                # Stored name should be UUID-based, not the original long name
+                # Stored name should be hash-based, not the original long name
                 assert len(f.name) < 200
 
     def test_filename_with_special_chars(self, client, storage_dir):

@@ -1,21 +1,24 @@
 import { create } from 'zustand'
 import type { EffectManifest } from '@/types/api'
 import { api } from '@/lib/api'
+import { useGenerationStore } from '@/store/generationStore'
 
 // ─── Hash helpers ───
 
-function readHash(): string | null {
-  if (typeof window === 'undefined') return null
-  const hash = window.location.hash.slice(1)
-  return hash || null
+export function parseHash(raw?: string): { mode: 'effect'; id: string } | { mode: 'generation'; id: string } | null {
+  const hash = raw ?? (typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
+  if (!hash) return null
+  if (hash.startsWith('effects/')) return { mode: 'effect', id: hash.slice(8) }
+  if (hash.startsWith('generations/')) return { mode: 'generation', id: hash.slice(12) }
+  return null
 }
 
-function writeHash(id: string | null) {
+export function writeHash(path: string | null) {
   if (typeof window === 'undefined') return
-  const current = readHash()
-  if (id === current) return
-  if (id) {
-    window.history.pushState(null, '', `#${id}`)
+  const current = window.location.hash.slice(1)
+  if (path === current) return
+  if (path) {
+    window.history.pushState(null, '', `#${path}`)
   } else {
     window.history.pushState(null, '', window.location.pathname)
   }
@@ -32,7 +35,7 @@ interface EffectsStore {
   activeCategory: string
 
   loadEffects: () => Promise<void>
-  selectEffect: (id: string | null) => void
+  selectEffect: (id: string | null, skipHash?: boolean) => void
   setSearchQuery: (q: string) => void
   setActiveCategory: (cat: string) => void
 }
@@ -54,9 +57,17 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
     try {
       const effects = await api.getEffects()
 
-      // After loading, check if URL hash points to a valid effect
-      const hashId = readHash()
-      const selectedEffectId = hashId && isValidEffectId(effects, hashId) ? hashId : null
+      // After loading, check if URL hash points to a valid effect or generation
+      const parsed = parseHash()
+      let selectedEffectId: string | null = null
+
+      if (parsed?.mode === 'effect' && isValidEffectId(effects, parsed.id)) {
+        selectedEffectId = parsed.id
+      } else if (parsed?.mode === 'generation') {
+        // Restore generation from URL — delegate to generationStore
+        const { restoreFromUrl } = useGenerationStore.getState()
+        restoreFromUrl(parsed.id)
+      }
 
       set({ effects, status: 'succeeded', selectedEffectId })
     } catch (e) {
@@ -64,8 +75,16 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
     }
   },
 
-  selectEffect: (id) => {
-    writeHash(id)
+  selectEffect: (id, skipHash) => {
+    if (!skipHash) {
+      writeHash(id ? `effects/${id}` : null)
+    }
+    if (id === null) {
+      // Clear generation state when deselecting
+      const genStore = useGenerationStore.getState()
+      genStore.closeJob()
+      useGenerationStore.setState({ restoredParams: null })
+    }
     set({ selectedEffectId: id })
   },
 
@@ -79,9 +98,20 @@ if (typeof window !== 'undefined') {
     const { effects, status } = useEffectsStore.getState()
     if (status !== 'succeeded') return
 
-    const hashId = readHash()
-    const selectedEffectId = hashId && isValidEffectId(effects, hashId) ? hashId : null
-    useEffectsStore.setState({ selectedEffectId })
+    const parsed = parseHash()
+    if (parsed?.mode === 'effect') {
+      const selectedEffectId = isValidEffectId(effects, parsed.id) ? parsed.id : null
+      useEffectsStore.setState({ selectedEffectId })
+    } else if (parsed?.mode === 'generation') {
+      const { restoreFromUrl } = useGenerationStore.getState()
+      restoreFromUrl(parsed.id)
+    } else {
+      // No hash — clear selection and generation state
+      const genStore = useGenerationStore.getState()
+      genStore.closeJob()
+      useGenerationStore.setState({ restoredParams: null })
+      useEffectsStore.setState({ selectedEffectId: null })
+    }
   })
 }
 

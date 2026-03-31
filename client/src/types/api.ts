@@ -120,7 +120,7 @@ export interface GenerationRecord {
   progress_msg: string | null
   video_url: string | null
   thumbnail_url: string | null
-  inputs_summary: string
+  manifest_json: unknown
   error: string | null
   created_at: string
   updated_at: string
@@ -139,7 +139,7 @@ export interface ModelInfo {
 export interface AppConfig {
   has_api_key: boolean
   default_model: string
-  theme: 'dark' | 'light'
+  theme: 'dark' | 'light' | 'auto'
   history_limit: number
   available_models: ModelInfo[]
   update_available: string | null
@@ -168,7 +168,7 @@ export interface GenerateResponse {
   status: string
 }
 
-export interface HistoryResponse {
+export interface GenerationsResponse {
   items: GenerationRecord[]
   total: number
   active_count: number

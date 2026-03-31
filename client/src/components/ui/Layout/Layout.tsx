@@ -4,7 +4,6 @@ import { Header } from './Header'
 import { EffectGallery } from '@/components/ui/EffectGallery/EffectGallery'
 import { EffectPanel } from '@/components/ui/EffectPanel/EffectPanel'
 import { GenerationView } from '@/components/ui/GenerationView/GenerationView'
-import { HistoryModal } from '@/components/ui/HistoryModal/HistoryModal'
 import { SettingsModal } from '@/components/ui/SettingsModal/SettingsModal'
 import { OnboardingModal } from '@/components/ui/OnboardingModal/OnboardingModal'
 import { useGenerationStore } from '@/store/generationStore'
@@ -17,9 +16,9 @@ const SLIDE_DURATION = 0.3
 const SLIDE_EASE: [number, number, number, number] = [0.25, 1, 0.5, 1]
 
 const panelVariants = {
-  hidden: { opacity: 0, scale: 0.98 },
-  visible: { opacity: 1, scale: 1, transition: { duration: 0.2, ease: 'easeOut' } },
-  exit: { opacity: 0, scale: 0.98, transition: { duration: 0.15 } },
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.2, ease: 'easeOut' } },
+  exit: { opacity: 0, transition: { duration: 0.1 } },
 }
 
 export function Layout() {
@@ -47,7 +46,7 @@ export function Layout() {
             animate={{ marginRight: rightOpen ? `${PANEL_WIDTH_PERCENT}%` : 0 }}
             transition={{ duration: SLIDE_DURATION, ease: SLIDE_EASE }}
           >
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="popLayout">
               {showGeneration ? (
                 <motion.div
                   key="generation"
@@ -96,7 +95,6 @@ export function Layout() {
         </div>
       </LayoutGroup>
 
-      <HistoryModal />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {showOnboarding && <OnboardingModal />}
     </div>

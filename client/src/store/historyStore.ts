@@ -29,7 +29,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   loadHistory: async () => {
     set({ status: 'loading' })
     try {
-      const data = await api.getHistory()
+      const data = await api.getGenerations()
       set({
         items: data.items,
         total: data.total,
@@ -45,7 +45,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   },
 
   deleteItem: async (id) => {
-    await api.deleteHistory(id)
+    await api.deleteGeneration(id)
     set((s) => ({
       items: s.items.filter((i) => i.id !== id),
       total: s.total - 1,

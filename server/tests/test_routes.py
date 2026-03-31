@@ -23,8 +23,8 @@ def client(tmp_path):
     """Create a test FastAPI app with all services wired to tmp_path."""
     db_path = tmp_path / "test.db"
     config_path = tmp_path / "config.json"
-    tmp_dir = tmp_path / "tmp"
-    tmp_dir.mkdir()
+    uploads_dir = tmp_path / "uploads"
+    uploads_dir.mkdir()
     effects_dir = tmp_path / "effects"
     effects_dir.mkdir()
     models_dir = tmp_path / "models"
@@ -40,7 +40,7 @@ def client(tmp_path):
     config_service = ConfigService(config_path)
     effect_loader = EffectLoaderService(effects_dir)
     asyncio.run(effect_loader.load_all())
-    storage_service = StorageService(tmp_dir)
+    storage_service = StorageService(uploads_dir, db_path)
     history_service = HistoryService(db_path)
     model_service = ModelService(models_dir)
 
@@ -139,21 +139,27 @@ class TestConfigRoute:
         assert data["has_api_key"] is True
 
 
-class TestHistoryRoute:
-    def test_history_empty_on_start(self, client):
-        resp = client.get("/api/history")
+class TestGenerationsRoute:
+    def test_generations_empty_on_start(self, client):
+        resp = client.get("/api/generations")
         assert resp.status_code == 200
         data = resp.json()
         assert data == {"items": [], "total": 0, "active_count": 0}
 
-    def test_history_respects_limit_and_offset_params(self, client):
-        resp = client.get("/api/history?limit=10&offset=0")
+    def test_generations_respects_limit_and_offset_params(self, client):
+        resp = client.get("/api/generations?limit=10&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert data["items"] == []
 
-    def test_delete_nonexistent_history_returns_404(self, client):
-        resp = client.delete("/api/history/nonexistent-id-12345")
+    def test_delete_nonexistent_generation_returns_404(self, client):
+        resp = client.delete("/api/generations/nonexistent-id-12345")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["detail"]["code"] == "NOT_FOUND"
+
+    def test_get_nonexistent_generation_returns_404(self, client):
+        resp = client.get("/api/generations/nonexistent-id-12345")
         assert resp.status_code == 404
         data = resp.json()
         assert data["detail"]["code"] == "NOT_FOUND"
@@ -173,11 +179,13 @@ class TestUploadRoute:
         assert resp.status_code == 200
         data = resp.json()
         assert "ref_id" in data
+        # ref_id is now a hash filename like "a1b2c3d4e5f6.png"
+        assert "." in data["ref_id"]
         assert data["filename"] == "test_image.png"
         assert data["mime_type"] == "image/png"
         assert data["size_bytes"] == len(content)
 
-    def test_upload_returns_uuid_ref_id(self, client):
+    def test_upload_returns_hash_ref_id(self, client):
         content = self._make_image_bytes()
         resp = client.post(
             "/api/upload",
@@ -185,9 +193,33 @@ class TestUploadRoute:
         )
         data = resp.json()
         ref_id = data["ref_id"]
-        # Should be a valid UUID format (8-4-4-4-12 hex)
-        parts = ref_id.split("-")
-        assert len(parts) == 5
+        # Should be a hash filename like "a1b2c3d4e5f6.jpg"
+        parts = ref_id.rsplit(".", 1)
+        assert len(parts) == 2
+        hash_part, ext_part = parts
+        # Hash is 20 hex characters
+        assert len(hash_part) == 20
+        assert all(c in "0123456789abcdef" for c in hash_part)
+        assert ext_part == "jpg"
+
+    def test_upload_deduplication(self, client):
+        """Uploading the same content twice should return the same ref_id."""
+        content = self._make_image_bytes(200)
+        resp1 = client.post(
+            "/api/upload",
+            files={"file": ("first.png", io.BytesIO(content), "image/png")},
+        )
+        resp2 = client.post(
+            "/api/upload",
+            files={"file": ("second.png", io.BytesIO(content), "image/png")},
+        )
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        # Same content = same hash = same ref_id
+        assert resp1.json()["ref_id"] == resp2.json()["ref_id"]
+        # But original filenames differ
+        assert resp1.json()["filename"] == "first.png"
+        assert resp2.json()["filename"] == "second.png"
 
     def test_upload_unsupported_type_returns_415(self, client):
         resp = client.post(
@@ -245,7 +277,32 @@ class TestUploadRoute:
         )
         data = resp.json()
         assert data["filename"] == "image.webp"
+        # ref_id should also have the webp extension
+        assert data["ref_id"].endswith(".webp")
 
     def test_upload_no_file_returns_422(self, client):
         resp = client.post("/api/upload")
         assert resp.status_code == 422
+
+    def test_serve_uploaded_file(self, client):
+        """Uploaded files should be retrievable via GET /api/uploads/{filename}."""
+        content = self._make_image_bytes(150)
+        resp = client.post(
+            "/api/upload",
+            files={"file": ("serve_test.png", io.BytesIO(content), "image/png")},
+        )
+        assert resp.status_code == 200
+        ref_id = resp.json()["ref_id"]
+
+        # Fetch the file back
+        resp2 = client.get(f"/api/uploads/{ref_id}")
+        assert resp2.status_code == 200
+        assert resp2.content == content
+
+    def test_serve_nonexistent_file_returns_404(self, client):
+        resp = client.get("/api/uploads/nonexistent123.png")
+        assert resp.status_code == 404
+
+    def test_serve_path_traversal_rejected(self, client):
+        resp = client.get("/api/uploads/../../etc/passwd")
+        assert resp.status_code in (400, 404)

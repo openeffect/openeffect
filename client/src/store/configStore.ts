@@ -2,18 +2,29 @@ import { create } from 'zustand'
 import type { ModelInfo } from '@/types/api'
 import { api } from '@/lib/api'
 
+type ThemeSetting = 'dark' | 'light' | 'auto'
+
+function getSystemTheme(): 'dark' | 'light' {
+  if (typeof window === 'undefined') return 'dark'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function applyTheme(setting: ThemeSetting) {
+  const resolved = setting === 'auto' ? getSystemTheme() : setting
+  document.documentElement.setAttribute('data-theme', resolved)
+}
+
 interface ConfigStore {
   hasApiKey: boolean
   defaultModel: string
-  theme: 'dark' | 'light'
+  theme: ThemeSetting
   availableModels: ModelInfo[]
   updateAvailable: string | null
   showOnboarding: boolean
-  historyLimit: number
 
   loadConfig: () => Promise<void>
   saveApiKey: (key: string) => Promise<void>
-  setTheme: (theme: 'dark' | 'light') => void
+  setTheme: (theme: ThemeSetting) => void
   updateConfig: (patch: Record<string, unknown>) => Promise<void>
   dismissOnboarding: () => void
 }
@@ -21,11 +32,10 @@ interface ConfigStore {
 export const useConfigStore = create<ConfigStore>((set) => ({
   hasApiKey: false,
   defaultModel: 'fal-ai/wan-2.2',
-  theme: 'dark',
+  theme: 'auto',
   availableModels: [],
   updateAvailable: null,
   showOnboarding: false,
-  historyLimit: 50,
 
   loadConfig: async () => {
     try {
@@ -33,18 +43,20 @@ export const useConfigStore = create<ConfigStore>((set) => ({
       const showOnboarding = !config.has_api_key && !config.available_models.some(
         (m) => m.provider === 'local' && m.is_installed,
       )
+      const theme = (config.theme === 'auto' || config.theme === 'dark' || config.theme === 'light')
+        ? config.theme as ThemeSetting
+        : 'auto'
       set({
         hasApiKey: config.has_api_key,
         defaultModel: config.default_model,
-        theme: config.theme,
+        theme,
         availableModels: config.available_models,
         updateAvailable: config.update_available,
-        historyLimit: config.history_limit,
         showOnboarding,
       })
-      document.documentElement.setAttribute('data-theme', config.theme)
+      applyTheme(theme)
     } catch {
-      // Config load failure is non-fatal
+      applyTheme('auto')
     }
   },
 
@@ -54,20 +66,32 @@ export const useConfigStore = create<ConfigStore>((set) => ({
   },
 
   setTheme: (theme) => {
-    document.documentElement.setAttribute('data-theme', theme)
+    applyTheme(theme)
     set({ theme })
     api.updateConfig({ theme }).catch(() => {})
   },
 
   updateConfig: async (patch) => {
     const config = await api.updateConfig(patch)
+    const theme = (config.theme === 'auto' || config.theme === 'dark' || config.theme === 'light')
+      ? config.theme as ThemeSetting
+      : 'auto'
     set({
       hasApiKey: config.has_api_key,
       defaultModel: config.default_model,
-      theme: config.theme,
-      historyLimit: config.history_limit,
+      theme,
     })
   },
 
   dismissOnboarding: () => set({ showOnboarding: false }),
 }))
+
+// Listen for system theme changes when in auto mode
+if (typeof window !== 'undefined') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const { theme } = useConfigStore.getState()
+    if (theme === 'auto') {
+      applyTheme('auto')
+    }
+  })
+}

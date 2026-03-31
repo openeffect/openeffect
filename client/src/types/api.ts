@@ -6,31 +6,34 @@ export interface SelectOption {
 export type InputFieldSchema =
   | {
       type: 'image'
+      role?: string
       required: boolean
       label: string
       hint?: string
-      role?: string
     }
   | {
       type: 'text'
+      role?: string
       required: boolean
       label: string
       placeholder?: string
-      hint?: string
       max_length?: number
       multiline: boolean
-      role?: string
+      hint?: string
     }
   | {
       type: 'select'
+      role?: string
       required: boolean
       label: string
-      default: string
       options: SelectOption[]
-      role?: string
+      default: string
+      display?: 'pills' | 'dropdown'
+      hint?: string
     }
   | {
       type: 'slider'
+      role?: string
       required: boolean
       label: string
       min: number
@@ -39,54 +42,36 @@ export type InputFieldSchema =
       default: number
       unit?: string
       hint?: string
-      role?: string
     }
   | {
       type: 'number'
+      role?: string
       required: boolean
       label: string
+      min?: number
+      max?: number
+      step?: number
       default: number
       hint?: string
-      role?: string
     }
 
-export interface AdvancedParameter {
-  key: string
-  label: string
-  type: 'slider' | 'text' | 'number'
-  min?: number
-  max?: number
-  step?: number
-  default?: string | number
-  hint?: string
-  multiline?: boolean
-}
-
 export interface Assets {
-  inputs?: Record<string, string>    // keyed by input field name → filename in assets/
-  output?: string                     // result video filename in assets/
-}
-
-export interface OutputConfig {
-  aspect_ratios?: string[]
-  default_aspect_ratio?: string
-  durations?: number[]
-  default_duration?: number
+  preview?: string
+  inputs?: Record<string, string>
 }
 
 export interface ModelOverride {
-  prompt_template?: string
-  parameters?: Record<string, number | string>
+  prompt?: string
+  defaults?: Record<string, number | string>
 }
 
 export interface GenerationConfig {
-  prompt_template: string
+  prompt: string
   negative_prompt: string
-  supported_models: string[]
+  models: string[]
   default_model: string
-  parameters: Record<string, number | string>
+  defaults: Record<string, number | string>
   model_overrides: Record<string, ModelOverride>
-  advanced_parameters: AdvancedParameter[]
 }
 
 export interface EffectManifest {
@@ -100,7 +85,6 @@ export interface EffectManifest {
   tags: string[]
   assets: Assets
   inputs: Record<string, InputFieldSchema>
-  output: OutputConfig
   generation: GenerationConfig
 }
 
@@ -135,15 +119,15 @@ export interface ModelParam {
 }
 
 export interface ModelProvider {
-  id: string           // "fal" or "local"
-  name: string         // "fal.ai" or "Local"
+  id: string
+  name: string
   type: 'cloud' | 'local'
-  cost?: string        // "~$0.10/sec"
+  cost?: string
   is_available: boolean
 }
 
 export interface ModelInfo {
-  id: string           // "wan-2.2" (plain, no prefix)
+  id: string
   name: string
   description: string
   providers: ModelProvider[]
@@ -155,7 +139,6 @@ export interface AppConfig {
   has_api_key: boolean
   default_model: string
   theme: 'dark' | 'light' | 'auto'
-  history_limit: number
   available_models: ModelInfo[]
   update_available: string | null
 }
@@ -170,7 +153,7 @@ export interface UploadResponse {
 export interface GenerationRequest {
   effect_id: string
   model_id: string
-  provider_id: string   // "fal" or "local"
+  provider_id: string
   inputs: Record<string, string>
   output: Record<string, string | number>
   user_params?: Record<string, number | string>

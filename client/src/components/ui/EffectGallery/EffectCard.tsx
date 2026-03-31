@@ -16,7 +16,7 @@ export function EffectCard({ effect }: EffectCardProps) {
   const isSelected = selectedId === fullId
   const firstInputFile = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp')) : null
   const posterUrl = firstInputFile ? api.getAssetUrl(fullId, firstInputFile) : null
-  const previewUrl = effect.assets.output ? api.getAssetUrl(fullId, effect.assets.output) : null
+  const previewUrl = effect.assets.preview ? api.getAssetUrl(fullId, effect.assets.preview) : null
 
   return (
     <motion.div

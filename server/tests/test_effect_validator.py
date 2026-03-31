@@ -5,7 +5,6 @@ from effects.validator import (
     EffectManifest,
     InputFieldSchema,
     Assets,
-    OutputConfig,
     GenerationConfig,
 )
 
@@ -21,24 +20,17 @@ def make_valid_manifest(**overrides) -> dict:
         "type": "animation",
         "category": "test",
         "tags": [],
-        "assets": {"thumbnail": "thumbnail.jpg"},
+        "assets": {},
         "inputs": {
             "image": {
-                "type": "image",
-                "required": True,
-                "label": "Photo",
-                "role": "start_frame",
+                "type": "image", "role": "start_frame", "required": True, "label": "Photo",
             },
         },
-        "output": {
-            "default_aspect_ratio": "9:16",
-            "default_duration": 5,
-        },
         "generation": {
-            "prompt_template": "A test prompt. {prompt}",
-            "supported_models": ["wan-2.2"],
+            "prompt": "A test prompt. {prompt}",
+            "models": ["wan-2.2"],
             "default_model": "wan-2.2",
-            "parameters": {},
+            "defaults": {},
         },
     }
     defaults.update(overrides)
@@ -71,15 +63,6 @@ class TestEffectValidator:
             EffectManifest(**data)
         assert "default_model" in str(exc_info.value)
 
-    def test_output_fields_are_optional(self):
-        data = make_valid_manifest()
-        data["output"] = {}
-        manifest = EffectManifest(**data)
-        assert manifest.output.aspect_ratios is None
-        assert manifest.output.default_aspect_ratio is None
-        assert manifest.output.durations is None
-        assert manifest.output.default_duration is None
-
     def test_role_defaults_to_prompt_input(self):
         data = make_valid_manifest(
             inputs={
@@ -97,10 +80,7 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "image": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Photo",
-                    "role": "invalid_role",
+                    "type": "image", "role": "invalid_role", "required": True, "label": "Photo",
                 },
             },
         )
@@ -112,16 +92,10 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "image_a": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Image A",
-                    "role": "start_frame",
+                    "type": "image", "role": "start_frame", "required": True, "label": "Image A",
                 },
                 "image_b": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Image B",
-                    "role": "start_frame",
+                    "type": "image", "role": "start_frame", "required": True, "label": "Image B",
                 },
             },
         )
@@ -133,16 +107,10 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "image_a": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Image A",
-                    "role": "end_frame",
+                    "type": "image", "role": "end_frame", "required": True, "label": "Image A",
                 },
                 "image_b": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Image B",
-                    "role": "end_frame",
+                    "type": "image", "role": "end_frame", "required": True, "label": "Image B",
                 },
             },
         )
@@ -154,16 +122,10 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "image_start": {
-                    "type": "image",
-                    "required": True,
-                    "label": "Start",
-                    "role": "start_frame",
+                    "type": "image", "role": "start_frame", "required": True, "label": "Start",
                 },
                 "image_end": {
-                    "type": "image",
-                    "required": True,
-                    "label": "End",
-                    "role": "end_frame",
+                    "type": "image", "role": "end_frame", "required": True, "label": "End",
                 },
             },
         )
@@ -175,10 +137,7 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "prompt": {
-                    "type": "text",
-                    "required": False,
-                    "label": "Prompt",
-                    "role": "prompt_input",
+                    "type": "text", "role": "prompt_input", "required": False, "label": "Prompt",
                 },
                 "style": {
                     "type": "select",
@@ -198,10 +157,7 @@ class TestEffectValidator:
         data = make_valid_manifest(
             inputs={
                 "ref_image": {
-                    "type": "image",
-                    "required": False,
-                    "label": "Reference",
-                    "role": "reference",
+                    "type": "image", "role": "reference", "required": False, "label": "Reference",
                 },
             },
         )

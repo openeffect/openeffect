@@ -6,10 +6,8 @@ from effects.validator import (
     InputFieldSchema,
     SelectOption,
     Assets,
-    OutputConfig,
     GenerationConfig,
     ModelOverride,
-    AdvancedParameter,
 )
 
 
@@ -24,23 +22,18 @@ def make_manifest(**overrides) -> EffectManifest:
         "type": "animation",
         "category": "test",
         "tags": [],
-        "assets": Assets(thumbnail="thumbnail.jpg"),
+        "assets": Assets(),
         "inputs": {
-            "image": InputFieldSchema(type="image", required=True, label="Photo", role="start_frame"),
-            "prompt": InputFieldSchema(type="text", required=False, label="Prompt", role="prompt_input", placeholder="Describe...", max_length=300, multiline=False),
+            "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+            "prompt": InputFieldSchema(type="text", role="prompt_input", required=False, label="Prompt", placeholder="Describe...", max_length=300, multiline=False),
         },
-        "output": OutputConfig(
-            default_aspect_ratio="9:16",
-            default_duration=5,
-        ),
         "generation": GenerationConfig(
-            prompt_template="A cinematic shot. {prompt} High quality.",
+            prompt="A cinematic shot. {prompt} High quality.",
             negative_prompt="low quality, blurry",
-            supported_models=["wan-2.2", "kling-v3"],
+            models=["wan-2.2", "kling-v3"],
             default_model="wan-2.2",
-            parameters={"guidance_scale": 7.5, "num_inference_steps": 30},
+            defaults={"guidance_scale": 7.5, "num_inference_steps": 30},
             model_overrides={},
-            advanced_parameters=[],
         ),
     }
     defaults.update(overrides)
@@ -73,14 +66,14 @@ class TestBuildPrompt:
     def test_text_field_substitution(self):
         manifest = make_manifest(
             inputs={
-                "image": InputFieldSchema(type="image", required=True, label="Photo", role="start_frame"),
-                "mood": InputFieldSchema(type="text", required=False, label="Mood", role="prompt_input", max_length=100, multiline=False),
+                "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+                "mood": InputFieldSchema(type="text", role="prompt_input", required=False, label="Mood", max_length=100, multiline=False),
             },
             generation=GenerationConfig(
-                prompt_template="Shot with {mood} mood. High quality.",
-                supported_models=["wan-2.2"],
+                prompt="Shot with {mood} mood. High quality.",
+                models=["wan-2.2"],
                 default_model="wan-2.2",
-                parameters={},
+                defaults={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"mood": "dramatic"})
@@ -92,21 +85,21 @@ class TestBuildPrompt:
             inputs={
                 "style": InputFieldSchema(
                     type="select",
+                    role="prompt_input",
                     required=False,
                     label="Style",
-                    role="prompt_input",
-                    default="particles",
                     options=[
                         SelectOption(value="particles", label="Particles"),
                         SelectOption(value="liquid", label="Liquid Flow"),
                     ],
+                    default="particles",
                 ),
             },
             generation=GenerationConfig(
-                prompt_template="Cinematic {style} transition.",
-                supported_models=["wan-2.2"],
+                prompt="Cinematic {style} transition.",
+                models=["wan-2.2"],
                 default_model="wan-2.2",
-                parameters={},
+                defaults={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"style": "liquid"})
@@ -116,12 +109,12 @@ class TestBuildPrompt:
     def test_model_override_uses_different_template(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="Default template. {prompt}",
-                supported_models=["wan-2.2", "kling-v3"],
+                prompt="Default template. {prompt}",
+                models=["wan-2.2", "kling-v3"],
                 default_model="wan-2.2",
-                parameters={},
+                defaults={},
                 model_overrides={
-                    "kling-v3": ModelOverride(prompt_template="Kling template. {prompt}"),
+                    "kling-v3": ModelOverride(prompt="Kling template. {prompt}"),
                 },
             ),
         )
@@ -133,10 +126,10 @@ class TestBuildPrompt:
     def test_unknown_placeholder_becomes_empty(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="Shot with {unknown_field} effect.",
-                supported_models=["wan-2.2"],
+                prompt="Shot with {unknown_field} effect.",
+                models=["wan-2.2"],
                 default_model="wan-2.2",
-                parameters={},
+                defaults={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "wan-2.2", {})
@@ -146,10 +139,10 @@ class TestBuildPrompt:
     def test_multiple_consecutive_spaces_collapsed(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="Start  {prompt}   end.",
-                supported_models=["wan-2.2"],
+                prompt="Start  {prompt}   end.",
+                models=["wan-2.2"],
                 default_model="wan-2.2",
-                parameters={},
+                defaults={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "wan-2.2", {"prompt": ""})
@@ -164,10 +157,10 @@ class TestBuildParams:
     def test_unknown_key_in_defaults_filtered(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="test",
-                supported_models=["wan-2.2"],
+                prompt="test",
+                models=["wan-2.2"],
                 default_model="wan-2.2",
-                parameters={"guidance_scale": 7.5, "unknown_param": 42},
+                defaults={"guidance_scale": 7.5, "unknown_param": 42},
             ),
         )
         result = PromptBuilder.build_params(manifest, "wan-2.2")
@@ -183,12 +176,12 @@ class TestBuildParams:
     def test_model_override_merges_on_top(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="test",
-                supported_models=["wan-2.2", "kling-v3"],
+                prompt="test",
+                models=["wan-2.2", "kling-v3"],
                 default_model="wan-2.2",
-                parameters={"guidance_scale": 7.5},
+                defaults={"guidance_scale": 7.5},
                 model_overrides={
-                    "kling-v3": ModelOverride(parameters={"guidance_scale": 9.0}),
+                    "kling-v3": ModelOverride(defaults={"guidance_scale": 9.0}),
                 },
             ),
         )
@@ -198,12 +191,12 @@ class TestBuildParams:
     def test_user_params_merge_on_top_of_override(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="test",
-                supported_models=["kling-v3"],
+                prompt="test",
+                models=["kling-v3"],
                 default_model="kling-v3",
-                parameters={"guidance_scale": 7.5},
+                defaults={"guidance_scale": 7.5},
                 model_overrides={
-                    "kling-v3": ModelOverride(parameters={"guidance_scale": 9.0}),
+                    "kling-v3": ModelOverride(defaults={"guidance_scale": 9.0}),
                 },
             ),
         )
@@ -219,10 +212,10 @@ class TestBuildParams:
     def test_unknown_model_returns_empty(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt_template="test",
-                supported_models=["unknown/model"],
+                prompt="test",
+                models=["unknown/model"],
                 default_model="unknown/model",
-                parameters={"guidance_scale": 7.5},
+                defaults={"guidance_scale": 7.5},
             ),
         )
         result = PromptBuilder.build_params(manifest, "unknown/model")
@@ -233,8 +226,9 @@ class TestBuildParams:
         manifest = make_manifest(
             inputs={
                 "style": InputFieldSchema(
-                    type="select", required=False, label="Style", role="prompt_input", default="particles",
+                    type="select", role="prompt_input", required=False, label="Style",
                     options=[SelectOption(value="particles", label="Particles")],
+                    default="particles",
                 ),
             },
         )

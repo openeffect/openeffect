@@ -9,13 +9,13 @@ interface EffectHeroProps {
 
 export function EffectHero({ effect }: EffectHeroProps) {
   const fullId = `${effect.type}/${effect.id}`
-  const outputUrl = effect.assets.output ? api.getAssetUrl(fullId, effect.assets.output) : null
+  const previewUrl = effect.assets.preview ? api.getAssetUrl(fullId, effect.assets.preview) : null
 
   // Build input assets — match assets.inputs keys to manifest.inputs
   const inputBlocks: { key: string; type: string; assetUrl: string | null; assetText: string | null }[] = []
   for (const [key, schema] of Object.entries(effect.inputs)) {
     const assetValue = effect.assets.inputs?.[key]
-    if (!assetValue) continue  // only show inputs that have an asset
+    if (!assetValue) continue
     if (schema.type === 'image') {
       inputBlocks.push({ key, type: 'image', assetUrl: api.getAssetUrl(fullId, assetValue), assetText: null })
     } else if (schema.type === 'text') {
@@ -23,8 +23,8 @@ export function EffectHero({ effect }: EffectHeroProps) {
     }
   }
 
-  // Only show hero if there's at least one asset (input or output)
-  if (inputBlocks.every((b) => !b.assetUrl && !b.assetText) && !outputUrl) return null
+  // Skip hero entirely if no assets at all
+  if (!previewUrl && inputBlocks.length === 0) return null
 
   return (
     <div className="px-6 pb-2 pt-5">
@@ -38,10 +38,10 @@ export function EffectHero({ effect }: EffectHeroProps) {
           {inputBlocks.map((block, i) => (
             <InputBlock key={block.key} block={block} delay={0.1 + i * 0.08} />
           ))}
-          {inputBlocks.length > 0 && outputUrl && <PipelineArrow delay={0.1 + inputBlocks.length * 0.08} />}
-          {outputUrl && (
+          {inputBlocks.length > 0 && previewUrl && <PipelineArrow delay={0.1 + inputBlocks.length * 0.08} />}
+          {previewUrl && (
             <MediaBlock delay={0.1 + inputBlocks.length * 0.08 + 0.05}>
-              <video src={outputUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" />
+              <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" />
             </MediaBlock>
           )}
         </div>

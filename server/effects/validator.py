@@ -12,19 +12,24 @@ class SelectOption(BaseModel):
 
 class InputFieldSchema(BaseModel):
     type: Literal["image", "text", "select", "slider", "number"]
+    role: str = "prompt_input"
     required: bool = False
     label: str
-    role: str = "prompt_input"
-    hint: str | None = None
+    # text fields
     placeholder: str | None = None
     max_length: int | None = None
     multiline: bool | None = None
-    default: Any = None
+    # select fields
     options: list[SelectOption] | None = None
+    display: str | None = None        # "pills" | "dropdown" | None (auto)
+    # slider / number fields
     min: float | None = None
     max: float | None = None
     step: float | None = None
+    # common
+    default: Any = None
     unit: str | None = None
+    hint: str | None = None
 
     @field_validator("role")
     @classmethod
@@ -34,48 +39,29 @@ class InputFieldSchema(BaseModel):
         return v
 
 
-class AdvancedParameter(BaseModel):
-    key: str
-    label: str
-    type: Literal["slider", "text", "number"]
-    min: float | None = None
-    max: float | None = None
-    step: float | None = None
-    default: Any = None
-    hint: str | None = None
-    multiline: bool | None = None
-
 
 class Assets(BaseModel):
+    preview: str | None = None        # result video/gif in assets/
     inputs: dict[str, str] = {}       # keyed by input field name → filename in assets/
-    output: str | None = None         # result video filename in assets/
-
-
-class OutputConfig(BaseModel):
-    aspect_ratios: list[str] | None = None      # None = use model defaults
-    default_aspect_ratio: str | None = None
-    durations: list[int] | None = None           # None = use model defaults
-    default_duration: int | None = None
 
 
 class ModelOverride(BaseModel):
-    prompt_template: str | None = None
-    parameters: dict[str, Any] | None = None
+    prompt: str | None = None
+    defaults: dict[str, Any] | None = None
 
 
 class GenerationConfig(BaseModel):
-    prompt_template: str
+    prompt: str
     negative_prompt: str = ""
-    supported_models: list[str]
+    models: list[str]
     default_model: str
-    parameters: dict[str, Any] = {}
+    defaults: dict[str, Any] = {}
     model_overrides: dict[str, ModelOverride] = {}
-    advanced_parameters: list[AdvancedParameter] = []
 
     @model_validator(mode="after")
     def validate_default_model(self) -> GenerationConfig:
-        if self.default_model not in self.supported_models:
-            raise ValueError(f"default_model '{self.default_model}' not in supported_models")
+        if self.default_model not in self.models:
+            raise ValueError(f"default_model '{self.default_model}' not in models")
         return self
 
 
@@ -88,9 +74,8 @@ class EffectManifest(BaseModel):
     type: str
     category: str
     tags: list[str] = []
-    assets: Assets
+    assets: Assets = Assets()
     inputs: dict[str, InputFieldSchema]
-    output: OutputConfig
     generation: GenerationConfig
 
     @model_validator(mode="after")

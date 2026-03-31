@@ -30,7 +30,7 @@ export function EffectPanel() {
   const outputParams = modelInfo?.output_params ?? []
   const advancedParams = (modelInfo?.advanced_params ?? []).map((p) => {
     // Apply manifest default overrides
-    const manifestDefault = manifest?.generation?.parameters?.[p.key]
+    const manifestDefault = manifest?.generation?.defaults?.[p.key]
     return manifestDefault !== undefined ? { ...p, default: manifestDefault } : p
   })
 
@@ -41,7 +41,10 @@ export function EffectPanel() {
     prevModelRef.current = selectedModel
     const defaults: Record<string, string | number> = {}
     for (const param of outputParams) {
-      defaults[param.key] = param.default
+      defaults[param.key] =
+        manifest?.generation.model_overrides?.[selectedModel]?.defaults?.[param.key]
+        ?? manifest?.generation.defaults?.[param.key]
+        ?? param.default
     }
     setOutputValues(defaults)
     setAdvancedValues({})  // reset so manifest defaults apply for the new model
@@ -73,10 +76,10 @@ export function EffectPanel() {
     })
 
     setSelectedModel((prev) =>
-      manifest.generation.supported_models.includes(prev) ? prev : manifest.generation.default_model
+      manifest.generation.models.includes(prev) ? prev : manifest.generation.default_model
     )
     setAdvancedValues((prev) => {
-      const validKeys = new Set(manifest.generation.advanced_parameters.map((p) => p.key))
+      const validKeys = new Set((modelInfo?.advanced_params ?? []).map((p) => p.key))
       const next: Record<string, unknown> = {}
       for (const [key, val] of Object.entries(prev)) {
         if (validKeys.has(key)) next[key] = val
@@ -90,7 +93,7 @@ export function EffectPanel() {
     if (!restoredParams || !manifest) return
 
     setSelectedModel(
-      restoredParams.modelId && manifest.generation.supported_models.includes(restoredParams.modelId)
+      restoredParams.modelId && manifest.generation.models.includes(restoredParams.modelId)
         ? restoredParams.modelId
         : manifest.generation.default_model
     )
@@ -240,7 +243,7 @@ export function EffectPanel() {
       {/* Form body */}
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
         <ModelSelector
-          models={manifest.generation.supported_models}
+          models={manifest.generation.models}
           availableModels={availableModels}
           selectedModel={selectedModel || manifest.generation.default_model}
           selectedProvider={selectedProvider}
@@ -269,7 +272,7 @@ export function EffectPanel() {
             parameters={advancedParams}
             values={advancedValues}
             onChange={handleAdvancedChange}
-            manifestDefaults={manifest.generation.parameters}
+            manifestDefaults={manifest.generation.defaults}
           />
         )}
       </div>
@@ -290,21 +293,26 @@ export function EffectPanel() {
 }
 
 /* ─── Renders a single model parameter (select/number/slider) ─── */
+const LABEL = "text-xs font-semibold uppercase tracking-wider"
+const LABEL_S = { color: 'var(--text-tertiary)' }
+const INPUT = "w-full rounded-lg px-3 py-2 text-sm outline-none"
+const INPUT_S = { background: 'var(--surface-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }
+const HINT = "text-[11px]"
+const HINT_S = { color: 'var(--text-tertiary)' }
+
 function ModelParamField({ param, value, onChange }: { param: ModelParam; value: string | number; onChange: (v: string | number) => void }) {
   if (param.type === 'select' && param.options) {
     return (
       <div className="space-y-2">
-        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-          {param.label}
-        </label>
-        <div className="flex gap-1.5">
+        <label className={LABEL} style={LABEL_S}>{param.label}</label>
+        <div className="flex flex-wrap gap-1.5">
           {param.options.map((opt) => {
             const isActive = value === opt.value
             return (
               <button
                 key={String(opt.value)}
                 onClick={() => onChange(opt.value)}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium tabular-nums transition-all"
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
                 style={{
                   background: isActive ? 'var(--accent)' : 'var(--surface-elevated)',
                   color: isActive ? 'white' : 'var(--text-secondary)',
@@ -316,16 +324,15 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
             )
           })}
         </div>
+        {param.hint && <p className={HINT} style={HINT_S}>{param.hint}</p>}
       </div>
     )
   }
 
   if (param.type === 'number') {
     return (
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-          {param.label}
-        </label>
+      <div className="space-y-2">
+        <label className={LABEL} style={LABEL_S}>{param.label}</label>
         <input
           type="number"
           value={value}
@@ -333,10 +340,10 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
           max={param.max}
           step={param.step}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-24 rounded-lg px-3 py-2 text-sm tabular-nums outline-none"
-          style={{ background: 'var(--surface-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+          className={INPUT}
+          style={INPUT_S}
         />
-        {param.hint && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{param.hint}</p>}
+        {param.hint && <p className={HINT} style={HINT_S}>{param.hint}</p>}
       </div>
     )
   }
@@ -345,9 +352,7 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-            {param.label}
-          </label>
+          <label className={LABEL} style={LABEL_S}>{param.label}</label>
           <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--text-secondary)' }}>
             {String(value)}
           </span>
@@ -361,7 +366,7 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
           onChange={(e) => onChange(Number(e.target.value))}
           className="w-full"
         />
-        {param.hint && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{param.hint}</p>}
+        {param.hint && <p className={HINT} style={HINT_S}>{param.hint}</p>}
       </div>
     )
   }

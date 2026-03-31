@@ -12,10 +12,10 @@ class PromptBuilder:
         user_inputs: dict[str, str],
     ) -> str:
         # Select template: model override > manifest default
-        template = manifest.generation.prompt_template
+        template = manifest.generation.prompt
         override = manifest.generation.model_overrides.get(model_id)
-        if override and override.prompt_template:
-            template = override.prompt_template
+        if override and override.prompt:
+            template = override.prompt
 
         # Replace {field_id} for each input
         for field_key, field_schema in manifest.inputs.items():
@@ -51,12 +51,12 @@ class PromptBuilder:
         known = KNOWN_MODEL_PARAMS.get(model_id, set())
 
         # Layer 1: manifest defaults
-        result = {k: v for k, v in manifest.generation.parameters.items() if k in known}
+        result = {k: v for k, v in manifest.generation.defaults.items() if k in known}
 
         # Layer 2: model overrides
         override = manifest.generation.model_overrides.get(model_id)
-        if override and override.parameters:
-            result.update({k: v for k, v in override.parameters.items() if k in known})
+        if override and override.defaults:
+            result.update({k: v for k, v in override.defaults.items() if k in known})
 
         # Layer 3: user params
         if user_params:

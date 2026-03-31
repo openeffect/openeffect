@@ -15,7 +15,7 @@ const mockEffects: EffectManifest[] = [
     category: 'cinematic',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
-      thumbnail: 'thumbnail.jpg',
+      
     },
     inputs: {
       image: {
@@ -24,20 +24,13 @@ const mockEffects: EffectManifest[] = [
         label: 'Photo',
       },
     },
-    output: {
-      aspect_ratios: ['9:16', '16:9'],
-      default_aspect_ratio: '9:16',
-      durations: [3, 5],
-      default_duration: 5,
-    },
     generation: {
-      prompt_template: 'zoom from space to {image}',
+      prompt: 'zoom from space to {image}',
       negative_prompt: 'blurry, low quality',
-      supported_models: ['wan-2.2'],
+      models: ['wan-2.2'],
       default_model: 'wan-2.2',
-      parameters: { guidance_scale: 7.5 },
+      defaults: { guidance_scale: 7.5 },
       model_overrides: {},
-      advanced_parameters: [],
     },
   },
   {
@@ -50,7 +43,7 @@ const mockEffects: EffectManifest[] = [
     category: 'emotional',
     tags: ['hug', 'embrace', 'love'],
     assets: {
-      thumbnail: 'thumbnail.jpg',
+      
       preview: 'preview.mp4',
     },
     inputs: {
@@ -67,20 +60,13 @@ const mockEffects: EffectManifest[] = [
         role: 'end_frame',
       },
     },
-    output: {
-      aspect_ratios: ['9:16'],
-      default_aspect_ratio: '9:16',
-      durations: [5],
-      default_duration: 5,
-    },
     generation: {
-      prompt_template: '{image_a} hugs {image_b}',
+      prompt: '{image_a} hugs {image_b}',
       negative_prompt: '',
-      supported_models: ['wan-2.2'],
+      models: ['wan-2.2'],
       default_model: 'wan-2.2',
-      parameters: {},
+      defaults: {},
       model_overrides: {},
-      advanced_parameters: [],
     },
   },
   {
@@ -93,7 +79,7 @@ const mockEffects: EffectManifest[] = [
     category: 'fun',
     tags: ['dance', 'loop', 'animation'],
     assets: {
-      thumbnail: 'thumbnail.jpg',
+      
     },
     inputs: {
       image: {
@@ -102,20 +88,13 @@ const mockEffects: EffectManifest[] = [
         label: 'Photo',
       },
     },
-    output: {
-      aspect_ratios: ['1:1', '9:16'],
-      default_aspect_ratio: '1:1',
-      durations: [3, 5, 10],
-      default_duration: 5,
-    },
     generation: {
-      prompt_template: '{image} dancing',
+      prompt: '{image} dancing',
       negative_prompt: 'static',
-      supported_models: ['wan-2.2'],
+      models: ['wan-2.2'],
       default_model: 'wan-2.2',
-      parameters: { guidance_scale: 5 },
+      defaults: { guidance_scale: 5 },
       model_overrides: {},
-      advanced_parameters: [],
     },
   },
 ]

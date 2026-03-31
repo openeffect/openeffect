@@ -58,7 +58,7 @@ class GenerationService:
         if not manifest:
             raise ValueError(f"Effect not found: {request.effect_id}")
 
-        if request.model_id not in manifest.generation.supported_models:
+        if request.model_id not in manifest.generation.models:
             raise ValueError(f"Model {request.model_id} not supported by this effect")
 
         job_id = str(uuid_utils.uuid7())

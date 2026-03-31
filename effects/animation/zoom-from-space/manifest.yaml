@@ -14,9 +14,9 @@ tags:
   - viral
 
 assets:
+  preview: preview.mp4
   inputs:
     image: input.jpg
-  output: output.mp4
 
 inputs:
   image:
@@ -35,12 +35,13 @@ inputs:
     max_length: 500
     multiline: false
 
-output:
-  default_aspect_ratio: "9:16"
-  default_duration: 5
-
 generation:
-  prompt_template: >
+  models:
+    - wan-2.2
+    - kling-v3
+  default_model: wan-2.2
+
+  prompt: >
     Cinematic drone shot starting from outer space,
     rapidly zooming into Earth and then into the subject.
     {scene_prompt}
@@ -50,20 +51,16 @@ generation:
     low quality, blurry, static camera, shaky,
     distorted, watermark, text overlay
 
-  supported_models:
-    - wan-2.2
-    - kling-v3
-  default_model: wan-2.2
-
-  parameters:
+  defaults:
+    duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
 
   model_overrides:
     kling-v3:
-      prompt_template: >
+      prompt: >
         Epic space-to-earth zoom, starting from stars
-        and rushing into the subject. {prompt}
+        and rushing into the subject. {scene_prompt}
         Cinematic quality, smooth motion.
-      parameters:
+      defaults:
         guidance_scale: 8.0

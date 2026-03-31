@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
-// Test the parseHash and writeHash functions
-// We need to import them — they're exported from effectsStore
-import { parseHash, writeHash } from '../../src/store/effectsStore'
+// Test the parseHash function from the router module
+import { parseHash } from '../../src/lib/router'
 
 describe('URL routing', () => {
   describe('parseHash', () => {

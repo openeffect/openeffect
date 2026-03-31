@@ -1,19 +1,49 @@
 @import "tailwindcss";
 @import "./themes.css";
 
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--border);
+  }
+}
+
 @theme {
+  /* Core semantic colors (used by UI primitives) */
   --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text-primary);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text-primary);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--surface-elevated);
+  --color-secondary-foreground: var(--text-secondary);
+  --color-muted: var(--surface-elevated);
+  --color-muted-foreground: var(--text-tertiary);
+  --color-accent-subtle: var(--accent-dim);
+  --color-accent-subtle-foreground: var(--accent);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+  --color-success: var(--success);
   --color-border: var(--border);
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-tertiary: var(--text-tertiary);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+
+  /* Extended palette */
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-dim: var(--accent-dim);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
   --color-danger: var(--danger);
-  --color-success: var(--success);
+
+  --radius: 0.5rem;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
@@ -38,6 +68,7 @@ input[type='range'] {
   height: 6px;
   border-radius: 3px;
   background: var(--surface-elevated);
+  border: 1px solid var(--border);
   outline: none;
   cursor: pointer;
 }
@@ -52,6 +83,12 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
   border: 2px solid var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 input[type='range']::-moz-range-thumb {
@@ -62,6 +99,12 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
   border: 2px solid var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type='range']:hover::-moz-range-thumb {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Scrollbar */
@@ -82,13 +125,7 @@ input[type='range']::-moz-range-thumb {
   background: var(--text-tertiary);
 }
 
-/* Focus ring */
-*:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-/* Interactive elements */
+/* Interactive elements — transitions only, hover/active/focus handled per-component */
 button,
 a,
 input,
@@ -97,27 +134,17 @@ textarea {
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
-    opacity 0.15s ease,
-    filter 0.15s ease;
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 
+a,
 button,
 [role='button'],
 select {
   cursor: pointer;
 }
 
-button:hover:not(:disabled),
-[role='button']:hover {
-  filter: brightness(var(--hover-brightness));
-}
-
-button:active:not(:disabled),
-[role='button']:active {
-  filter: brightness(var(--active-brightness));
-}
-
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
 }

@@ -1,28 +1,8 @@
 import { create } from 'zustand'
 import type { EffectManifest } from '@/types/api'
 import { api } from '@/lib/api'
+import { parseHash, writeHash, initPopstateListener } from '@/lib/router'
 import { useGenerationStore } from '@/store/generationStore'
-
-// ─── Hash helpers ───
-
-export function parseHash(raw?: string): { mode: 'effect'; id: string } | { mode: 'generation'; id: string } | null {
-  const hash = raw ?? (typeof window !== 'undefined' ? window.location.hash.slice(1) : '')
-  if (!hash) return null
-  if (hash.startsWith('effects/')) return { mode: 'effect', id: hash.slice(8) }
-  if (hash.startsWith('generations/')) return { mode: 'generation', id: hash.slice(12) }
-  return null
-}
-
-export function writeHash(path: string | null) {
-  if (typeof window === 'undefined') return
-  const current = window.location.hash.slice(1)
-  if (path === current) return
-  if (path) {
-    window.history.pushState(null, '', `#${path}`)
-  } else {
-    window.history.pushState(null, '', window.location.pathname)
-  }
-}
 
 // ─── Store ───
 
@@ -64,12 +44,27 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
       if (parsed?.mode === 'effect' && isValidEffectId(effects, parsed.id)) {
         selectedEffectId = parsed.id
       } else if (parsed?.mode === 'generation') {
-        // Restore generation from URL — delegate to generationStore
-        const { restoreFromUrl } = useGenerationStore.getState()
-        restoreFromUrl(parsed.id)
+        useGenerationStore.getState().restoreFromUrl(parsed.id).then((effectId) => {
+          if (effectId) useEffectsStore.getState().selectEffect(effectId, true)
+        })
       }
 
       set({ effects, status: 'succeeded', selectedEffectId })
+
+      // Wire up popstate listener now that effects are loaded
+      initPopstateListener(
+        (id) => useEffectsStore.setState({ selectedEffectId: id }),
+        (id) => {
+          useGenerationStore.getState().restoreFromUrl(id).then((effectId) => {
+            if (effectId) useEffectsStore.getState().selectEffect(effectId, true)
+          })
+        },
+        () => {
+          useGenerationStore.getState().closeJob()
+          useEffectsStore.setState({ selectedEffectId: null })
+        },
+        (id) => isValidEffectId(useEffectsStore.getState().effects, id),
+      )
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to load effects', status: 'failed' })
     }
@@ -80,10 +75,7 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
       writeHash(id ? `effects/${id}` : null)
     }
     if (id === null) {
-      // Clear generation state when deselecting
-      const genStore = useGenerationStore.getState()
-      genStore.closeJob()
-      useGenerationStore.setState({ restoredParams: null })
+      useGenerationStore.getState().closeJob()
     }
     set({ selectedEffectId: id })
   },
@@ -91,29 +83,6 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   setActiveCategory: (cat) => set({ activeCategory: cat }),
 }))
-
-// Listen for browser back/forward
-if (typeof window !== 'undefined') {
-  window.addEventListener('popstate', () => {
-    const { effects, status } = useEffectsStore.getState()
-    if (status !== 'succeeded') return
-
-    const parsed = parseHash()
-    if (parsed?.mode === 'effect') {
-      const selectedEffectId = isValidEffectId(effects, parsed.id) ? parsed.id : null
-      useEffectsStore.setState({ selectedEffectId })
-    } else if (parsed?.mode === 'generation') {
-      const { restoreFromUrl } = useGenerationStore.getState()
-      restoreFromUrl(parsed.id)
-    } else {
-      // No hash — clear selection and generation state
-      const genStore = useGenerationStore.getState()
-      genStore.closeJob()
-      useGenerationStore.setState({ restoredParams: null })
-      useEffectsStore.setState({ selectedEffectId: null })
-    }
-  })
-}
 
 // ─── Selectors ───
 
@@ -144,8 +113,5 @@ export function useSelectedEffect(): EffectManifest | null {
   const effects = useEffectsStore((s) => s.effects)
   const selectedId = useEffectsStore((s) => s.selectedEffectId)
   if (!selectedId) return null
-  return effects.find((e) => {
-    const fullId = `${e.type}/${e.id}`
-    return fullId === selectedId
-  }) ?? null
+  return effects.find((e) => `${e.type}/${e.id}` === selectedId) ?? null
 }

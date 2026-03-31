@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { GenerationRequest } from '@/types/api'
 import { api } from '@/lib/api'
+import { writeHash } from '@/lib/router'
 
 interface ActiveJob {
   jobId: string
@@ -17,7 +18,7 @@ type LeftPanel = 'gallery' | 'progress' | 'result'
 interface RestoredParams {
   modelId: string
   inputs: Record<string, string>
-  output: { aspect_ratio: string; duration: number }
+  output: Record<string, string | number>
   userParams?: Record<string, unknown>
 }
 
@@ -34,8 +35,15 @@ interface GenerationStore {
   failJob: (jobId: string, error: string) => void
   openJob: (jobId: string) => void
   closeJob: () => void
-  activeCount: () => number
-  restoreFromUrl: (id: string) => Promise<void>
+  restoreFromUrl: (id: string) => Promise<string | null>
+}
+
+function updateJob(jobs: Map<string, ActiveJob>, jobId: string, patch: Partial<ActiveJob>): Map<string, ActiveJob> {
+  const job = jobs.get(jobId)
+  if (!job) return jobs
+  const next = new Map(jobs)
+  next.set(jobId, { ...job, ...patch })
+  return next
 }
 
 export const useGenerationStore = create<GenerationStore>((set, get) => ({
@@ -59,43 +67,24 @@ export const useGenerationStore = create<GenerationStore>((set, get) => ({
     const jobs = new Map(get().activeJobs)
     jobs.set(response.job_id, job)
     set({ activeJobs: jobs, viewingJobId: response.job_id, leftPanel: 'progress' })
-
-    // Write generation hash — import writeHash lazily to avoid circular dep at module level
-    const { writeHash } = await import('@/store/effectsStore')
     writeHash(`generations/${response.job_id}`)
-
     return response.job_id
   },
 
   updateJobProgress: (jobId, progress, message) => {
-    const jobs = new Map(get().activeJobs)
-    const job = jobs.get(jobId)
-    if (job) {
-      jobs.set(jobId, { ...job, progress, message })
-      set({ activeJobs: jobs })
-    }
+    set({ activeJobs: updateJob(get().activeJobs, jobId, { progress, message }) })
   },
 
   completeJob: (jobId, videoUrl) => {
-    const jobs = new Map(get().activeJobs)
-    const job = jobs.get(jobId)
-    if (job) {
-      jobs.set(jobId, { ...job, status: 'completed', progress: 100, videoUrl })
-      const updates: Partial<GenerationStore> = { activeJobs: jobs }
-      if (get().viewingJobId === jobId) {
-        updates.leftPanel = 'result'
-      }
-      set(updates as GenerationStore)
-    }
+    const activeJobs = updateJob(get().activeJobs, jobId, { status: 'completed', progress: 100, videoUrl })
+    set({
+      activeJobs,
+      ...(get().viewingJobId === jobId ? { leftPanel: 'result' as const } : {}),
+    })
   },
 
   failJob: (jobId, error) => {
-    const jobs = new Map(get().activeJobs)
-    const job = jobs.get(jobId)
-    if (job) {
-      jobs.set(jobId, { ...job, status: 'failed', error })
-      set({ activeJobs: jobs })
-    }
+    set({ activeJobs: updateJob(get().activeJobs, jobId, { status: 'failed', error }) })
   },
 
   openJob: (jobId) => {
@@ -108,41 +97,29 @@ export const useGenerationStore = create<GenerationStore>((set, get) => ({
   },
 
   closeJob: () => {
-    // Write null hash — import lazily to avoid circular dep
-    import('@/store/effectsStore').then(({ writeHash }) => writeHash(null))
-    set({ viewingJobId: null, leftPanel: 'gallery' })
+    writeHash(null)
+    set({ viewingJobId: null, leftPanel: 'gallery', restoredParams: null })
   },
 
-  activeCount: () => {
-    let count = 0
-    for (const job of get().activeJobs.values()) {
-      if (job.status === 'processing') count++
-    }
-    return count
-  },
-
-  restoreFromUrl: async (id: string) => {
+  restoreFromUrl: async (id) => {
     set({ restoringFromUrl: true })
     try {
       const record = await api.getGeneration(id)
 
-      // Parse manifest_json — structure is { effect, request, prompt }
       const manifestData = (typeof record.manifest_json === 'string'
         ? JSON.parse(record.manifest_json)
         : record.manifest_json) as {
-        effect?: { id?: string }
         request?: {
           effect_id?: string
           model_id?: string
           inputs?: Record<string, string>
-          output?: { aspect_ratio: string; duration: number }
+          output?: Record<string, string | number>
           user_params?: Record<string, unknown>
         }
-        prompt?: string
       } | null
+
       const reqData = manifestData?.request ?? null
 
-      // Create an ActiveJob from the record
       const job: ActiveJob = {
         jobId: record.id,
         effectName: record.effect_name,
@@ -156,40 +133,46 @@ export const useGenerationStore = create<GenerationStore>((set, get) => ({
       const jobs = new Map(get().activeJobs)
       jobs.set(record.id, job)
 
-      // Determine leftPanel based on status
-      let leftPanel: LeftPanel = 'progress'
-      if (record.status === 'completed') leftPanel = 'result'
-
-      // Build restoredParams from request data
-      const restoredParams: RestoredParams | null = reqData
-        ? {
-            modelId: reqData.model_id ?? '',
-            inputs: reqData.inputs ?? {},
-            output: reqData.output ?? { aspect_ratio: '9:16', duration: 5 },
-            userParams: reqData.user_params,
-          }
-        : null
-
       set({
         activeJobs: jobs,
         viewingJobId: record.id,
-        leftPanel,
-        restoredParams,
+        leftPanel: record.status === 'completed' ? 'result' : 'progress',
+        restoredParams: reqData
+          ? {
+              modelId: reqData.model_id ?? '',
+              inputs: reqData.inputs ?? {},
+              output: reqData.output ?? {},
+              userParams: reqData.user_params,
+            }
+          : null,
         restoringFromUrl: false,
       })
 
-      // Select the effect (without writing hash — the hash is already set)
-      const { useEffectsStore } = await import('@/store/effectsStore')
-      const effectId = record.effect_id ?? reqData?.effect_id
-      if (effectId) {
-        useEffectsStore.getState().selectEffect(effectId, true)
-      }
+      return record.effect_id ?? reqData?.effect_id ?? null
     } catch (e) {
       console.error('Failed to restore generation from URL:', e)
       set({ restoringFromUrl: false, viewingJobId: null, leftPanel: 'gallery', restoredParams: null })
-      // Navigate back to gallery
-      const { writeHash } = await import('@/store/effectsStore')
       writeHash(null)
+      return null
     }
   },
 }))
+
+// ─── Selectors ───
+
+export function getActiveJobCount(): number {
+  let count = 0
+  for (const job of useGenerationStore.getState().activeJobs.values()) {
+    if (job.status === 'processing') count++
+  }
+  return count
+}
+
+export function useActiveJobCount(): number {
+  const activeJobs = useGenerationStore((s) => s.activeJobs)
+  let count = 0
+  for (const job of activeJobs.values()) {
+    if (job.status === 'processing') count++
+  }
+  return count
+}

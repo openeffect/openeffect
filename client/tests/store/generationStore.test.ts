@@ -8,7 +8,7 @@ vi.mock('../../src/lib/api', () => ({
 }))
 
 // Import store after mock is set up
-import { useGenerationStore } from '../../src/store/generationStore'
+import { useGenerationStore, getActiveJobCount } from '../../src/store/generationStore'
 
 const mockRequest: GenerationRequest = {
   effect_id: 'single-image/zoom-from-space',
@@ -168,21 +168,21 @@ describe('generationStore', () => {
   describe('activeCount', () => {
     it('returns count of processing jobs only', async () => {
       // Start with no jobs
-      expect(useGenerationStore.getState().activeCount()).toBe(0)
+      expect(getActiveJobCount()).toBe(0)
 
       // Add a processing job
       await useGenerationStore.getState().startGeneration(mockRequest, 'Zoom From Space')
-      expect(useGenerationStore.getState().activeCount()).toBe(1)
+      expect(getActiveJobCount()).toBe(1)
 
       // Complete it - should no longer count
       useGenerationStore.getState().completeJob('test-job-123', '/api/assets/output.mp4')
-      expect(useGenerationStore.getState().activeCount()).toBe(0)
+      expect(getActiveJobCount()).toBe(0)
     })
 
     it('does not count failed jobs', async () => {
       await useGenerationStore.getState().startGeneration(mockRequest, 'Zoom From Space')
       useGenerationStore.getState().failJob('test-job-123', 'error')
-      expect(useGenerationStore.getState().activeCount()).toBe(0)
+      expect(getActiveJobCount()).toBe(0)
     })
 
     it('counts multiple processing jobs', async () => {
@@ -196,15 +196,15 @@ describe('generationStore', () => {
       generateMock.mockResolvedValueOnce({ job_id: 'job-2', status: 'queued' })
       await useGenerationStore.getState().startGeneration(mockRequest, 'Effect B')
 
-      expect(useGenerationStore.getState().activeCount()).toBe(2)
+      expect(getActiveJobCount()).toBe(2)
 
       // Complete one
       useGenerationStore.getState().completeJob('job-1', '/api/assets/a.mp4')
-      expect(useGenerationStore.getState().activeCount()).toBe(1)
+      expect(getActiveJobCount()).toBe(1)
 
       // Fail the other
       useGenerationStore.getState().failJob('job-2', 'timeout')
-      expect(useGenerationStore.getState().activeCount()).toBe(0)
+      expect(getActiveJobCount()).toBe(0)
     })
   })
 })

@@ -14,6 +14,11 @@ function applyTheme(setting: ThemeSetting) {
   document.documentElement.setAttribute('data-theme', resolved)
 }
 
+function parseTheme(value: unknown): ThemeSetting {
+  if (value === 'dark' || value === 'light' || value === 'auto') return value
+  return 'auto'
+}
+
 interface ConfigStore {
   hasApiKey: boolean
   defaultModel: string
@@ -40,17 +45,14 @@ export const useConfigStore = create<ConfigStore>((set) => ({
   loadConfig: async () => {
     try {
       const config = await api.getConfig()
-      const showOnboarding = !config.has_api_key
-      const theme = (config.theme === 'auto' || config.theme === 'dark' || config.theme === 'light')
-        ? config.theme as ThemeSetting
-        : 'auto'
+      const theme = parseTheme(config.theme)
       set({
         hasApiKey: config.has_api_key,
         defaultModel: config.default_model,
         theme,
         availableModels: config.available_models,
         updateAvailable: config.update_available,
-        showOnboarding,
+        showOnboarding: !config.has_api_key,
       })
       applyTheme(theme)
     } catch {
@@ -71,13 +73,10 @@ export const useConfigStore = create<ConfigStore>((set) => ({
 
   updateConfig: async (patch) => {
     const config = await api.updateConfig(patch)
-    const theme = (config.theme === 'auto' || config.theme === 'dark' || config.theme === 'light')
-      ? config.theme as ThemeSetting
-      : 'auto'
     set({
       hasApiKey: config.has_api_key,
       defaultModel: config.default_model,
-      theme,
+      theme: parseTheme(config.theme),
     })
   },
 

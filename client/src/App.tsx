@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Layout } from '@/components/ui/Layout/Layout'
+import { Layout } from '@/layout/Layout'
 import { useConfigStore } from '@/store/configStore'
 
 export function App() {

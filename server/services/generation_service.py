@@ -124,13 +124,13 @@ class GenerationService:
                         # Use effect input types to find image fields
                         effect_inputs = old_manifest.get("effect", {}).get("inputs", {})
                         request_inputs = old_manifest.get("request", {}).get("inputs", {})
-                        hashes = [
+                        ref_ids = [
                             request_inputs[key]
                             for key, schema in effect_inputs.items()
                             if schema.get("type") == "image" and key in request_inputs
                         ]
-                        if hashes:
-                            await self._storage.decrement_refs_and_cleanup(hashes)
+                        if ref_ids:
+                            await self._storage.decrement_refs_and_cleanup(ref_ids)
                     except (json.JSONDecodeError, TypeError, KeyError) as e:
                         logger.warning(f"Failed to parse manifest for cleanup of {old_id}: {e}")
                 await self._history.delete(old_id)
@@ -179,7 +179,7 @@ class GenerationService:
                 if field.type == "image" and key in request.inputs:
                     role = getattr(field, 'role', 'start_frame')
                     ref_id = request.inputs[key]
-                    file_path = self._storage.get_upload_path(ref_id)
+                    file_path = self._storage.get_upload_path(ref_id, '2048')
                     if file_path:
                         image_inputs[role] = str(file_path)
 

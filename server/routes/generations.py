@@ -55,7 +55,7 @@ async def delete_generation(item_id: str, request: Request):
 
     # Extract upload hashes from manifest_json and decrement refs
     storage = request.app.state.storage_service
-    hash_filenames: list[str] = []
+    ref_ids: list[str] = []
     if record.manifest_json:
         try:
             manifest_data = json.loads(record.manifest_json)
@@ -63,16 +63,15 @@ async def delete_generation(item_id: str, request: Request):
             effect_data = manifest_data.get("effect", {})
             effect_inputs = effect_data.get("inputs", {})
             for key, value in inputs.items():
-                # Check if this input is an image type by looking at the effect manifest
                 input_def = effect_inputs.get(key, {})
                 input_type = input_def.get("type", "") if isinstance(input_def, dict) else ""
-                if input_type == "image" and isinstance(value, str) and "." in value:
-                    hash_filenames.append(value)
+                if input_type == "image" and isinstance(value, str):
+                    ref_ids.append(value)
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 
-    if hash_filenames:
-        await storage.decrement_refs_and_cleanup(hash_filenames)
+    if ref_ids:
+        await storage.decrement_refs_and_cleanup(ref_ids)
 
     await history.delete(item_id)
 

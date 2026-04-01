@@ -53,7 +53,8 @@ async def init_db(db_path: Path) -> None:
         """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS uploads (
-                hash       TEXT PRIMARY KEY,
+                id         TEXT PRIMARY KEY,
+                hash       TEXT NOT NULL UNIQUE,
                 filename   TEXT NOT NULL,
                 ext        TEXT NOT NULL,
                 mime       TEXT NOT NULL,

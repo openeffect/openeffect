@@ -101,12 +101,12 @@ class TestPathTraversal:
 
     def test_serve_path_traversal_rejected(self, client):
         """GET /api/uploads/ with traversal components should be rejected."""
-        resp = client.get("/api/uploads/../../../etc/passwd")
+        resp = client.get("/api/uploads/../../../etc/passwd/512")
         assert resp.status_code in (400, 404)
 
     def test_serve_backslash_traversal_rejected(self, client):
         """GET /api/uploads/ with backslash traversal should be rejected."""
-        resp = client.get("/api/uploads/..\\..\\etc\\passwd")
+        resp = client.get("/api/uploads/..\\..\\etc\\passwd/512")
         assert resp.status_code in (400, 404)
 
 

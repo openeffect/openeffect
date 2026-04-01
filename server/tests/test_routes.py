@@ -182,13 +182,15 @@ class TestUploadRoute:
         assert resp.status_code == 200
         data = resp.json()
         assert "ref_id" in data
-        # ref_id is now a hash filename like "a1b2c3d4e5f6.png"
-        assert "." in data["ref_id"]
+        # ref_id is a UUID
+        assert "-" in data["ref_id"]
         assert data["filename"] == "test_image.png"
         assert data["mime_type"] == "image/png"
         assert data["size_bytes"] == len(content)
+        assert data["thumbnails"]["512"].endswith("/512.png")
+        assert data["thumbnails"]["2048"].endswith("/2048.png")
 
-    def test_upload_returns_hash_ref_id(self, client):
+    def test_upload_returns_uuid_ref_id(self, client):
         content = self._make_image_bytes()
         resp = client.post(
             "/api/upload",
@@ -196,14 +198,9 @@ class TestUploadRoute:
         )
         data = resp.json()
         ref_id = data["ref_id"]
-        # Should be a hash filename like "a1b2c3d4e5f6.jpg"
-        parts = ref_id.rsplit(".", 1)
-        assert len(parts) == 2
-        hash_part, ext_part = parts
-        # Hash is 20 hex characters
-        assert len(hash_part) == 20
-        assert all(c in "0123456789abcdef" for c in hash_part)
-        assert ext_part == "jpg"
+        # Should be a UUID like "a1b2c3d4-e5f6-7890-abcd-1234567890ab"
+        parts = ref_id.split("-")
+        assert len(parts) == 5
 
     def test_upload_deduplication(self, client):
         """Uploading the same content twice should return the same ref_id."""
@@ -272,7 +269,7 @@ class TestUploadRoute:
         )
         assert resp.status_code == 415
 
-    def test_upload_preserves_extension(self, client):
+    def test_upload_preserves_filename(self, client):
         content = self._make_image_bytes()
         resp = client.post(
             "/api/upload",
@@ -280,15 +277,13 @@ class TestUploadRoute:
         )
         data = resp.json()
         assert data["filename"] == "image.webp"
-        # ref_id should also have the webp extension
-        assert data["ref_id"].endswith(".webp")
 
     def test_upload_no_file_returns_422(self, client):
         resp = client.post("/api/upload")
         assert resp.status_code == 422
 
     def test_serve_uploaded_file(self, client):
-        """Uploaded files should be retrievable via GET /api/uploads/{filename}."""
+        """Uploaded files should be retrievable via GET /api/uploads/{uuid}/{variant}."""
         content = self._make_image_bytes(150)
         resp = client.post(
             "/api/upload",
@@ -297,15 +292,14 @@ class TestUploadRoute:
         assert resp.status_code == 200
         ref_id = resp.json()["ref_id"]
 
-        # Fetch the file back
-        resp2 = client.get(f"/api/uploads/{ref_id}")
+        # Fetch the preview variant
+        resp2 = client.get(f"/api/uploads/{ref_id}/512")
         assert resp2.status_code == 200
-        assert resp2.content == content
 
     def test_serve_nonexistent_file_returns_404(self, client):
-        resp = client.get("/api/uploads/nonexistent123.png")
+        resp = client.get("/api/uploads/nonexistent-uuid/512")
         assert resp.status_code == 404
 
     def test_serve_path_traversal_rejected(self, client):
-        resp = client.get("/api/uploads/../../etc/passwd")
+        resp = client.get("/api/uploads/../../etc/passwd/512")
         assert resp.status_code in (400, 404)

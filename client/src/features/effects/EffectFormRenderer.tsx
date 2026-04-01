@@ -19,21 +19,21 @@ export function EffectFormRenderer({ manifest, values, onChange }: EffectFormRen
       {imageInputs.length > 1 ? (
         <div className="grid grid-cols-2 gap-3">
           {imageInputs.map(([key, schema]) => (
-            <EffectFormField key={key} fieldKey={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
+            <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
           ))}
         </div>
       ) : (
         imageInputs.map(([key, schema]) => (
-          <EffectFormField key={key} fieldKey={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
+          <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
         ))
       )}
       {/* Prompt inputs */}
       {promptInputs.map(([key, schema]) => (
-        <EffectFormField key={key} fieldKey={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
+        <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
       ))}
       {/* Other inputs */}
       {otherInputs.map(([key, schema]) => (
-        <EffectFormField key={key} fieldKey={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
+        <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => onChange(key, v)} />
       ))}
     </div>
   )

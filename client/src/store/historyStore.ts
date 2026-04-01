@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { GenerationRecord } from '@/types/api'
 import { api } from '@/lib/api'
+import { useGenerationStore } from '@/store/generationStore'
+import { useEffectsStore } from '@/store/effectsStore'
 
 // Timer lives outside state — it's an implementation detail, not reactive state
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -52,6 +54,11 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         items: s.items.filter((i) => i.id !== id),
         total: s.total - 1,
       }))
+      // Close everything if we just deleted the one being viewed
+      if (useGenerationStore.getState().viewingJobId === id) {
+        useGenerationStore.getState().closeJob()
+        useEffectsStore.getState().selectEffect(null)
+      }
     } catch {
       // API failed — don't remove from local state
     }

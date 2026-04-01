@@ -6,18 +6,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 
 interface EffectFormFieldProps {
-  fieldKey: string
   schema: InputFieldSchema
   value: unknown
   onChange: (value: unknown) => void
 }
 
-export function EffectFormField({ fieldKey, schema, value, onChange }: EffectFormFieldProps) {
+export function EffectFormField({ schema, value, onChange }: EffectFormFieldProps) {
   switch (schema.type) {
     case 'image': {
       const isRestored = value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)
       const restored = isRestored ? (value as { filename: string }) : null
-      const restoredUrl = restored ? `/api/uploads/${restored.filename}` : null
+      const restoredUrl = restored ? `/api/uploads/${restored.filename}/512.jpg` : null
 
       return (
         <ImageUploader

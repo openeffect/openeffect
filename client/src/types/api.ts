@@ -151,6 +151,10 @@ export interface UploadResponse {
   filename: string
   mime_type: string
   size_bytes: number
+  thumbnails: {
+    '512': string
+    '2048': string
+  }
 }
 
 export interface GenerationRequest {

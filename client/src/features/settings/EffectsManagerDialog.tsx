@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Upload, Link, Trash2, Loader2 } from 'lucide-react'
+import { Link, Trash2, Loader2 } from 'lucide-react'
 import { useEffectsStore } from '@/store/effectsStore'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { FileDropzone } from '@/primitives/FileDropzone'
 
 interface EffectsManagerDialogProps {
   isOpen: boolean
@@ -118,29 +118,12 @@ function InstallEffectSection({ onInstalled }: { onInstalled: () => void }) {
       </div>
 
       {/* ZIP upload */}
-      <div>
-        <input
-          type="file"
-          accept=".zip"
-          className="hidden"
-          id="effect-zip-upload"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) handleInstallFile(file)
-            e.target.value = ''
-          }}
-        />
-        <label
-          htmlFor="effect-zip-upload"
-          className={cn(
-            'flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-xs text-secondary-foreground transition-colors hover:border-foreground/20 hover:text-foreground',
-            installing && 'pointer-events-none opacity-50',
-          )}
-        >
-          <Upload size={14} />
-          Or upload a .zip archive
-        </label>
-      </div>
+      <FileDropzone
+        accept=".zip"
+        label="Drop or click to upload .zip archive"
+        disabled={installing}
+        onFile={handleInstallFile}
+      />
 
       {/* Feedback */}
       {error && <p className="text-xs text-destructive">{error}</p>}

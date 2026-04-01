@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Save, Plus, Download, AlertCircle, Loader2, ChevronDown, Film, Trash2, Pencil, Check, X } from 'lucide-react'
 import { EditorView, keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
 import { useEditorStore } from '@/store/editorStore'
@@ -37,7 +39,7 @@ const darkTheme = EditorView.theme({
     color: 'var(--text-secondary)',
   },
   '.cm-activeLine': {
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: 'var(--surface-elevated)',
   },
   '.cm-selectionBackground': {
     backgroundColor: 'rgba(74, 144, 226, 0.2) !important',
@@ -56,6 +58,20 @@ const darkTheme = EditorView.theme({
     overflow: 'auto',
   },
 }, { dark: true })
+
+const syntaxColors = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.keyword, color: 'var(--syn-keyword)' },
+  { tag: tags.definition(tags.propertyName), color: 'var(--syn-key)' },
+  { tag: tags.propertyName, color: 'var(--syn-key)' },
+  { tag: tags.string, color: 'var(--syn-string)' },
+  { tag: tags.number, color: 'var(--syn-number)' },
+  { tag: tags.bool, color: 'var(--syn-keyword)' },
+  { tag: tags.null, color: 'var(--syn-keyword)' },
+  { tag: tags.comment, color: 'var(--syn-comment)' },
+  { tag: tags.meta, color: 'var(--syn-meta)' },
+  { tag: tags.atom, color: 'var(--syn-number)' },
+  { tag: tags.punctuation, color: 'var(--syn-punctuation)' },
+]))
 
 export function EffectEditor() {
   const editorRef = useRef<HTMLDivElement>(null)
@@ -90,6 +106,7 @@ export function EffectEditor() {
         basicSetup,
         yaml(),
         darkTheme,
+        syntaxColors,
         saveKeymap,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {

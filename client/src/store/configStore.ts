@@ -12,6 +12,17 @@ function getSystemTheme(): 'dark' | 'light' {
 function applyTheme(setting: ThemeSetting) {
   const resolved = setting === 'auto' ? getSystemTheme() : setting
   document.documentElement.setAttribute('data-theme', resolved)
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('theme', setting)
+  }
+}
+
+// Apply saved theme immediately — before React renders, prevents flash
+if (typeof window !== 'undefined') {
+  const saved = localStorage.getItem('theme')
+  if (saved === 'dark' || saved === 'light' || saved === 'auto') {
+    applyTheme(saved)
+  }
 }
 
 function parseTheme(value: unknown): ThemeSetting {

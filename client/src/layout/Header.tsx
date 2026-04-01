@@ -1,8 +1,9 @@
-import { RefreshCw, History, Package, Settings, Loader2 } from 'lucide-react'
+import { RefreshCw, History, Package, Settings, Loader2, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useActiveJobCount, useGenerationStore } from '@/store/generationStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { useConfigStore } from '@/store/configStore'
+import { useEditorStore } from '@/store/editorStore'
 import { useEffectsStore } from '@/store/effectsStore'
 import { HistoryPanel } from '@/features/history/HistoryPanel'
 import { Button } from '@/components/ui/button'
@@ -16,15 +17,22 @@ interface HeaderProps {
 export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
   const activeCount = useActiveJobCount()
   const restoringFromUrl = useGenerationStore((s) => s.restoringFromUrl)
+  const isForking = useEditorStore((s) => s.isForking)
   const openHistory = useHistoryStore((s) => s.open)
   const updateAvailable = useConfigStore((s) => s.updateAvailable)
+  const isLoading = restoringFromUrl || isForking
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
       {/* Logo */}
       <a
         href="#"
-        onClick={(e) => { e.preventDefault(); useEffectsStore.getState().selectEffect(null) }}
+        onClick={(e) => {
+          e.preventDefault()
+          if (useEditorStore.getState().isEditorOpen && !useEditorStore.getState().confirmClose()) return
+          useEditorStore.getState().closeEditor()
+          useEffectsStore.getState().selectEffect(null)
+        }}
         className="flex items-center gap-2.5 no-underline hover:opacity-80"
       >
         <img src="/logo.png" alt="OpenEffect" className="h-8 w-8 rounded-lg" />
@@ -35,7 +43,7 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
 
       {/* Center: loading indicator or update banner */}
       <AnimatePresence mode="wait">
-        {restoringFromUrl ? (
+        {isLoading ? (
           <motion.div
             key="loading"
             initial={{ opacity: 0, scale: 0.5 }}
@@ -88,6 +96,10 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
           </Button>
           <HistoryPanel />
         </div>
+
+        <Button variant="ghost" size="icon" onClick={() => useEditorStore.getState().openBlankEditor()} title="Create Effect" className="bg-muted text-secondary-foreground">
+          <Plus size={16} />
+        </Button>
 
         <Button variant="ghost" size="icon" onClick={onEffectsOpen} title="Effects" className="bg-muted text-secondary-foreground">
           <Package size={16} />

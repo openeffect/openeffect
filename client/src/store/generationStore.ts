@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { GenerationRequest } from '@/types/api'
 import { api } from '@/lib/api'
 import { writeHash } from '@/lib/router'
+import { useEditorStore } from '@/store/editorStore'
 
 interface ActiveJob {
   jobId: string
@@ -97,7 +98,12 @@ export const useGenerationStore = create<GenerationStore>((set, get) => ({
   },
 
   closeJob: () => {
-    writeHash(null)
+    const { isEditorOpen, editingEffectId } = useEditorStore.getState()
+    if (isEditorOpen && editingEffectId) {
+      writeHash(`effects/${editingEffectId}/edit`)
+    } else {
+      writeHash(null)
+    }
     set({ viewingJobId: null, leftPanel: 'gallery', restoredParams: null })
   },
 
@@ -106,9 +112,9 @@ export const useGenerationStore = create<GenerationStore>((set, get) => ({
     try {
       const record = await api.getGeneration(id)
 
-      const manifestData = (typeof record.manifest_json === 'string'
-        ? JSON.parse(record.manifest_json)
-        : record.manifest_json) as {
+      const manifestData = (typeof record.manifest_yaml === 'string'
+        ? JSON.parse(record.manifest_yaml)
+        : record.manifest_yaml) as {
         request?: {
           effect_id?: string
           model_id?: string

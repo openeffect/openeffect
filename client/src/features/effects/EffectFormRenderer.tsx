@@ -9,9 +9,9 @@ interface EffectFormRendererProps {
 
 export function EffectFormRenderer({ manifest, values, onChange }: EffectFormRendererProps) {
   // Separate inputs by role for smart layout
-  const imageInputs = Object.entries(manifest.inputs).filter(([_, s]) => s.type === 'image')
-  const promptInputs = Object.entries(manifest.inputs).filter(([_, s]) => s.type === 'text' && (s.role === 'prompt_input' || (!s.role)))
-  const otherInputs = Object.entries(manifest.inputs).filter(([_, s]) => s.type !== 'image' && !(s.type === 'text' && (s.role === 'prompt_input' || (!s.role))))
+  const imageInputs = Object.entries(manifest.inputs ?? {}).filter(([_, s]) => s.type === 'image')
+  const promptInputs = Object.entries(manifest.inputs ?? {}).filter(([_, s]) => s.type === 'text' && (s.role === 'prompt_input' || (!s.role)))
+  const otherInputs = Object.entries(manifest.inputs ?? {}).filter(([_, s]) => s.type !== 'image' && !(s.type === 'text' && (s.role === 'prompt_input' || (!s.role))))
 
   return (
     <div className="space-y-5">

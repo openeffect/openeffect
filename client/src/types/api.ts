@@ -101,7 +101,7 @@ export interface GenerationRecord {
   progress_msg: string | null
   video_url: string | null
   thumbnail_url: string | null
-  manifest_json: unknown
+  manifest_yaml: unknown
   error: string | null
   created_at: string
   updated_at: string

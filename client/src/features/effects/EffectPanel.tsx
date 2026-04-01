@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, MoreVertical, GitFork, Download, Pencil } from 'lucide-react'
 import { useSelectedEffect, useEffectsStore } from '@/store/effectsStore'
 import { useGenerationStore } from '@/store/generationStore'
 import { useConfigStore } from '@/store/configStore'
+import { useEditorStore } from '@/store/editorStore'
 import { api } from '@/lib/api'
 import { formatEffectType } from '@/lib/formatters'
 import { EffectFormRenderer } from './EffectFormRenderer'
@@ -13,18 +14,23 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import type { GenerationRequest, ModelParam } from '@/types/api'
 
 export function EffectPanel() {
-  const manifest = useSelectedEffect()
+  const selectedEffect = useSelectedEffect()
+  const editorSavedManifest = useEditorStore((s) => s.savedManifest)
+  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
+  const editingEffectId = useEditorStore((s) => s.editingEffectId)
+  const manifest = isEditorOpen ? (editorSavedManifest ?? selectedEffect) : selectedEffect
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const startGeneration = useGenerationStore((s) => s.startGeneration)
   const restoredParams = useGenerationStore((s) => s.restoredParams)
   const availableModels = useConfigStore((s) => s.availableModels)
 
   const [values, setValues] = useState<Record<string, unknown>>({})
-  const [selectedModel, setSelectedModel] = useState(manifest?.generation.default_model ?? '')
+  const [selectedModel, setSelectedModel] = useState(manifest?.generation?.default_model ?? '')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [outputValues, setOutputValues] = useState<Record<string, string | number>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
@@ -69,7 +75,7 @@ export function EffectPanel() {
 
     setValues((prev) => {
       const next: Record<string, unknown> = {}
-      for (const [key, schema] of Object.entries(manifest.inputs)) {
+      for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
         if (key in prev && prev[key] != null) {
           next[key] = prev[key]
         }
@@ -81,7 +87,7 @@ export function EffectPanel() {
     })
 
     setSelectedModel((prev) =>
-      manifest.generation.models.includes(prev) ? prev : manifest.generation.default_model
+      manifest?.generation?.models.includes(prev) ? prev : manifest?.generation?.default_model
     )
     setAdvancedValues((prev) => {
       const validKeys = new Set((modelInfo?.advanced_params ?? []).map((p) => p.key))
@@ -98,9 +104,9 @@ export function EffectPanel() {
     if (!restoredParams || !manifest) return
 
     setSelectedModel(
-      restoredParams.modelId && manifest.generation.models.includes(restoredParams.modelId)
+      restoredParams.modelId && manifest?.generation?.models.includes(restoredParams.modelId)
         ? restoredParams.modelId
-        : manifest.generation.default_model
+        : manifest?.generation?.default_model
     )
 
     if (restoredParams.output) {
@@ -109,7 +115,7 @@ export function EffectPanel() {
 
     const next: Record<string, unknown> = {}
     if (restoredParams.inputs) {
-      for (const [key, schema] of Object.entries(manifest.inputs)) {
+      for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
         if (key in restoredParams.inputs) {
           if (schema.type === 'image') {
             next[key] = { __restored: true, filename: restoredParams.inputs[key] }
@@ -133,7 +139,7 @@ export function EffectPanel() {
   const hasAspectRatioParam = outputParams.some((p) => p.key === 'aspect_ratio')
   useEffect(() => {
     if (!manifest || !hasAspectRatioParam) return
-    for (const [key, schema] of Object.entries(manifest.inputs)) {
+    for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
       if (schema.type === 'image') {
         const val = values[key]
         if (val instanceof File) {
@@ -164,8 +170,17 @@ export function EffectPanel() {
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
+      // Auto-save if editor has unsaved changes
+      if (isEditorOpen && useEditorStore.getState().isDirty()) {
+        await useEditorStore.getState().saveEffect()
+        if (useEditorStore.getState().saveError) {
+          setIsGenerating(false)
+          return
+        }
+      }
+
       const inputs: Record<string, string> = {}
-      for (const [key, schema] of Object.entries(manifest.inputs)) {
+      for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
         if (schema.type === 'image') {
           const val = values[key]
           if (val instanceof File) {
@@ -190,7 +205,7 @@ export function EffectPanel() {
 
       const request: GenerationRequest = {
         effect_id: fullId,
-        model_id: selectedModel || manifest.generation.default_model,
+        model_id: selectedModel || manifest?.generation?.default_model,
         provider_id: selectedProvider,
         inputs,
         output: outputValues,
@@ -216,12 +231,12 @@ export function EffectPanel() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-foreground">
+            <h2 className="truncate text-sm font-bold text-foreground">
               {manifest.name}
             </h2>
-            <Badge variant="accent" className="font-semibold uppercase tracking-wider">
+            <Badge variant="accent" className="shrink-0 font-semibold uppercase tracking-wider">
               {formatEffectType(manifest.type)}
             </Badge>
           </div>
@@ -229,22 +244,31 @@ export function EffectPanel() {
             {manifest.description}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => selectEffect(null)}
-        >
-          <X size={14} />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1 ml-2">
+          {!(isEditorOpen && !editingEffectId) && <EffectMenu effect={manifest} />}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => {
+              if (isEditorOpen) {
+                if (!useEditorStore.getState().confirmClose()) return
+                useEditorStore.getState().closeEditor()
+              }
+              selectEffect(null)
+            }}
+          >
+            <X size={14} />
+          </Button>
+        </div>
       </div>
 
       {/* Form body */}
       <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <ModelSelector
-          models={manifest.generation.models}
+          models={manifest?.generation?.models ?? []}
           availableModels={availableModels}
-          selectedModel={selectedModel || manifest.generation.default_model}
+          selectedModel={selectedModel || manifest?.generation?.default_model}
           selectedProvider={selectedProvider}
           onModelChange={setSelectedModel}
           onProviderChange={setSelectedProvider}
@@ -271,7 +295,7 @@ export function EffectPanel() {
             parameters={advancedParams}
             values={advancedValues}
             onChange={handleAdvancedChange}
-            manifestDefaults={manifest.generation.defaults}
+            manifestDefaults={manifest?.generation?.defaults}
           />
         )}
       </div>
@@ -357,4 +381,53 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
   }
 
   return null
+}
+
+/* ─── Three-dot menu for Fork / Edit / Export ─── */
+function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }) {
+  const forkEffect = useEditorStore((s) => s.forkEffect)
+  const isLocal = effect.source === 'local'
+
+  const handleFork = () => forkEffect(effect)
+
+  const handleEdit = async () => {
+    const fullId = `${effect.namespace}/${effect.id}`
+    try {
+      const { yaml, files } = await api.getEffectEditorData(effect.namespace, effect.id)
+      useEditorStore.getState().openEditor(yaml, fullId, effect, files)
+    } catch {
+      // Fallback: fork instead
+      forkEffect(effect)
+    }
+  }
+
+  const handleExport = () => {
+    window.open(api.exportEffect(effect.namespace, effect.id), '_blank')
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-7 w-7">
+          <MoreVertical size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={handleFork}>
+          <GitFork size={14} />
+          Fork
+        </DropdownMenuItem>
+        {isLocal && (
+          <DropdownMenuItem onClick={handleEdit}>
+            <Pencil size={14} />
+            Edit
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={handleExport}>
+          <Download size={14} />
+          Export
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }

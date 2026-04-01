@@ -1,4 +1,4 @@
-import json
+import yaml
 import aiosqlite
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,7 +19,7 @@ class GenerationRecord:
     progress_msg: str | None = None
     video_url: str | None = None
     thumbnail_url: str | None = None
-    manifest_json: str | None = None
+    manifest_yaml: str | None = None
     prompt_used: str | None = None
     error: str | None = None
     created_at: str = ""
@@ -29,13 +29,13 @@ class GenerationRecord:
     provider_endpoint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        # Parse manifest_json from string to dict for output
+        # Parse manifest_yaml from string to dict for output
         manifest = None
-        if self.manifest_json:
+        if self.manifest_yaml:
             try:
-                manifest = json.loads(self.manifest_json)
-            except (json.JSONDecodeError, TypeError):
-                manifest = self.manifest_json
+                manifest = yaml.safe_load(self.manifest_yaml)
+            except (yaml.YAMLError, TypeError):
+                manifest = self.manifest_yaml
 
         return {
             "id": self.id,
@@ -47,7 +47,7 @@ class GenerationRecord:
             "progress_msg": self.progress_msg,
             "video_url": self.video_url,
             "thumbnail_url": self.thumbnail_url,
-            "manifest_json": manifest,
+            "manifest_yaml": manifest,
             "error": self.error,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -76,18 +76,18 @@ class HistoryService:
             await self._db.close()
             self._db = None
 
-    async def create_processing(self, job: Any, manifest_json: str | None = None, prompt_used: str | None = None) -> GenerationRecord:
+    async def create_processing(self, job: Any, manifest_yaml: str | None = None, prompt_used: str | None = None) -> GenerationRecord:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            """INSERT INTO generations (id, effect_id, effect_name, model_id, status, progress, progress_msg, manifest_json, prompt_used, created_at, updated_at)
+            """INSERT INTO generations (id, effect_id, effect_name, model_id, status, progress, progress_msg, manifest_yaml, prompt_used, created_at, updated_at)
                VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?, ?)""",
-            (job.job_id, job.effect_id, job.effect_name, job.model_id, manifest_json, prompt_used, now, now),
+            (job.job_id, job.effect_id, job.effect_name, job.model_id, manifest_yaml, prompt_used, now, now),
         )
         await db.commit()
         return GenerationRecord(
             id=job.job_id, effect_id=job.effect_id, effect_name=job.effect_name,
-            model_id=job.model_id, status="processing", manifest_json=manifest_json,
+            model_id=job.model_id, status="processing", manifest_yaml=manifest_yaml,
             created_at=now, updated_at=now,
         )
 

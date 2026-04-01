@@ -27,7 +27,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText, code: 'UNKNOWN' }))
-    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? res.statusText)
+    const detail = body.detail ?? body
+    throw new ApiError(res.status, detail.code ?? body.code ?? 'UNKNOWN', detail.error ?? body.error ?? res.statusText)
   }
 
   return res.json() as Promise<T>
@@ -106,6 +107,46 @@ export const api = {
   getModels: () =>
     request<{ models: AppConfig['available_models'] }>('/api/models').then((r) => r.models),
 
+  // Effect editor
+  saveEffect: (yamlContent: string, effectId: string | null, forkFrom?: string) =>
+    request<{ effect_id: string; manifest: EffectManifest }>('/api/effects/save', {
+      method: 'POST',
+      body: JSON.stringify({ yaml_content: yamlContent, effect_id: effectId, fork_from: forkFrom }),
+    }),
+
+  getEffectEditorData: (namespace: string, effectId: string) =>
+    request<{ yaml: string; files: { filename: string; size: number; url: string }[] }>(
+      `/api/effects/${namespace}/${effectId}/editor`,
+    ),
+
+  exportEffect: (namespace: string, effectId: string) =>
+    `/api/effects/${namespace}/${effectId}/export`,
+
+  uploadAsset: async (namespace: string, effectId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`/api/effects/${namespace}/${effectId}/assets/upload`, {
+      method: 'POST',
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }))
+      const detail = body.detail ?? body
+      throw new ApiError(res.status, detail.code ?? 'UNKNOWN', detail.error ?? res.statusText)
+    }
+    return res.json() as Promise<{ filename: string; size: number; url: string }>
+  },
+
+  deleteAsset: (namespace: string, effectId: string, filename: string) =>
+    request<{ ok: boolean }>(`/api/effects/${namespace}/${effectId}/assets/file/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    }),
+
+  renameAsset: (namespace: string, effectId: string, oldName: string, newName: string) =>
+    request<{ filename: string; size: number; url: string }>(
+      `/api/effects/${namespace}/${effectId}/assets/file/${encodeURIComponent(oldName)}`,
+      { method: 'PATCH', body: JSON.stringify({ new_name: newName }) },
+    ),
 }
 
 export { ApiError }

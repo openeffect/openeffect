@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Type } from 'lucide-react'
+import { ArrowRight, Type, Sparkles } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
+import { isVideoUrl } from '@/lib/formatters'
 import { Badge } from '@/components/ui/badge'
 
 interface EffectHeroProps {
@@ -40,7 +41,11 @@ export function EffectHero({ effect }: EffectHeroProps) {
           {inputBlocks.length > 0 && previewUrl && <PipelineArrow delay={0.1 + inputBlocks.length * 0.08} />}
           {previewUrl && (
             <MediaBlock delay={0.1 + inputBlocks.length * 0.08 + 0.05}>
-              <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" />
+              {isVideoUrl(previewUrl) ? (
+                <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              ) : (
+                <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              )}
             </MediaBlock>
           )}
         </div>
@@ -69,7 +74,7 @@ function InputBlock({ block, delay }: { block: { type: string; assetUrl: string 
   if (block.type === 'image' && block.assetUrl) {
     return (
       <MediaBlock delay={delay}>
-        <img src={block.assetUrl} alt="" className="h-full w-full object-cover" />
+        <img src={block.assetUrl} alt="" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
       </MediaBlock>
     )
   }
@@ -97,8 +102,11 @@ function MediaBlock({ children, delay = 0 }: { children: React.ReactNode; delay?
       initial={{ scale: 0.92, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ delay, duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
-      className="relative flex-1 overflow-hidden rounded-xl border shadow-sm"
+      className="relative flex-1 overflow-hidden rounded-xl border bg-muted shadow-sm"
     >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Sparkles size={24} className="text-muted-foreground opacity-30" />
+      </div>
       {children}
     </motion.div>
   )

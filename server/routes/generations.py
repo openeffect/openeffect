@@ -1,5 +1,5 @@
-import json
 import shutil
+import yaml
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import FileResponse
 from config.settings import get_settings
@@ -53,12 +53,12 @@ async def delete_generation(item_id: str, request: Request):
     if record.status == "processing":
         raise HTTPException(status_code=409, detail={"error": "Cannot delete a processing record", "code": "CONFLICT"})
 
-    # Extract upload hashes from manifest_json and decrement refs
+    # Extract upload hashes from manifest_yaml and decrement refs
     storage = request.app.state.storage_service
     ref_ids: list[str] = []
-    if record.manifest_json:
+    if record.manifest_yaml:
         try:
-            manifest_data = json.loads(record.manifest_json)
+            manifest_data = yaml.safe_load(record.manifest_yaml)
             inputs = manifest_data.get("request", {}).get("inputs", {})
             effect_data = manifest_data.get("effect", {})
             effect_inputs = effect_data.get("inputs", {})
@@ -67,7 +67,7 @@ async def delete_generation(item_id: str, request: Request):
                 input_type = input_def.get("type", "") if isinstance(input_def, dict) else ""
                 if input_type == "image" and isinstance(value, str):
                     ref_ids.append(value)
-        except (json.JSONDecodeError, TypeError, AttributeError):
+        except (yaml.YAMLError, TypeError, AttributeError):
             pass
 
     if ref_ids:

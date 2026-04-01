@@ -14,6 +14,12 @@ export function formatRelativeTime(isoDate: string): string {
   return date.toLocaleDateString()
 }
 
+const VIDEO_EXTS = /\.(mp4|webm|mov|avi)(\?|$)/i
+
+export function isVideoUrl(url: string): boolean {
+  return VIDEO_EXTS.test(url)
+}
+
 export function formatEffectType(type: string): string {
   return type
     .split(/[-_]/)

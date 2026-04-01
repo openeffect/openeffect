@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import shutil
 import time
@@ -8,6 +7,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 import uuid_utils
+import yaml
 
 from config.settings import get_settings
 from services.effect_loader import EffectLoaderService
@@ -85,10 +85,10 @@ class GenerationService:
             elif key in request.inputs:
                 saved_inputs[key] = request.inputs[key]
 
-        # Build the prompt for manifest_json
+        # Build the prompt for manifest_yaml
         prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
 
-        # Build manifest_json with effect manifest (without assets), request params, and built prompt
+        # Build manifest_yaml with effect manifest (without assets), request params, and built prompt
         manifest_data = {
             "effect": manifest.model_dump(exclude={"assets"}),
             "request": {
@@ -101,9 +101,9 @@ class GenerationService:
             },
             "prompt": prompt,
         }
-        manifest_json_str = json.dumps(manifest_data)
+        manifest_yaml_str = yaml.dump(manifest_data, default_flow_style=False, sort_keys=False)
 
-        await self._history.create_processing(job, manifest_json=manifest_json_str, prompt_used=prompt)
+        await self._history.create_processing(job, manifest_yaml=manifest_yaml_str, prompt_used=prompt)
 
         asyncio.create_task(self._run_job(job, request, manifest))
 
@@ -118,9 +118,9 @@ class GenerationService:
             overflow_ids = await self._history.get_overflow_ids(max_items=100)
             for old_id in overflow_ids:
                 old_record = await self._history.get_by_id(old_id)
-                if old_record and old_record.manifest_json:
+                if old_record and old_record.manifest_yaml:
                     try:
-                        old_manifest = json.loads(old_record.manifest_json)
+                        old_manifest = yaml.safe_load(old_record.manifest_yaml)
                         # Use effect input types to find image fields
                         effect_inputs = old_manifest.get("effect", {}).get("inputs", {})
                         request_inputs = old_manifest.get("request", {}).get("inputs", {})
@@ -131,7 +131,7 @@ class GenerationService:
                         ]
                         if ref_ids:
                             await self._storage.decrement_refs_and_cleanup(ref_ids)
-                    except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    except (yaml.YAMLError, TypeError, KeyError) as e:
                         logger.warning(f"Failed to parse manifest for cleanup of {old_id}: {e}")
                 await self._history.delete(old_id)
                 gen_folder = GenerationRecord.generation_folder(old_id)

@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
+import { Sparkles } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
 import { useEffectsStore } from '@/store/effectsStore'
-import { formatEffectType } from '@/lib/formatters'
+import { formatEffectType, isVideoUrl } from '@/lib/formatters'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -31,7 +32,11 @@ export function EffectCard({ effect }: EffectCardProps) {
       )}
       whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
     >
-      <div className="relative aspect-[3/4] overflow-hidden">
+      <div className="relative aspect-[3/4] overflow-hidden bg-muted">
+        {/* Placeholder — always rendered behind, visible when no assets or assets fail to load */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Sparkles size={28} className="text-muted-foreground opacity-30" />
+        </div>
         {/* Static poster as fallback */}
         {posterUrl && (
           <img
@@ -39,10 +44,11 @@ export function EffectCard({ effect }: EffectCardProps) {
             alt={effect.name}
             className="absolute inset-0 h-full w-full object-cover"
             loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         )}
-        {/* Preview video plays on top */}
-        {previewUrl && (
+        {/* Preview (video or image) plays on top */}
+        {previewUrl && (isVideoUrl(previewUrl) ? (
           <video
             src={previewUrl}
             autoPlay
@@ -51,8 +57,17 @@ export function EffectCard({ effect }: EffectCardProps) {
             playsInline
             preload="auto"
             className="absolute inset-0 h-full w-full object-cover"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
-        )}
+        ) : (
+          <img
+            src={previewUrl}
+            alt={effect.name}
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+          />
+        ))}
         {/* Gradient overlay at bottom */}
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent" />
         {/* Category badge */}

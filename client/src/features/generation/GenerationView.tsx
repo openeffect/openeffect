@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, AlertCircle, Download } from 'lucide-react'
+import { Sparkles, AlertCircle, Download, ArrowLeft } from 'lucide-react'
 import { useGenerationStore } from '@/store/generationStore'
+import { useEditorStore } from '@/store/editorStore'
 import { Progress } from '@/components/ui/progress'
 import { VideoPlayer } from '@/primitives/VideoPlayer'
 import { Button } from '@/components/ui/button'
@@ -68,9 +69,12 @@ function ProgressView({
         </div>
       </div>
 
-      <p className="mt-10 text-xs text-muted-foreground">
-        You can close this and check progress in History
-      </p>
+      <div className="mt-10 flex flex-col items-center gap-2">
+        <BackToEditorButton />
+        <p className="text-xs text-muted-foreground">
+          You can close this and check progress in History
+        </p>
+      </div>
     </motion.div>
   )
 }
@@ -121,6 +125,7 @@ function ResultView({
           {job.videoUrl && <VideoPlayer src={job.videoUrl} autoPlay />}
         </div>
       </div>
+      <BackToEditorButton className="shrink-0 pb-4 text-center" />
     </motion.div>
   )
 }
@@ -152,6 +157,25 @@ function FailedView({
       <p className="max-w-md text-center text-sm leading-relaxed text-secondary-foreground">
         {job.error || 'An unexpected error occurred'}
       </p>
+      <BackToEditorButton className="mt-6" />
     </motion.div>
+  )
+}
+
+/* --- Back to Editor --- */
+function BackToEditorButton({ className }: { className?: string }) {
+  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
+  if (!isEditorOpen) return null
+  return (
+    <div className={className}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => useGenerationStore.getState().closeJob()}
+      >
+        <ArrowLeft size={14} />
+        Back to Editor
+      </Button>
+    </div>
   )
 }

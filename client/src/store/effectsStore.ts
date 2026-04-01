@@ -3,6 +3,7 @@ import type { EffectManifest } from '@/types/api'
 import { api } from '@/lib/api'
 import { parseHash, writeHash, initPopstateListener } from '@/lib/router'
 import { useGenerationStore } from '@/store/generationStore'
+import { useEditorStore } from '@/store/editorStore'
 
 // ─── Store ───
 
@@ -20,6 +21,21 @@ interface EffectsStore {
   setSearchQuery: (q: string) => void
   setActiveSource: (source: 'all' | 'official' | 'installed') => void
   setActiveCategory: (cat: string) => void
+}
+
+async function restoreEditor(effectId: string) {
+  try {
+    const [ns, id] = effectId.split('/')
+    if (!ns || !id) return
+    const { yaml, files } = await api.getEffectEditorData(ns, id)
+    const effects = useEffectsStore.getState().effects
+    const manifest = effects.find((e) => `${e.namespace}/${e.id}` === effectId)
+    useEditorStore.getState().openEditor(yaml, effectId, manifest, files)
+    useEffectsStore.getState().selectEffect(effectId, true)
+  } catch {
+    // Effect not found — go to gallery
+    writeHash(null)
+  }
 }
 
 function isValidEffectId(effects: EffectManifest[], id: string): boolean {
@@ -46,6 +62,9 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
 
       if (parsed?.mode === 'effect' && isValidEffectId(effects, parsed.id)) {
         selectedEffectId = parsed.id
+      } else if (parsed?.mode === 'edit') {
+        // Restore editor from URL
+        restoreEditor(parsed.id)
       } else if (parsed?.mode === 'generation') {
         useGenerationStore.getState().restoreFromUrl(parsed.id).then((effectId) => {
           if (effectId) useEffectsStore.getState().selectEffect(effectId, true)
@@ -56,7 +75,11 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
 
       // Wire up popstate listener now that effects are loaded
       initPopstateListener(
-        (id) => useEffectsStore.setState({ selectedEffectId: id }),
+        (id) => {
+          useEditorStore.getState().closeEditor()
+          useEffectsStore.setState({ selectedEffectId: id })
+        },
+        (id) => restoreEditor(id),
         (id) => {
           useGenerationStore.getState().restoreFromUrl(id).then((effectId) => {
             if (effectId) useEffectsStore.getState().selectEffect(effectId, true)
@@ -64,6 +87,7 @@ export const useEffectsStore = create<EffectsStore>((set) => ({
         },
         () => {
           useGenerationStore.getState().closeJob()
+          useEditorStore.getState().closeEditor()
           useEffectsStore.setState({ selectedEffectId: null })
         },
         (id) => isValidEffectId(useEffectsStore.getState().effects, id),

@@ -1,13 +1,29 @@
+import io
+import os
+import zipfile
 from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+
+import yaml as pyyaml
+from effects.validator import EffectManifest
 
 router = APIRouter()
 
 
 class InstallUrlRequest(BaseModel):
     url: str
+
+
+class SaveEffectRequest(BaseModel):
+    yaml_content: str
+    effect_id: str | None = None  # null = new effect
+    fork_from: str | None = None  # namespace/id to copy assets from
+
+
+class RenameAssetRequest(BaseModel):
+    new_name: str
 
 
 def _serialize_effect(loaded) -> dict:
@@ -96,3 +112,210 @@ async def update_effect(namespace: str, effect_id: str, request: Request):
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"error": str(e), "code": "UPDATE_ERROR"})
+
+
+@router.post("/effects/save")
+async def save_effect(body: SaveEffectRequest, request: Request):
+    """Save or create a local effect from YAML content."""
+    install_service = request.app.state.install_service
+    loader = request.app.state.effect_loader
+
+    try:
+        # Parse YAML
+        try:
+            data = pyyaml.safe_load(body.yaml_content)
+        except pyyaml.YAMLError as e:
+            mark = getattr(e, 'problem_mark', None)
+            loc = f" (line {mark.line + 1})" if mark else ""
+            raise ValueError(f"Invalid YAML syntax{loc}: {getattr(e, 'problem', str(e))}")
+
+        if not isinstance(data, dict):
+            raise ValueError("YAML must be a mapping (key: value pairs)")
+
+        # Validate manifest schema
+        from pydantic import ValidationError
+        try:
+            manifest = EffectManifest(**data)
+        except ValidationError as e:
+            errors = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
+            raise ValueError("; ".join(errors))
+
+        # Save via install service
+        full_id = await install_service.save_local_effect(
+            manifest, body.yaml_content, body.effect_id, fork_from=body.fork_from
+        )
+        await loader.reload()
+
+        # Return the parsed manifest with source info for the UI
+        loaded = loader.get_loaded(full_id)
+        manifest_data = _serialize_effect(loaded) if loaded else manifest.model_dump()
+
+        return {"effect_id": full_id, "manifest": manifest_data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": str(e), "code": "SAVE_ERROR"})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={"error": str(e), "code": "SAVE_ERROR"})
+
+
+@router.get("/effects/{namespace}/{effect_id}/editor")
+async def get_effect_editor_data(namespace: str, effect_id: str, request: Request):
+    """Get YAML + asset list for the editor in one request."""
+    install_service = request.app.state.install_service
+    existing = await install_service._get_existing(namespace, effect_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail={"error": "Effect not found", "code": "NOT_FOUND"})
+
+    effect_dir = Path(existing["assets_dir"])
+    uuid = effect_dir.name
+
+    # YAML
+    manifest_path = effect_dir / "manifest.yaml"
+    yaml_content = manifest_path.read_text() if manifest_path.exists() else existing["manifest_yaml"]
+
+    # Assets
+    assets_dir = effect_dir / "assets"
+    files = []
+    if assets_dir.exists():
+        for f in sorted(assets_dir.iterdir()):
+            if f.is_file():
+                files.append({
+                    "filename": f.name,
+                    "size": f.stat().st_size,
+                    "url": f"/api/effects/assets/{uuid}/{f.name}",
+                })
+
+    return {"yaml": yaml_content, "files": files}
+
+
+@router.get("/effects/{namespace}/{effect_id}/export")
+async def export_effect(namespace: str, effect_id: str, request: Request):
+    """Export an effect as a .zip archive."""
+    install_service = request.app.state.install_service
+    existing = await install_service._get_existing(namespace, effect_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail={"error": "Effect not found", "code": "NOT_FOUND"})
+
+    assets_dir = Path(existing["assets_dir"])
+    effect_name = f"{namespace}-{effect_id}"
+
+    # Create zip in memory
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add manifest
+        manifest_path = assets_dir / "manifest.yaml"
+        if manifest_path.exists():
+            zf.write(manifest_path, f"{effect_name}/manifest.yaml")
+        else:
+            # Fallback: write manifest_yaml directly from DB
+            zf.writestr(f"{effect_name}/manifest.yaml", existing["manifest_yaml"])
+
+        # Add assets
+        assets_subdir = assets_dir / "assets"
+        if assets_subdir.exists():
+            for asset_file in assets_subdir.rglob("*"):
+                if asset_file.is_file():
+                    arcname = f"{effect_name}/assets/{asset_file.relative_to(assets_subdir)}"
+                    zf.write(asset_file, arcname)
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{effect_name}.zip"'},
+    )
+
+
+# ─── Asset CRUD ───
+
+async def _get_assets_dir_async(install_service, namespace: str, effect_id: str) -> tuple[Path, str]:
+    """Returns (assets_dir_path, effect_uuid)."""
+    existing = await install_service._get_existing(namespace, effect_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail={"error": "Effect not found", "code": "NOT_FOUND"})
+    effect_dir = Path(existing["assets_dir"])
+    assets_dir = effect_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    uuid = Path(existing["assets_dir"]).name
+    return assets_dir, uuid
+
+
+def _auto_suffix(assets_dir: Path, filename: str) -> str:
+    """If filename exists, add suffix like macOS: file.mp4 → file 2.mp4 → file 3.mp4."""
+    stem, ext = os.path.splitext(filename)
+    if not (assets_dir / filename).exists():
+        return filename
+    n = 2
+    while (assets_dir / f"{stem} {n}{ext}").exists():
+        n += 1
+    return f"{stem} {n}{ext}"
+
+
+def _safe_filename(filename: str) -> str:
+    """Sanitize filename — no path traversal, no slashes."""
+    name = Path(filename).name  # strip any directory components
+    if not name or name.startswith('.') or '..' in name:
+        raise HTTPException(status_code=400, detail={"error": "Invalid filename", "code": "BAD_REQUEST"})
+    return name
+
+
+
+@router.post("/effects/{namespace}/{effect_id}/assets/upload")
+async def upload_asset(namespace: str, effect_id: str, request: Request, file: UploadFile = File(...)):
+    """Upload a file to the effect's assets folder."""
+    install_service = request.app.state.install_service
+    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, effect_id)
+
+    original_name = _safe_filename(file.filename or "upload")
+    final_name = _auto_suffix(assets_dir, original_name)
+    dest = assets_dir / final_name
+
+    content = await file.read()
+    dest.write_bytes(content)
+
+    return {
+        "filename": final_name,
+        "size": len(content),
+        "url": f"/api/effects/assets/{uuid}/{final_name}",
+    }
+
+
+@router.delete("/effects/{namespace}/{effect_id}/assets/file/{filename:path}")
+async def delete_asset(namespace: str, effect_id: str, filename: str, request: Request):
+    """Delete an asset file."""
+    install_service = request.app.state.install_service
+    assets_dir, _ = await _get_assets_dir_async(install_service, namespace, effect_id)
+
+    safe_name = _safe_filename(filename)
+    file_path = assets_dir / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail={"error": "File not found", "code": "NOT_FOUND"})
+
+    file_path.unlink()
+    return {"ok": True}
+
+
+@router.patch("/effects/{namespace}/{effect_id}/assets/file/{filename:path}")
+async def rename_asset(namespace: str, effect_id: str, filename: str, body: RenameAssetRequest, request: Request):
+    """Rename an asset file."""
+    install_service = request.app.state.install_service
+    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, effect_id)
+
+    old_name = _safe_filename(filename)
+    new_name = _safe_filename(body.new_name)
+    old_path = assets_dir / old_name
+
+    if not old_path.exists():
+        raise HTTPException(status_code=404, detail={"error": "File not found", "code": "NOT_FOUND"})
+
+    # Auto-suffix if new name conflicts (but not with itself)
+    if new_name != old_name:
+        new_name = _auto_suffix(assets_dir, new_name)
+
+    new_path = assets_dir / new_name
+    old_path.rename(new_path)
+
+    return {
+        "filename": new_name,
+        "size": new_path.stat().st_size,
+        "url": f"/api/effects/assets/{uuid}/{new_name}",
+    }

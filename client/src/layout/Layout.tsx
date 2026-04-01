@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { AnimatePresence, motion, LayoutGroup } from 'framer-motion'
 import { Header } from './Header'
 import { EffectGallery } from '@/features/effects/EffectGallery'
 import { EffectPanel } from '@/features/effects/EffectPanel'
+
+const EffectEditor = lazy(() => import('@/features/editor/EffectEditor').then((m) => ({ default: m.EffectEditor })))
 import { GenerationView } from '@/features/generation/GenerationView'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { EffectsManagerDialog } from '@/features/settings/EffectsManagerDialog'
@@ -10,6 +12,7 @@ import { OnboardingDialog } from '@/features/settings/OnboardingDialog'
 import { useGenerationStore } from '@/store/generationStore'
 import { useSelectedEffect } from '@/store/effectsStore'
 import { useConfigStore } from '@/store/configStore'
+import { useEditorStore } from '@/store/editorStore'
 import { useSse } from '@/hooks/useSse'
 
 const PANEL_WIDTH_PERCENT = 35
@@ -29,11 +32,15 @@ export function Layout() {
   const activeJobs = useGenerationStore((s) => s.activeJobs)
   const selectedEffect = useSelectedEffect()
   const showOnboarding = useConfigStore((s) => s.showOnboarding)
+  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
 
   useSse(viewingJobId)
 
-  const rightOpen = !!selectedEffect
+  const rightOpen = !!selectedEffect || isEditorOpen
   const showGeneration = viewingJobId && activeJobs.has(viewingJobId)
+
+  // Left panel priority: generation > editor > gallery
+  const leftPanelKey = showGeneration ? 'generation' : isEditorOpen ? 'editor' : 'gallery'
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -49,7 +56,7 @@ export function Layout() {
             transition={{ duration: SLIDE_DURATION, ease: SLIDE_EASE }}
           >
             <AnimatePresence mode="popLayout">
-              {showGeneration ? (
+              {leftPanelKey === 'generation' && (
                 <motion.div
                   key="generation"
                   variants={panelVariants}
@@ -60,7 +67,20 @@ export function Layout() {
                 >
                   <GenerationView />
                 </motion.div>
-              ) : (
+              )}
+              {leftPanelKey === 'editor' && (
+                <motion.div
+                  key="editor"
+                  variants={panelVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="h-full"
+                >
+                  <Suspense><EffectEditor /></Suspense>
+                </motion.div>
+              )}
+              {leftPanelKey === 'gallery' && (
                 <motion.div
                   key="gallery"
                   variants={panelVariants}
@@ -77,7 +97,7 @@ export function Layout() {
 
           {/* Right: Effect settings panel */}
           <AnimatePresence>
-            {selectedEffect && (
+            {(selectedEffect || isEditorOpen) && (
               <motion.div
                 initial={{ x: '100%' }}
                 animate={{ x: 0, transition: { duration: SLIDE_DURATION, ease: SLIDE_EASE } }}

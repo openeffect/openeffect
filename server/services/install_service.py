@@ -1,5 +1,4 @@
 import io
-import json
 import logging
 import shutil
 import tempfile
@@ -141,11 +140,13 @@ class InstallService:
             )
 
             # Insert into DB
+            yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
             await self._insert_effect(
                 uuid=uuid,
                 manifest=manifest,
                 source="url",
                 assets_dir=str(effect_dir),
+                yaml_content=yaml_content,
             )
 
             return [manifest.full_id]
@@ -213,7 +214,8 @@ class InstallService:
     async def _install_from_extracted(
         self, manifest_path: Path, allow_official: bool
     ) -> str:
-        data = yaml.safe_load(manifest_path.read_text())
+        yaml_content = manifest_path.read_text()
+        data = yaml.safe_load(yaml_content)
         manifest = EffectManifest(**data)
 
         if not allow_official:
@@ -258,13 +260,82 @@ class InstallService:
         source = "official" if manifest.namespace == "openeffect" else "archive"
 
         if existing:
-            await self._update_effect(uuid, manifest, source, str(effect_dir))
+            await self._update_effect(uuid, manifest, source, str(effect_dir), yaml_content=yaml_content)
         else:
             await self._insert_effect(
                 uuid=uuid,
                 manifest=manifest,
                 source=source,
                 assets_dir=str(effect_dir),
+                yaml_content=yaml_content,
+            )
+
+        return manifest.full_id
+
+    # ─── Save local effect ───
+
+    async def save_local_effect(
+        self, manifest: EffectManifest, yaml_content: str, existing_effect_id: str | None = None, fork_from: str | None = None
+    ) -> str:
+        """Save or update a locally created/forked effect. fork_from = namespace/id to copy assets from."""
+        if existing_effect_id:
+            # Update existing local effect
+            parts = existing_effect_id.split("/", 1)
+            if len(parts) != 2:
+                raise ValueError("Invalid effect_id format")
+            ns, eid = parts
+            existing = await self._get_existing(ns, eid)
+            if not existing:
+                raise ValueError(f"Effect {existing_effect_id} not found")
+            if existing["source"] not in ("local", "archive"):
+                raise ValueError("Cannot edit non-local effects")
+
+            uuid = existing["id"]
+            effect_dir = Path(existing["assets_dir"])
+            effect_dir.mkdir(parents=True, exist_ok=True)
+
+            # Update manifest file
+            (effect_dir / "manifest.yaml").write_text(yaml_content)
+
+            await self._update_effect(uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content)
+        else:
+            # Create new local effect — auto-suffix if ID already taken (like macOS file naming)
+            import re
+            base_id = manifest.id
+            suffix = 1
+            while await self._get_existing(manifest.namespace, manifest.id):
+                suffix += 1
+                new_id = f"{base_id}-{suffix}"
+                data = manifest.model_dump()
+                data["id"] = new_id
+                manifest = EffectManifest(**data)
+                yaml_content = re.sub(r'^id:\s*.+$', f'id: {new_id}', yaml_content, count=1, flags=re.MULTILINE)
+
+            uuid = str(uuid_utils.uuid7())
+            effect_dir = self._effects_dir / uuid
+            assets_dir = effect_dir / "assets"
+            assets_dir.mkdir(parents=True)
+
+            # Copy assets from source effect if forking
+            if fork_from:
+                parts = fork_from.split("/", 1)
+                if len(parts) == 2:
+                    source = await self._get_existing(parts[0], parts[1])
+                    if source:
+                        source_assets = Path(source["assets_dir"]) / "assets"
+                        if source_assets.exists():
+                            for src_file in source_assets.iterdir():
+                                if src_file.is_file():
+                                    shutil.copy2(str(src_file), str(assets_dir / src_file.name))
+
+            (effect_dir / "manifest.yaml").write_text(yaml_content)
+
+            await self._insert_effect(
+                uuid=uuid,
+                manifest=manifest,
+                source="local",
+                assets_dir=str(effect_dir),
+                yaml_content=yaml_content,
             )
 
         return manifest.full_id
@@ -362,13 +433,15 @@ class InstallService:
         return files
 
     async def _insert_effect(
-        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str
+        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        if yaml_content is None:
+            yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         db = await self._get_db()
         try:
             await db.execute(
-                """INSERT INTO effects (id, namespace, effect_id, source, source_url, manifest_json, assets_dir, version, installed_at, updated_at)
+                """INSERT INTO effects (id, namespace, effect_id, source, source_url, manifest_yaml, assets_dir, version, installed_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     uuid,
@@ -376,7 +449,7 @@ class InstallService:
                     manifest.id,
                     source,
                     manifest.url,
-                    manifest.model_dump_json(),
+                    yaml_content,
                     assets_dir,
                     manifest.version,
                     now,
@@ -388,21 +461,23 @@ class InstallService:
             await db.close()
 
     async def _update_effect(
-        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str
+        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        if yaml_content is None:
+            yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         db = await self._get_db()
         try:
             await db.execute(
                 """UPDATE effects SET namespace=?, effect_id=?, source=?, source_url=?,
-                   manifest_json=?, assets_dir=?, version=?, updated_at=?
+                   manifest_yaml=?, assets_dir=?, version=?, updated_at=?
                    WHERE id=?""",
                 (
                     manifest.namespace,
                     manifest.id,
                     source,
                     manifest.url,
-                    manifest.model_dump_json(),
+                    yaml_content,
                     assets_dir,
                     manifest.version,
                     now,

@@ -1,7 +1,8 @@
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 from effects.validator import EffectManifest
 from services.install_service import InstallService
@@ -48,7 +49,7 @@ class EffectLoaderService:
 
         for row in rows:
             try:
-                manifest_data = json.loads(row["manifest_json"])
+                manifest_data = yaml.safe_load(row["manifest_yaml"])
                 manifest = EffectManifest(**manifest_data)
                 full_id = f"{manifest.namespace}/{manifest.id}"
                 assets_dir = Path(row["assets_dir"])

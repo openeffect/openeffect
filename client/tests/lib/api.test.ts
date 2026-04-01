@@ -80,10 +80,15 @@ describe('api', () => {
     })
   })
 
-  describe('getAssetUrl', () => {
-    it('builds correct URL', () => {
-      const url = api.getAssetUrl('single-image/zoom-from-space', 'thumbnail.jpg')
-      expect(url).toBe('/api/effects/single-image/zoom-from-space/assets/thumbnail.jpg')
+  describe('installEffectFromUrl', () => {
+    it('sends install request with URL', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ installed: ['jane/zoom-from-space'] }),
+      } as Response)
+
+      const result = await api.installEffectFromUrl('https://example.com/manifest.yaml')
+      expect(result.installed).toEqual(['jane/zoom-from-space'])
     })
   })
 

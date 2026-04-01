@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config.settings import get_settings
 from config.config_service import ConfigService
+from services.install_service import InstallService
 from services.effect_loader import EffectLoaderService
 from services.generation_service import GenerationService
 from services.history_service import HistoryService
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     settings.user_data_dir.mkdir(parents=True, exist_ok=True)
     (settings.user_data_dir / "uploads").mkdir(exist_ok=True)
     (settings.user_data_dir / "generations").mkdir(exist_ok=True)
+    (settings.user_data_dir / "effects").mkdir(exist_ok=True)
 
     # Init DB
     db_path = settings.user_data_dir / "openeffect.db"
@@ -30,7 +32,17 @@ async def lifespan(app: FastAPI):
 
     # Init services
     config_service = ConfigService(settings.user_data_dir / "config.json")
-    effect_loader = EffectLoaderService(settings.effects_dir)
+
+    install_service = InstallService(
+        db_path=db_path,
+        effects_dir=settings.user_data_dir / "effects",
+    )
+
+    bundled_zip = settings.effects_dir / "openeffect-effects.zip"
+    effect_loader = EffectLoaderService(
+        install_service=install_service,
+        bundled_zip_path=bundled_zip if bundled_zip.exists() else None,
+    )
     await effect_loader.load_all()
 
     storage_service = StorageService(
@@ -53,6 +65,7 @@ async def lifespan(app: FastAPI):
     # Store services on app state
     app.state.settings = settings
     app.state.config_service = config_service
+    app.state.install_service = install_service
     app.state.effect_loader = effect_loader
     app.state.generation_service = generation_service
     app.state.history_service = history_service

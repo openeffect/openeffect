@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion'
 import type { EffectManifest } from '@/types/api'
-import { api } from '@/lib/api'
 import { useEffectsStore } from '@/store/effectsStore'
 import { formatEffectType } from '@/lib/formatters'
 import { Badge } from '@/components/ui/badge'
@@ -14,11 +13,12 @@ export function EffectCard({ effect }: EffectCardProps) {
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const selectedId = useEffectsStore((s) => s.selectedEffectId)
 
-  const fullId = `${effect.type}/${effect.id}`
+  const fullId = `${effect.namespace}/${effect.id}`
   const isSelected = selectedId === fullId
-  const firstInputFile = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp')) : null
-  const posterUrl = firstInputFile ? api.getAssetUrl(fullId, firstInputFile) : null
-  const previewUrl = effect.assets.preview ? api.getAssetUrl(fullId, effect.assets.preview) : null
+  // Assets are pre-resolved URLs from the server
+  const firstInputUrl = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.includes('.jpg') || v.includes('.jpeg') || v.includes('.png') || v.includes('.webp')) : null
+  const posterUrl = firstInputUrl ?? null
+  const previewUrl = effect.assets.preview ?? null
 
   return (
     <motion.div
@@ -59,6 +59,12 @@ export function EffectCard({ effect }: EffectCardProps) {
         <Badge variant="overlay" className="absolute left-2 top-2 uppercase tracking-wide">
           {formatEffectType(effect.type)}
         </Badge>
+        {/* Author badge for installed effects */}
+        {effect.source !== 'official' && (
+          <Badge variant="accent" className="absolute right-2 top-2 uppercase tracking-wide">
+            {effect.namespace}
+          </Badge>
+        )}
       </div>
       <div className="p-3">
         <h3 className="text-sm font-semibold leading-tight text-foreground">

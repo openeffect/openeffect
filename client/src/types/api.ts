@@ -76,16 +76,19 @@ export interface GenerationConfig {
 
 export interface EffectManifest {
   id: string
+  namespace: string
   name: string
   description: string
   version: string
   author: string
+  url?: string
   type: string
   category: string
   tags: string[]
   assets: Assets
   inputs: Record<string, InputFieldSchema>
   generation: GenerationConfig
+  source: 'official' | 'url' | 'archive' | 'local'
 }
 
 export interface GenerationRecord {

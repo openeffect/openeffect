@@ -1,8 +1,10 @@
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-import yaml
+
 from effects.validator import EffectManifest
+from services.install_service import InstallService
 
 logger = logging.getLogger(__name__)
 
@@ -11,65 +13,77 @@ logger = logging.getLogger(__name__)
 class LoadedEffect:
     """Wraps a validated manifest with loader-specific metadata."""
     manifest: EffectManifest
-    full_id: str
-    folder_path: Path
+    full_id: str           # namespace/id
+    assets_dir: Path       # UUID folder path
+    source: str            # "official", "url", "archive", "local"
 
 
 class EffectLoaderService:
-    def __init__(self, effects_dir: Path):
-        self._effects_dir = effects_dir
+    def __init__(self, install_service: InstallService, bundled_zip_path: Path | None = None):
+        self._install = install_service
+        self._bundled_zip = bundled_zip_path
         self._cache: dict[str, LoadedEffect] = {}
 
     async def load_all(self) -> None:
-        self._cache.clear()
-        failed = 0
-
-        if not self._effects_dir.exists():
-            logger.warning(f"Effects directory not found: {self._effects_dir}")
-            return
-
-        for manifest_path in sorted(self._effects_dir.rglob("manifest.yaml")):
+        """Load all effects from DB. On first launch, install bundled ZIP."""
+        # First launch: install official effects from bundled ZIP
+        count = await self._install.effect_count()
+        if count == 0 and self._bundled_zip and self._bundled_zip.exists():
+            logger.info("First launch: installing official effects from bundled ZIP...")
             try:
-                with open(manifest_path) as f:
-                    raw = yaml.safe_load(f)
+                installed = await self._install.install_from_archive(
+                    self._bundled_zip.read_bytes(), allow_official=True
+                )
+                logger.info(f"Installed {len(installed)} official effects")
+            except Exception as e:
+                logger.error(f"Failed to install bundled effects: {e}")
 
-                manifest = EffectManifest(**raw)
+        # Load all effects from DB
+        await self.reload()
 
-                folder_name = manifest_path.parent.name
-                if manifest.id != folder_name:
-                    logger.warning(f"Skipping {manifest_path}: id '{manifest.id}' doesn't match folder '{folder_name}'")
-                    failed += 1
-                    continue
+    async def reload(self) -> None:
+        """Reload the in-memory cache from the DB."""
+        self._cache.clear()
+        rows = await self._install.get_all_effects()
 
-                effect_type_dir = manifest_path.parent.parent.name
-                full_id = f"{effect_type_dir}/{manifest.id}"
+        for row in rows:
+            try:
+                manifest_data = json.loads(row["manifest_json"])
+                manifest = EffectManifest(**manifest_data)
+                full_id = f"{manifest.namespace}/{manifest.id}"
+                assets_dir = Path(row["assets_dir"])
 
                 self._cache[full_id] = LoadedEffect(
                     manifest=manifest,
                     full_id=full_id,
-                    folder_path=manifest_path.parent,
+                    assets_dir=assets_dir,
+                    source=row["source"],
                 )
-
             except Exception as e:
-                logger.warning(f"Failed to load {manifest_path}: {e}")
-                failed += 1
+                logger.warning(f"Failed to load effect from DB row {row['id']}: {e}")
 
-        logger.info(f"Loaded {len(self._cache)} effects ({failed} failed validation)")
+        logger.info(f"Loaded {len(self._cache)} effects from database")
 
     def get_all(self) -> list[EffectManifest]:
         return [e.manifest for e in self._cache.values()]
+
+    def get_all_with_meta(self) -> list[LoadedEffect]:
+        return list(self._cache.values())
 
     def get_by_id(self, effect_id: str) -> EffectManifest | None:
         loaded = self._cache.get(effect_id)
         return loaded.manifest if loaded else None
 
-    def get_asset_path(self, effect_id: str, filename: str) -> Path | None:
-        loaded = self._cache.get(effect_id)
-        if not loaded:
+    def get_loaded(self, effect_id: str) -> LoadedEffect | None:
+        return self._cache.get(effect_id)
+
+    def get_asset_path(self, uuid: str, filename: str) -> Path | None:
+        """Resolve an asset file from a UUID folder. No DB query needed."""
+        # Validate UUID format (basic check)
+        if not uuid or "/" in uuid or ".." in uuid:
             return None
 
-        # Assets live in the assets/ subfolder
-        assets_dir = loaded.folder_path / "assets"
+        assets_dir = self._install._effects_dir / uuid / "assets"
 
         # Directory traversal protection
         safe_path = (assets_dir / filename).resolve()

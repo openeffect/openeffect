@@ -5,6 +5,7 @@ import { EffectGallery } from '@/features/effects/EffectGallery'
 import { EffectPanel } from '@/features/effects/EffectPanel'
 import { GenerationView } from '@/features/generation/GenerationView'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
+import { EffectsManagerDialog } from '@/features/settings/EffectsManagerDialog'
 import { OnboardingDialog } from '@/features/settings/OnboardingDialog'
 import { useGenerationStore } from '@/store/generationStore'
 import { useSelectedEffect } from '@/store/effectsStore'
@@ -23,6 +24,7 @@ const panelVariants = {
 
 export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [effectsOpen, setEffectsOpen] = useState(false)
   const viewingJobId = useGenerationStore((s) => s.viewingJobId)
   const activeJobs = useGenerationStore((s) => s.activeJobs)
   const selectedEffect = useSelectedEffect()
@@ -35,7 +37,7 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <Header onSettingsOpen={() => setSettingsOpen(true)} />
+      <Header onEffectsOpen={() => setEffectsOpen(true)} onSettingsOpen={() => setSettingsOpen(true)} />
 
       <LayoutGroup>
         <div className="relative flex flex-1 overflow-hidden">
@@ -91,6 +93,7 @@ export function Layout() {
       </LayoutGroup>
 
       <SettingsDialog isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <EffectsManagerDialog isOpen={effectsOpen} onClose={() => setEffectsOpen(false)} />
       {showOnboarding && <OnboardingDialog />}
     </div>
   )

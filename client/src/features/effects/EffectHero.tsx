@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, Type } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
-import { api } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 
 interface EffectHeroProps {
@@ -9,8 +8,7 @@ interface EffectHeroProps {
 }
 
 export function EffectHero({ effect }: EffectHeroProps) {
-  const fullId = `${effect.type}/${effect.id}`
-  const previewUrl = effect.assets.preview ? api.getAssetUrl(fullId, effect.assets.preview) : null
+  const previewUrl = effect.assets.preview ?? null
 
   // Build input assets — match assets.inputs keys to manifest.inputs
   const inputBlocks: { key: string; type: string; assetUrl: string | null; assetText: string | null }[] = []
@@ -18,7 +16,7 @@ export function EffectHero({ effect }: EffectHeroProps) {
     const assetValue = effect.assets.inputs?.[key]
     if (!assetValue) continue
     if (schema.type === 'image') {
-      inputBlocks.push({ key, type: 'image', assetUrl: api.getAssetUrl(fullId, assetValue), assetText: null })
+      inputBlocks.push({ key, type: 'image', assetUrl: assetValue, assetText: null })
     } else if (schema.type === 'text') {
       inputBlocks.push({ key, type: 'text', assetUrl: null, assetText: assetValue })
     }

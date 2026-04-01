@@ -37,6 +37,21 @@ async def init_db(db_path: Path) -> None:
             except Exception:
                 pass  # Column already exists
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS effects (
+                id            TEXT PRIMARY KEY,
+                namespace     TEXT NOT NULL,
+                effect_id     TEXT NOT NULL,
+                source        TEXT NOT NULL,
+                source_url    TEXT,
+                manifest_json TEXT NOT NULL,
+                assets_dir    TEXT NOT NULL,
+                version       TEXT,
+                installed_at  TEXT NOT NULL,
+                updated_at    TEXT,
+                UNIQUE(namespace, effect_id)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS uploads (
                 hash       TEXT PRIMARY KEY,
                 filename   TEXT NOT NULL,

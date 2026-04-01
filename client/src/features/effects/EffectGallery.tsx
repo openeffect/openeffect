@@ -7,6 +7,7 @@ import { EffectHero } from './EffectHero'
 import { formatEffectType } from '@/lib/formatters'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 
 export function EffectGallery() {
   const loadEffects = useEffectsStore((s) => s.loadEffects)
@@ -31,11 +32,16 @@ export function EffectGallery() {
   const grouped =
     activeCategory === 'all' ? groupByType(filteredEffects) : { [activeCategory]: filteredEffects }
 
+  const showHero = selectedEffect && !!(
+    selectedEffect.assets.preview ||
+    (selectedEffect.assets.inputs && Object.keys(selectedEffect.assets.inputs).length > 0)
+  )
+
   return (
     <div className="flex h-full flex-col">
       {/* Fixed zone 1: Hero preview */}
       <AnimatePresence>
-        {selectedEffect && (
+        {showHero && (
           <motion.div
             key="hero-wrapper"
             initial={{ height: 0, opacity: 0 }}
@@ -44,23 +50,23 @@ export function EffectGallery() {
             transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
             className="shrink-0 overflow-hidden"
           >
-            <EffectHero effect={selectedEffect} />
+            <EffectHero effect={selectedEffect!} />
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Fixed zone 2: Search + filters */}
-      <div className="shrink-0 border-b">
+      <div className="shrink-0">
         <GalleryFilters />
       </div>
 
       {/* Scrollable zone: Effect grid */}
       <div className="flex-1 overflow-y-auto">
-        <div className="space-y-8 px-6 pb-8 pt-5">
+        <div className={cn('px-6 pb-8', activeCategory !== 'all' && 'pt-4')}>
           {Object.entries(grouped).map(([type, effects]) => (
             <div key={type}>
               {activeCategory === 'all' && (
-                <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <h2 className="flex items-center gap-2 py-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                   <Separator className="flex-1" />
                   {formatEffectType(type)}
                   <Separator className="flex-1" />

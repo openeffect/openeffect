@@ -7,12 +7,14 @@ import type { EffectManifest } from '../../src/types/api'
 const mockEffects: EffectManifest[] = [
   {
     id: 'zoom-from-space',
+    namespace: 'openeffect',
     name: 'Zoom From Space',
     description: 'A dramatic zoom from outer space down to a portrait',
     version: '1.0.0',
     author: 'openeffect',
     type: 'single-image',
     category: 'cinematic',
+    source: 'official',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
       
@@ -35,12 +37,14 @@ const mockEffects: EffectManifest[] = [
   },
   {
     id: 'hug-effect',
+    namespace: 'openeffect',
     name: 'Warm Hug',
     description: 'Two people share a warm embrace',
     version: '1.0.0',
     author: 'openeffect',
     type: 'image-transition',
     category: 'emotional',
+    source: 'official',
     tags: ['hug', 'embrace', 'love'],
     assets: {
       
@@ -71,12 +75,14 @@ const mockEffects: EffectManifest[] = [
   },
   {
     id: 'dance-loop',
+    namespace: 'openeffect',
     name: 'Dance Loop',
     description: 'A seamless dancing loop animation',
     version: '1.0.0',
     author: 'openeffect',
     type: 'single-image',
     category: 'fun',
+    source: 'official',
     tags: ['dance', 'loop', 'animation'],
     assets: {
       
@@ -130,7 +136,7 @@ function getSelectedEffect(): EffectManifest | null {
   if (!selectedEffectId) return null
   return (
     effects.find((e) => {
-      const fullId = `${e.type}/${e.id}`
+      const fullId = `${e.namespace}/${e.id}`
       return fullId === selectedEffectId
     }) ?? null
   )
@@ -152,8 +158,8 @@ beforeEach(() => {
 describe('effectsStore', () => {
   describe('basic actions', () => {
     it('selectEffect sets selectedEffectId', () => {
-      useEffectsStore.getState().selectEffect('single-image/zoom-from-space')
-      expect(useEffectsStore.getState().selectedEffectId).toBe('single-image/zoom-from-space')
+      useEffectsStore.getState().selectEffect('openeffect/zoom-from-space')
+      expect(useEffectsStore.getState().selectedEffectId).toBe('openeffect/zoom-from-space')
     })
 
     it('setSearchQuery updates searchQuery', () => {
@@ -250,7 +256,7 @@ describe('effectsStore', () => {
     it('returns correct effect when ID matches', () => {
       useEffectsStore.setState({
         effects: mockEffects,
-        selectedEffectId: 'single-image/zoom-from-space',
+        selectedEffectId: 'openeffect/zoom-from-space',
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
@@ -270,16 +276,16 @@ describe('effectsStore', () => {
     it('returns null when ID does not match any effect', () => {
       useEffectsStore.setState({
         effects: mockEffects,
-        selectedEffectId: 'single-image/nonexistent',
+        selectedEffectId: 'openeffect/nonexistent',
       })
       const selected = getSelectedEffect()
       expect(selected).toBeNull()
     })
 
-    it('matches effect using type/id format', () => {
+    it('matches effect using namespace/id format', () => {
       useEffectsStore.setState({
         effects: mockEffects,
-        selectedEffectId: 'image-transition/hug-effect',
+        selectedEffectId: 'openeffect/hug-effect',
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()

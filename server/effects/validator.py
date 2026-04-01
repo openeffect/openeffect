@@ -67,16 +67,22 @@ class GenerationConfig(BaseModel):
 
 class EffectManifest(BaseModel):
     id: str
+    namespace: str = "openeffect"
     name: str
     description: str
     version: str = "1.0.0"
     author: str = "openeffect-team"
+    url: str | None = None              # self-referencing URL for update checking
     type: str
     category: str
     tags: list[str] = []
     assets: Assets = Assets()
     inputs: dict[str, InputFieldSchema]
     generation: GenerationConfig
+
+    @property
+    def full_id(self) -> str:
+        return f"{self.namespace}/{self.id}"
 
     @model_validator(mode="after")
     def validate_roles(self) -> EffectManifest:

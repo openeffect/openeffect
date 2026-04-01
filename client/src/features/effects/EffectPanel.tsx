@@ -159,7 +159,7 @@ export function EffectPanel() {
 
   if (!manifest) return null
 
-  const fullId = `${manifest.type}/${manifest.id}`
+  const fullId = `${manifest.namespace}/${manifest.id}`
 
   const handleGenerate = async () => {
     setIsGenerating(true)

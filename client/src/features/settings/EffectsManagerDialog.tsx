@@ -1,0 +1,191 @@
+import { useState } from 'react'
+import { Upload, Link, Trash2, Loader2 } from 'lucide-react'
+import { useEffectsStore } from '@/store/effectsStore'
+import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+
+interface EffectsManagerDialogProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogProps) {
+  const effects = useEffectsStore((s) => s.effects)
+  const loadEffects = useEffectsStore((s) => s.loadEffects)
+
+  const installedEffects = effects.filter((e) => e.source !== 'official')
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Effects</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          {/* Install Effect */}
+          <InstallEffectSection onInstalled={loadEffects} />
+
+          {/* Installed Effects */}
+          {installedEffects.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label variant="section">Installed Effects</Label>
+                <div className="space-y-2">
+                  {installedEffects.map((effect) => (
+                    <InstalledEffectRow
+                      key={`${effect.namespace}/${effect.id}`}
+                      effect={effect}
+                      onUninstalled={loadEffects}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ─── Install Effect Section ─── */
+
+function InstallEffectSection({ onInstalled }: { onInstalled: () => void }) {
+  const [url, setUrl] = useState('')
+  const [installing, setInstalling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  const handleInstallUrl = async () => {
+    if (!url.trim()) return
+    setInstalling(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await api.installEffectFromUrl(url.trim())
+      setSuccess(`Installed ${result.installed.length} effect(s)`)
+      setUrl('')
+      onInstalled()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Install failed')
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  const handleInstallFile = async (file: File) => {
+    setInstalling(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await api.installEffectFromFile(file)
+      setSuccess(`Installed ${result.installed.length} effect(s)`)
+      onInstalled()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Install failed')
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Label variant="section">Install Effect</Label>
+
+      {/* URL install */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Link size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Paste manifest.yaml or index.yaml URL..."
+            value={url}
+            onChange={(e) => { setUrl(e.target.value); setError(null); setSuccess(null) }}
+            onKeyDown={(e) => e.key === 'Enter' && handleInstallUrl()}
+            className="pl-9"
+          />
+        </div>
+        <Button onClick={handleInstallUrl} disabled={!url.trim() || installing} className="py-2">
+          {installing ? <Loader2 size={14} className="animate-spin" /> : 'Install'}
+        </Button>
+      </div>
+
+      {/* ZIP upload */}
+      <div>
+        <input
+          type="file"
+          accept=".zip"
+          className="hidden"
+          id="effect-zip-upload"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) handleInstallFile(file)
+            e.target.value = ''
+          }}
+        />
+        <label
+          htmlFor="effect-zip-upload"
+          className={cn(
+            'flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-xs text-secondary-foreground transition-colors hover:border-foreground/20 hover:text-foreground',
+            installing && 'pointer-events-none opacity-50',
+          )}
+        >
+          <Upload size={14} />
+          Or upload a .zip archive
+        </label>
+      </div>
+
+      {/* Feedback */}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {success && <p className="text-xs text-success">{success}</p>}
+    </div>
+  )
+}
+
+/* ─── Installed Effect Row ─── */
+
+function InstalledEffectRow({
+  effect,
+  onUninstalled,
+}: {
+  effect: { namespace: string; id: string; name: string; source: string }
+  onUninstalled: () => void
+}) {
+  const [uninstalling, setUninstalling] = useState(false)
+
+  const handleUninstall = async () => {
+    setUninstalling(true)
+    try {
+      await api.uninstallEffect(effect.namespace, effect.id)
+      onUninstalled()
+    } catch {
+      setUninstalling(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border p-3">
+      <div>
+        <span className="text-sm font-medium text-foreground">{effect.name}</span>
+        <p className="text-xs text-muted-foreground">{effect.namespace}/{effect.id}</p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+        onClick={handleUninstall}
+        disabled={uninstalling}
+        title="Uninstall"
+      >
+        {uninstalling ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+      </Button>
+    </div>
+  )
+}

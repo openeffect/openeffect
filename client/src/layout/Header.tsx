@@ -1,4 +1,4 @@
-import { RefreshCw, History, Settings, Loader2 } from 'lucide-react'
+import { RefreshCw, History, Package, Settings, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useActiveJobCount, useGenerationStore } from '@/store/generationStore'
 import { useHistoryStore } from '@/store/historyStore'
@@ -9,10 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 interface HeaderProps {
+  onEffectsOpen: () => void
   onSettingsOpen: () => void
 }
 
-export function Header({ onSettingsOpen }: HeaderProps) {
+export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
   const activeCount = useActiveJobCount()
   const restoringFromUrl = useGenerationStore((s) => s.restoringFromUrl)
   const openHistory = useHistoryStore((s) => s.open)
@@ -87,6 +88,10 @@ export function Header({ onSettingsOpen }: HeaderProps) {
           </Button>
           <HistoryPanel />
         </div>
+
+        <Button variant="ghost" size="icon" onClick={onEffectsOpen} title="Effects" className="bg-muted text-secondary-foreground">
+          <Package size={16} />
+        </Button>
 
         <Button variant="ghost" size="icon" onClick={onSettingsOpen} title="Settings" className="bg-muted text-secondary-foreground">
           <Settings size={16} />

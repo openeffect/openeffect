@@ -44,8 +44,25 @@ export const api = {
   getEffect: (effectId: string) =>
     request<EffectManifest>(`/api/effects/${effectId}`),
 
-  getAssetUrl: (effectId: string, filename: string) =>
-    `/api/effects/${effectId}/assets/${filename}`,
+  installEffectFromUrl: (url: string) =>
+    request<{ installed: string[] }>('/api/effects/install', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+
+  installEffectFromFile: async (file: File): Promise<{ installed: string[] }> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch('/api/effects/install', { method: 'POST', body: form })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }))
+      throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? res.statusText)
+    }
+    return res.json() as Promise<{ installed: string[] }>
+  },
+
+  uninstallEffect: (namespace: string, effectId: string) =>
+    request<{ ok: boolean }>(`/api/effects/${namespace}/${effectId}`, { method: 'DELETE' }),
 
   // Upload
   upload: async (file: File): Promise<UploadResponse> => {

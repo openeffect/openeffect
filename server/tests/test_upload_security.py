@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from routes import register_routes
 from config.config_service import ConfigService
+from services.install_service import InstallService
 from services.effect_loader import EffectLoaderService
 from services.history_service import HistoryService
 from services.storage_service import StorageService
@@ -42,7 +43,8 @@ def client(tmp_path, storage_dir):
     register_routes(app)
 
     config_service = ConfigService(config_path)
-    effect_loader = EffectLoaderService(effects_dir)
+    install_service = InstallService(db_path, effects_dir)
+    effect_loader = EffectLoaderService(install_service)
     asyncio.run(effect_loader.load_all())
     storage_service = StorageService(storage_dir, db_path)
     history_service = HistoryService(db_path)
@@ -53,6 +55,7 @@ def client(tmp_path, storage_dir):
 
     app.state.settings = settings
     app.state.config_service = config_service
+    app.state.install_service = install_service
     app.state.effect_loader = effect_loader
     app.state.generation_service = MagicMock()
     app.state.history_service = history_service

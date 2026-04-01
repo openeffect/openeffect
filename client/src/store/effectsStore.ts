@@ -13,13 +13,13 @@ interface EffectsStore {
   error: string | null
   selectedEffectId: string | null
   searchQuery: string
-  activeSource: 'all' | 'official' | 'installed'
+  activeSource: 'all' | 'official' | 'mine' | 'installed'
   activeCategory: string
 
   loadEffects: () => Promise<void>
   selectEffect: (id: string | null, skipHash?: boolean) => void
   setSearchQuery: (q: string) => void
-  setActiveSource: (source: 'all' | 'official' | 'installed') => void
+  setActiveSource: (source: 'all' | 'official' | 'mine' | 'installed') => void
   setActiveCategory: (cat: string) => void
 }
 
@@ -122,7 +122,8 @@ export function useFilteredEffects(): EffectManifest[] {
 
   return effects.filter((e) => {
     if (activeSource === 'official' && e.source !== 'official') return false
-    if (activeSource === 'installed' && e.source === 'official') return false
+    if (activeSource === 'mine' && e.source !== 'local') return false
+    if (activeSource === 'installed' && (e.source === 'official' || e.source === 'local')) return false
     if (activeCategory !== 'all') {
       if (e.type !== activeCategory && e.category !== activeCategory) {
         return false

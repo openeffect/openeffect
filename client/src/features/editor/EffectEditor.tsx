@@ -95,8 +95,11 @@ export function EffectEditor() {
     const saveKeymap = keymap.of([{
       key: 'Mod-s',
       run: () => {
-        useEditorStore.getState().saveEffect()
-        return true
+        const store = useEditorStore.getState()
+        if (store.isDirty() || !store.editingEffectId) {
+          store.saveEffect()
+        }
+        return true  // always prevent browser save dialog
       },
     }])
 

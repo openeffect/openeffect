@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { X, MoreVertical, GitFork, Download, Pencil } from 'lucide-react'
+import { X, MoreVertical, GitFork, Download, Pencil, Trash2 } from 'lucide-react'
 import { useSelectedEffect, useEffectsStore } from '@/store/effectsStore'
 import { useGenerationStore } from '@/store/generationStore'
 import { useConfigStore } from '@/store/configStore'
@@ -23,6 +23,8 @@ export function EffectPanel() {
   const editorSavedManifest = useEditorStore((s) => s.savedManifest)
   const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
   const editingEffectId = useEditorStore((s) => s.editingEffectId)
+  const editorYaml = useEditorStore((s) => s.yamlContent)
+  const editorLastSaved = useEditorStore((s) => s.lastSavedYaml)
   const manifest = isEditorOpen ? (editorSavedManifest ?? selectedEffect) : selectedEffect
   const selectEffect = useEffectsStore((s) => s.selectEffect)
   const startGeneration = useGenerationStore((s) => s.startGeneration)
@@ -170,15 +172,6 @@ export function EffectPanel() {
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      // Auto-save if editor has unsaved changes
-      if (isEditorOpen && useEditorStore.getState().isDirty()) {
-        await useEditorStore.getState().saveEffect()
-        if (useEditorStore.getState().saveError) {
-          setIsGenerating(false)
-          return
-        }
-      }
-
       const inputs: Record<string, string> = {}
       for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
         if (schema.type === 'image') {
@@ -225,7 +218,9 @@ export function EffectPanel() {
 
   // Check if the selected provider is available
   const selectedProviderInfo = modelInfo?.providers.find((p) => p.id === selectedProvider)
-  const canGenerate = selectedProviderInfo?.is_available === true
+  const editorDirty = isEditorOpen && editorYaml !== editorLastSaved
+  const editorUnsaved = isEditorOpen && !editingEffectId
+  const canGenerate = selectedProviderInfo?.is_available === true && !editorDirty && !editorUnsaved
 
   return (
     <div className="flex h-full flex-col">
@@ -303,7 +298,15 @@ export function EffectPanel() {
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
         <GenerateButton onClick={handleGenerate} disabled={!canGenerate} loading={isGenerating} cost={selectedProviderInfo?.cost} />
-        {!canGenerate && (
+        {editorUnsaved ? (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Create the effect first to generate
+          </p>
+        ) : editorDirty ? (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Save your changes first to generate
+          </p>
+        ) : !selectedProviderInfo?.is_available && (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Add your API key in Settings to generate
           </p>
@@ -386,7 +389,11 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
 /* ─── Three-dot menu for Fork / Edit / Export ─── */
 function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }) {
   const forkEffect = useEditorStore((s) => s.forkEffect)
+  const selectEffect = useEffectsStore((s) => s.selectEffect)
+  const loadEffects = useEffectsStore((s) => s.loadEffects)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const isLocal = effect.source === 'local'
+  const canDelete = effect.source !== 'official'
 
   const handleFork = () => forkEffect(effect)
 
@@ -396,7 +403,6 @@ function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }
       const { yaml, files } = await api.getEffectEditorData(effect.namespace, effect.id)
       useEditorStore.getState().openEditor(yaml, fullId, effect, files)
     } catch {
-      // Fallback: fork instead
       forkEffect(effect)
     }
   }
@@ -405,8 +411,19 @@ function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }
     window.open(api.exportEffect(effect.namespace, effect.id), '_blank')
   }
 
+  const handleDelete = async () => {
+    try {
+      await api.uninstallEffect(effect.namespace, effect.id)
+      useEditorStore.getState().closeEditor()
+      selectEffect(null)
+      await loadEffects()
+    } catch {
+      // ignore
+    }
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => { if (!open) setConfirmDelete(false) }}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <MoreVertical size={14} />
@@ -427,6 +444,19 @@ function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }
           <Download size={14} />
           Export
         </DropdownMenuItem>
+        {canDelete && (
+          confirmDelete ? (
+            <DropdownMenuItem onClick={handleDelete} className="text-destructive hover:bg-destructive/15">
+              <Trash2 size={14} />
+              Confirm delete
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={(e) => { e.preventDefault(); setConfirmDelete(true) }} className="text-destructive">
+              <Trash2 size={14} />
+              Delete
+            </DropdownMenuItem>
+          )
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

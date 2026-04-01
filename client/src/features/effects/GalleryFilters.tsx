@@ -13,6 +13,7 @@ import {
 
 const SOURCE_OPTIONS = [
   { id: 'official', label: 'Official' },
+  { id: 'mine', label: 'Mine' },
   { id: 'installed', label: 'Installed' },
 ] as const
 
@@ -25,7 +26,9 @@ export function GalleryFilters() {
   const activeCategory = useEffectsStore((s) => s.activeCategory)
   const setActiveCategory = useEffectsStore((s) => s.setActiveCategory)
 
-  const hasInstalled = effects.some((e) => e.source !== 'official')
+  const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
+  const hasMine = effects.some((e) => e.source === 'local')
+  const showSourceFilter = hasInstalled || hasMine
 
   const categories = Array.from(new Set(effects.map(e => e.type)))
     .map(t => ({ id: t, label: formatEffectType(t) }))
@@ -36,13 +39,19 @@ export function GalleryFilters() {
   return (
     <div className="flex flex-wrap items-center gap-2 px-6 py-4">
       {/* Source filter */}
-      {hasInstalled && (
+      {showSourceFilter && (
         <FilterDropdown
           placeholder="Source"
           value={sourceLabel}
           onClear={() => setActiveSource('all')}
         >
-          {SOURCE_OPTIONS.map((opt) => (
+          {SOURCE_OPTIONS
+            .filter((opt) => {
+              if (opt.id === 'installed' && !hasInstalled) return false
+              if (opt.id === 'mine' && !hasMine) return false
+              return true
+            })
+            .map((opt) => (
             <DropdownMenuItem
               key={opt.id}
               onClick={() => setActiveSource(opt.id)}

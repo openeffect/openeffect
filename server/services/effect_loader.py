@@ -26,18 +26,17 @@ class EffectLoaderService:
         self._cache: dict[str, LoadedEffect] = {}
 
     async def load_all(self) -> None:
-        """Load all effects from DB. On first launch, install bundled ZIP."""
-        # First launch: install official effects from bundled ZIP
-        count = await self._install.effect_count()
-        if count == 0 and self._bundled_zip and self._bundled_zip.exists():
-            logger.info("First launch: installing official effects from bundled ZIP...")
+        """Load all effects from DB. Sync bundled effects on every startup."""
+        if self._bundled_zip and self._bundled_zip.exists():
+            logger.info("Syncing bundled effects...")
             try:
                 installed = await self._install.install_from_archive(
                     self._bundled_zip.read_bytes(), allow_official=True
                 )
-                logger.info(f"Installed {len(installed)} official effects")
+                if installed:
+                    logger.info(f"Synced {len(installed)} bundled effects")
             except Exception as e:
-                logger.error(f"Failed to install bundled effects: {e}")
+                logger.error(f"Failed to sync bundled effects: {e}")
 
         # Load all effects from DB
         await self.reload()

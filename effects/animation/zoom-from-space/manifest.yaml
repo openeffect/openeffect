@@ -2,17 +2,21 @@ namespace: openeffect
 id: zoom-from-space
 name: Zoom from Space
 description: >
-  Camera flies in from outer space and zooms
-  into your subject with cinematic depth.
+  Camera rushes in from outer space, descends toward Earth,
+  and lands on your subject in one continuous cinematic shot.
+
 version: "0.1.0"
 author: openeffect-team
 type: animation
 category: camera
+
 tags:
   - trending
-  - tiktok
   - cinematic
   - viral
+  - zoom
+  - space
+  - transition
 
 assets:
   preview: preview.mp4
@@ -25,14 +29,14 @@ inputs:
     role: start_frame
     required: true
     label: "Your photo"
-    hint: "Works best with portraits or landscape shots"
+    hint: "Works best with portraits, full-body shots, or dramatic landscapes"
 
   scene_prompt:
     type: text
     role: prompt_input
     required: false
     label: "Describe the scene (optional)"
-    placeholder: "A person standing on a mountain peak..."
+    placeholder: "A lone traveler standing on a snowy mountain peak"
     max_length: 500
     multiline: false
 
@@ -40,17 +44,25 @@ generation:
   models:
     - kling-v3
     - wan-2.2
+
   default_model: kling-v3
 
   prompt: >
-    Cinematic drone shot starting from outer space,
-    rapidly zooming into Earth and then into the subject.
+    A cinematic camera shot starting far in outer space among stars,
+    rapidly flying toward Earth, descending through the atmosphere,
+    and smoothly zooming into the subject in the input image.
+    Preserve the subject identity, composition, clothing, and environment.
+    The motion feels continuous, dramatic, epic, and realistic.
+    Strong sense of scale, depth, and momentum.
     {scene_prompt}
-    Epic, dramatic, high quality, 4K resolution.
+    High detail, cinematic lighting, smooth camera movement, 4K, no cuts.
 
   negative_prompt: >
-    low quality, blurry, static camera, shaky,
-    distorted, watermark, text overlay
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, bad hands,
+    inaccurate identity, unrealistic transition, heavy artifacts,
+    text overlay, watermark, logo, subtitles
 
   defaults:
     duration: 5
@@ -60,8 +72,24 @@ generation:
   model_overrides:
     kling-v3:
       prompt: >
-        Epic space-to-earth zoom, starting from stars
-        and rushing into the subject. {scene_prompt}
-        Cinematic quality, smooth motion.
+        Epic space-to-subject zoom shot, beginning in deep outer space,
+        rushing toward Earth, diving through clouds and atmosphere,
+        then locking onto the subject from the input photo.
+        Preserve facial identity and overall scene consistency.
+        Smooth cinematic motion, dramatic scale, strong depth, realistic camera path.
+        {scene_prompt}
+        High quality, cinematic, seamless motion, no cuts.
       defaults:
         guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        Cinematic zoom from outer space into Earth and finally into the subject
+        from the input image. Preserve the person, outfit, pose, and background mood.
+        Smooth continuous motion, epic atmosphere, dramatic perspective, detailed image quality.
+        {scene_prompt}
+        Realistic, visually coherent, no cuts, no sudden scene changes.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

@@ -1,0 +1,103 @@
+namespace: openeffect
+id: set-on-fire
+name: Set on Fire
+description: >
+  Cinematic flames ignite around the subject,
+  creating a powerful fire effect with dramatic energy and intensity.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - fire
+  - flames
+  - dramatic
+  - energy
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with clear subjects, dark or contrast backgrounds, and strong silhouettes"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A warrior standing in a dark battlefield at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic fire effect ignites around the subject from the input image.
+    Flames appear and grow naturally, surrounding the subject with dynamic,
+    realistic fire motion and glowing light. Preserve the subject identity,
+    facial features, pose, clothing, and overall composition while adding
+    controlled fire elements around the body and environment.
+    The flames feel powerful, dramatic, and visually rich, without destroying
+    or obscuring the subject. Subtle heat glow and light reflections enhance
+    the scene. {scene_prompt}
+    Cinematic lighting, realistic fire simulation, high detail, smooth animation, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, extra eyes,
+    inaccurate identity, burned face, destroyed subject,
+    excessive fire covering face, unrealistic flames,
+    cartoon fire, plastic look, heavy artifacts,
+    text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 5
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic fire ignition around the subject from the input photo.
+        Flames grow and move naturally around the person, casting warm light
+        and reflections on the face, clothing, and environment. Preserve facial
+        identity, expression, pose, outfit, and scene continuity.
+        The effect should feel powerful, intense, and realistic,
+        without covering or destroying the subject.
+        {scene_prompt}
+        High quality, smooth animation, realistic fire motion,
+        no cuts, no full scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A cinematic flame effect surrounding the main subject
+        from the input image. Fire appears and moves naturally,
+        adding dramatic energy while keeping the subject stable
+        and recognizable. Preserve identity, composition, outfit,
+        and background mood. {scene_prompt}
+        Detailed image quality, smooth motion, no cuts,
+        no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

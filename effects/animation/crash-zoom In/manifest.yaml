@@ -1,0 +1,95 @@
+namespace: openeffect
+id: crash-zoom-in
+name: Crash Zoom In
+description: >
+  A fast, aggressive cinematic zoom pushes straight into your subject,
+  creating tension, impact, and dramatic focus.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: camera
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - zoom
+  - dramatic
+  - impact
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits, close-ups, and strong subject framing"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A serious man standing in neon city lights"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A fast cinematic crash zoom pushing directly into the subject
+    from the input image. The camera rapidly moves forward with strong
+    momentum and dramatic intensity, creating a punchy visual impact.
+    Preserve the subject identity, facial features, pose, clothing,
+    and scene consistency. The shot remains focused on the same subject
+    and environment while the camera aggressively zooms inward.
+    {scene_prompt}
+    Cinematic lighting, realistic depth, smooth motion, high detail, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, bad hands,
+    inaccurate identity, sudden scene change, unrealistic motion,
+    extreme fisheye distortion, heavy artifacts, text overlay,
+    watermark, logo, subtitles
+
+  defaults:
+    duration: 4
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Intense cinematic crash zoom into the subject from the input photo.
+        The camera suddenly rushes forward with speed and impact,
+        locking onto the face or central subject. Preserve facial identity,
+        expression, outfit, and background continuity. Dramatic, energetic,
+        realistic motion with strong focus and depth. {scene_prompt}
+        High quality, smooth camera movement, no cuts, no scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A dramatic forward camera punch into the subject from the input image.
+        Fast zoom-in motion, cinematic energy, strong focus on the main subject.
+        Preserve identity, pose, composition, and overall scene consistency.
+        {scene_prompt}
+        Realistic motion, detailed image quality, no cuts, no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

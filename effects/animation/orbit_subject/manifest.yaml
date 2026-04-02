@@ -1,0 +1,97 @@
+namespace: openeffect
+id: orbit-subject
+name: Orbit Subject
+description: >
+  The camera smoothly circles around your subject,
+  creating a cinematic orbit shot with depth and parallax.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: camera
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - orbit
+  - parallax
+  - 3d
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with a clear subject and some visible background depth"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A woman standing in a neon city street at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic orbit camera shot circling smoothly around the main subject
+    from the input image. The camera moves in a clean arc around the subject,
+    creating strong depth, parallax, and realistic spatial motion.
+    Preserve the subject identity, facial features, pose, clothing,
+    and background consistency. The subject remains the focus while
+    the environment shifts naturally with the camera movement.
+    {scene_prompt}
+    Cinematic lighting, realistic depth, smooth motion, high detail, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, bad hands,
+    inaccurate identity, broken perspective, unnatural parallax,
+    unrealistic camera path, heavy artifacts, text overlay,
+    watermark, logo, subtitles
+
+  defaults:
+    duration: 5
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Smooth cinematic orbit around the subject from the input photo.
+        The camera circles in a graceful arc, revealing depth and
+        dimensionality while keeping the person or object stable
+        and recognizable. Preserve identity, expression, outfit,
+        composition, and scene continuity. Strong parallax, realistic motion,
+        dramatic but clean camera movement. {scene_prompt}
+        High quality, seamless orbit shot, no cuts, no scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A cinematic camera orbit around the main subject from the input image.
+        The shot gently circles the subject with smooth motion,
+        depth, and realistic background parallax. Preserve identity,
+        pose, composition, and overall scene consistency.
+        {scene_prompt}
+        Realistic motion, detailed image quality, no cuts, no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

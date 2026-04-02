@@ -1,0 +1,102 @@
+namespace: openeffect
+id: melting
+name: Melting
+description: >
+  The subject begins to melt in a surreal cinematic way,
+  with liquid distortion and flowing textures while staying recognizable.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: transformation
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - melting
+  - surreal
+  - distortion
+  - transformation
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with clear portraits, centered subjects, and strong visible contours"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A mysterious woman standing under dramatic red lighting"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A surreal cinematic melting transformation of the subject from the input image.
+    The subject remains recognizable while parts of the face, body, clothing,
+    or visible surface begin to soften, flow, and melt downward in a visually
+    striking liquid-like way. Preserve the subject identity, facial structure,
+    pose, clothing silhouette, and overall composition while introducing elegant
+    melting distortion, fluid motion, glossy liquid textures, and dramatic surreal energy.
+    The transformation should feel artistic, controlled, and cinematic,
+    not grotesque or chaotic.
+    {scene_prompt}
+    Cinematic lighting, high detail, smooth animation, realistic liquid texture, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated face, extra limbs, extra eyes,
+    inaccurate identity, horror gore, blood, grotesque melting,
+    chaotic deformation, broken facial structure, muddy texture,
+    plastic look, heavy artifacts, text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 5
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic surreal melting effect on the subject from the input photo.
+        The person stays recognizable while selected areas begin to liquefy
+        and flow downward with glossy, fluid, visually satisfying motion.
+        Preserve facial identity, expression, pose, outfit silhouette,
+        and scene continuity. The effect should feel stylish, artistic,
+        controlled, and premium rather than chaotic or horror-like.
+        {scene_prompt}
+        High quality, smooth animation, detailed liquid texture,
+        no cuts, no full character destruction.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A cinematic melting transformation effect on the main subject
+        from the input image. The subject remains recognizable while
+        parts of the visible surface soften and melt with smooth liquid motion.
+        Preserve identity, composition, outfit form, and background mood.
+        {scene_prompt}
+        Detailed image quality, smooth motion, no cuts, no abrupt full deformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

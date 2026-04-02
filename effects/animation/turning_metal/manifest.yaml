@@ -1,0 +1,101 @@
+namespace: openeffect
+id: turning-metal
+name: Turning Metal
+description: >
+  The subject gradually transforms into polished metal,
+  revealing a sleek cinematic surface with futuristic intensity.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: transformation
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - metal
+  - transformation
+  - futuristic
+  - surreal
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with clear portraits, fashion shots, and strong visible subject details"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A stylish man standing under dramatic studio lights"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic transformation effect where the subject from the input image
+    gradually turns into polished reflective metal. Preserve the subject identity,
+    facial structure, expression, pose, clothing shape, and overall composition,
+    while the visible surface becomes metallic, sleek, and visually striking.
+    The transformation feels smooth, elegant, and premium, with realistic reflections,
+    metallic texture, and strong material definition. The person remains clearly
+    recognizable throughout the effect.
+    {scene_prompt}
+    Cinematic lighting, realistic reflections, high detail, smooth animation, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated face, extra limbs, extra eyes,
+    inaccurate identity, broken metallic texture, plastic look,
+    muddy reflections, messy transformation, full statue replacement,
+    heavy artifacts, text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 5
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic turning-metal transformation of the subject from the input photo.
+        The person stays recognizable while the skin, clothing surfaces,
+        and visible details gradually become polished metallic material
+        with elegant reflections and premium texture. Preserve facial identity,
+        expression, pose, outfit silhouette, and scene continuity.
+        The effect should feel stylish, surreal, and realistic.
+        {scene_prompt}
+        High quality, smooth animation, detailed metallic reflections,
+        no cuts, no full character replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A cinematic metallic transformation effect on the main subject
+        from the input image. The subject remains recognizable while
+        the visible surface gradually turns into reflective metal.
+        Preserve identity, composition, outfit form, and background mood.
+        {scene_prompt}
+        Detailed image quality, smooth motion, no cuts, no abrupt full transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

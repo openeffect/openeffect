@@ -1,0 +1,101 @@
+namespace: openeffect
+id: cyborg-transformation
+name: Cyborg Transformation
+description: >
+  The subject begins transforming into a futuristic cyborg,
+  revealing mechanical details, glowing elements, and sci-fi power.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: transformation
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - cyborg
+  - scifi
+  - futuristic
+  - transformation
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with clear portraits, hero shots, and strong facial visibility"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A futuristic warrior standing in neon rain"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic sci-fi transformation effect where the subject from the input image
+    gradually becomes a futuristic cyborg. Preserve the subject identity,
+    facial structure, expression, pose, clothing, and overall composition,
+    while revealing elegant cybernetic details, metallic facial panels,
+    glowing circuitry, subtle robotic textures, and advanced machine elements.
+    The transformation feels powerful, stylish, and realistic, without fully
+    replacing the person. The human subject remains clearly recognizable.
+    {scene_prompt}
+    Cinematic lighting, high detail, realistic face, smooth animation, futuristic atmosphere, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated face, extra limbs, extra eyes,
+    broken symmetry, inaccurate identity, monster face, full robot replacement,
+    broken metallic textures, messy transformation, heavy artifacts,
+    text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 5
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic cyborg transformation of the subject from the input photo.
+        The person stays recognizable while advanced mechanical features emerge:
+        sleek metallic face plating, glowing cybernetic lines, robotic textures,
+        and futuristic machine details integrated into the human form.
+        Preserve facial identity, expression, pose, outfit, and scene continuity.
+        The effect should feel premium, stylish, intense, and believable.
+        {scene_prompt}
+        High quality, smooth animation, realistic sci-fi transformation,
+        no cuts, no full character replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A futuristic cyborg transformation effect on the main subject
+        from the input image. The face and body remain recognizable while
+        subtle cybernetic machinery, glowing lines, and metallic details appear.
+        Preserve identity, composition, outfit, and background mood.
+        {scene_prompt}
+        Detailed image quality, smooth motion, no cuts, no abrupt full transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

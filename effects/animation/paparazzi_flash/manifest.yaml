@@ -1,0 +1,99 @@
+namespace: openeffect
+id: paparazzi-flash
+name: Paparazzi Flash
+description: >
+  Bright camera flashes burst around the subject,
+  creating a red carpet paparazzi moment with cinematic glamour.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - paparazzi
+  - flash
+  - glam
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits, fashion shots, and confident hero framing"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A celebrity standing outside a luxury event at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic paparazzi effect surrounds the subject from the input image.
+    Bright camera flashes fire rapidly from different directions, lighting up
+    the face and scene like a red carpet media moment. Preserve the subject
+    identity, facial features, pose, clothing, and overall scene consistency.
+    The subject remains stable and recognizable while flashing light bursts
+    create glamour, pressure, and celebrity energy.
+    {scene_prompt}
+    Cinematic lighting, realistic flash reflections, smooth animation,
+    high detail, dramatic atmosphere, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, bad hands,
+    inaccurate identity, overexposed face, blown highlights,
+    broken lighting, unrealistic flashes, heavy artifacts,
+    text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 4
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic paparazzi flashes bursting around the subject from the input photo.
+        Repeated bright camera flashes illuminate the face, outfit, and background
+        with a glamorous celebrity-event feeling. Preserve facial identity,
+        expression, pose, outfit, and scene continuity. The motion should feel stylish,
+        intense, and realistic, like photographers taking pictures on a red carpet.
+        {scene_prompt}
+        High quality, smooth animation, realistic flash lighting, no cuts,
+        no scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A glamorous paparazzi flash effect around the main subject from the input image.
+        Bright camera flashes fire from multiple directions, briefly lighting the face
+        and environment while the subject stays stable and recognizable.
+        Preserve identity, composition, outfit, and background mood.
+        {scene_prompt}
+        Realistic motion, detailed image quality, no cuts, no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

@@ -1,0 +1,98 @@
+namespace: openeffect
+id: eyes-glow
+name: Eyes Glow
+description: >
+  The subject's eyes begin to glow with intense energy,
+  creating a powerful cinematic sci-fi transformation.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: transformation
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - eyes
+  - glow
+  - scifi
+  - power
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with clear portraits where the eyes are visible"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A mysterious man standing in neon rain at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic close-up effect where the subject from the input image
+    remains stable and recognizable while the eyes slowly ignite
+    with intense glowing energy. The glow is bright, focused, and dramatic,
+    radiating power without changing the subject identity, facial structure,
+    pose, clothing, or background. The effect feels supernatural or sci-fi,
+    with subtle light spill around the eyes and strong visual intensity.
+    {scene_prompt}
+    Cinematic lighting, realistic face details, smooth animation, high detail, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed eyes,
+    asymmetrical eyes, cross-eyed, duplicated face, extra eyes,
+    inaccurate identity, distorted anatomy, bad hands,
+    overexposed face, broken lighting, unrealistic glow,
+    heavy artifacts, text overlay, watermark, logo, subtitles
+
+  defaults:
+    duration: 4
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Cinematic glowing eyes effect on the subject from the input photo.
+        The person stays stable and recognizable while both eyes emit
+        a powerful bright glow with a subtle energy aura and realistic light spill.
+        Preserve facial identity, expression, skin details, outfit, and scene continuity.
+        The effect should feel intense, stylish, supernatural, and clean.
+        {scene_prompt}
+        High quality, smooth animation, realistic eye light, no cuts, no scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A dramatic eye glow effect on the main subject from the input image.
+        The eyes light up with bright cinematic energy while the face,
+        identity, pose, and overall composition stay consistent.
+        Preserve realism and subject stability.
+        {scene_prompt}
+        Detailed image quality, smooth motion, no cuts, no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

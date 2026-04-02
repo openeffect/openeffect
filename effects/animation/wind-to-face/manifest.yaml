@@ -1,0 +1,94 @@
+namespace: openeffect
+id: wind-to-face
+name: Wind to Face
+description: >
+  A dramatic gust of wind hits the subject, pushing hair,
+  clothing, and atmosphere toward the camera for a cinematic look.
+
+version: "0.1.0"
+author: openeffect-team
+type: animation
+category: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - wind
+  - dramatic
+  - portrait
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits, fashion shots, and subjects with visible hair or clothing movement"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene (optional)"
+    placeholder: "A woman standing on a rooftop at sunset"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A cinematic gust of wind blows directly into the subject from the input image.
+    Hair, clothing, loose fabric, and the surrounding atmosphere react naturally
+    to the strong wind, creating drama and motion. Preserve the subject identity,
+    facial features, pose, outfit, and overall scene consistency. The subject
+    remains stable and recognizable while the wind adds dynamic movement and energy.
+    {scene_prompt}
+    Cinematic lighting, realistic motion, detailed atmosphere, smooth animation, high detail, 4K, no cuts.
+
+  negative_prompt: >
+    low quality, blurry, low resolution, static frame, frozen image,
+    shaky camera, jitter, flicker, warped face, deformed body,
+    distorted anatomy, duplicated subject, extra limbs, bad hands,
+    inaccurate identity, unrealistic hair motion, broken clothing,
+    chaotic deformation, heavy artifacts, text overlay,
+    watermark, logo, subtitles
+
+  defaults:
+    duration: 4
+    guidance_scale: 7.5
+    num_inference_steps: 30
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Dramatic cinematic wind blowing into the subject from the input photo.
+        Hair and clothing move naturally with a strong gust, creating a stylish,
+        emotional, high-fashion look. Preserve facial identity, expression,
+        outfit, pose, and scene continuity. The motion should feel elegant,
+        realistic, and visually powerful. {scene_prompt}
+        High quality, smooth animation, no cuts, no scene replacement.
+      defaults:
+        guidance_scale: 8.0
+        num_inference_steps: 32
+
+    wan-2.2:
+      prompt: >
+        A strong cinematic wind effect hits the main subject from the input image.
+        Hair, clothes, and air particles move naturally while the person remains
+        recognizable and stable. Preserve identity, composition, and background mood.
+        {scene_prompt}
+        Realistic motion, detailed image quality, no cuts, no abrupt transformation.
+      defaults:
+        guidance_scale: 7.0
+        num_inference_steps: 28

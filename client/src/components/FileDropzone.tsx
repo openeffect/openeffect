@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 
 interface FileDropzoneProps {
   accept?: string

@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Cloud } from 'lucide-react'
-import { useConfigStore } from '@/store/configStore'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
+import { useStore } from '@/store'
+import { selectHasApiKey, selectTheme, selectAvailableModels } from '@/store/selectors/configSelectors'
+import { setTheme, updateConfig } from '@/store/actions/configActions'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { Label } from '@/components/ui/Label'
+import { Badge } from '@/components/ui/Badge'
+import { Card } from '@/components/ui/Card'
+import { Separator } from '@/components/ui/Separator'
 
 interface SettingsDialogProps {
   isOpen: boolean
@@ -15,19 +17,21 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const hasApiKey = useConfigStore((s) => s.hasApiKey)
-  const theme = useConfigStore((s) => s.theme)
-  const setTheme = useConfigStore((s) => s.setTheme)
-  const updateConfig = useConfigStore((s) => s.updateConfig)
-  const availableModels = useConfigStore((s) => s.availableModels)
+  const hasApiKey = useStore(selectHasApiKey)
+  const theme = useStore(selectTheme)
+  const availableModels = useStore(selectAvailableModels)
 
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
 
   const handleSaveKey = async () => {
     if (!apiKey.trim()) return
-    await updateConfig({ fal_api_key: apiKey.trim() })
-    setApiKey('')
+    try {
+      await updateConfig({ fal_api_key: apiKey.trim() })
+      setApiKey('')
+    } catch {
+      // API failed — key field stays populated so user can retry
+    }
   }
 
   return (

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useEffectsStore } from '../../src/store/effectsStore'
+import { useStore } from '../../src/store'
+import { selectFilteredEffects, selectSelectedEffect } from '../../src/store/selectors/effectsSelectors'
+import { selectEffect, setSearchQuery, setActiveCategory } from '../../src/store/actions/effectsActions'
 import type { EffectManifest } from '../../src/types/api'
 
 // --- Mock data ---
@@ -17,7 +19,7 @@ const mockEffects: EffectManifest[] = [
     source: 'official',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
-      
+
     },
     inputs: {
       image: {
@@ -47,7 +49,7 @@ const mockEffects: EffectManifest[] = [
     source: 'official',
     tags: ['hug', 'embrace', 'love'],
     assets: {
-      
+
       preview: 'preview.mp4',
     },
     inputs: {
@@ -85,7 +87,7 @@ const mockEffects: EffectManifest[] = [
     source: 'official',
     tags: ['dance', 'loop', 'animation'],
     assets: {
-      
+
     },
     inputs: {
       image: {
@@ -107,156 +109,130 @@ const mockEffects: EffectManifest[] = [
 
 // --- Helpers ---
 
-/**
- * Runs the same filtering logic used by useFilteredEffects,
- * but against raw store state so we don't need React rendering.
- */
 function getFilteredEffects(): EffectManifest[] {
-  const { effects, searchQuery, activeCategory } = useEffectsStore.getState()
-  return effects.filter((e) => {
-    if (activeCategory !== 'all') {
-      if (e.type !== activeCategory && e.category !== activeCategory) {
-        return false
-      }
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      return (
-        e.name.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.tags.some((t) => t.toLowerCase().includes(q))
-      )
-    }
-    return true
-  })
+  return selectFilteredEffects(useStore.getState())
 }
 
 function getSelectedEffect(): EffectManifest | null {
-  const { effects, selectedEffectId } = useEffectsStore.getState()
-  if (!selectedEffectId) return null
-  return (
-    effects.find((e) => {
-      const fullId = `${e.namespace}/${e.id}`
-      return fullId === selectedEffectId
-    }) ?? null
-  )
+  return selectSelectedEffect(useStore.getState())
 }
 
 // --- Tests ---
 
 beforeEach(() => {
-  useEffectsStore.setState({
-    effects: [],
-    status: 'idle',
-    error: null,
-    selectedEffectId: null,
-    searchQuery: '',
-    activeCategory: 'all',
+  useStore.setState((s) => {
+    s.effects.items = []
+    s.effects.status = 'idle'
+    s.effects.error = null
+    s.effects.selectedId = null
+    s.effects.searchQuery = ''
+    s.effects.activeCategory = 'all'
+    s.effects.activeSource = 'all'
   })
 })
 
 describe('effectsStore', () => {
   describe('basic actions', () => {
-    it('selectEffect sets selectedEffectId', () => {
-      useEffectsStore.getState().selectEffect('openeffect/zoom-from-space')
-      expect(useEffectsStore.getState().selectedEffectId).toBe('openeffect/zoom-from-space')
+    it('selectEffect sets selectedId', () => {
+      selectEffect('openeffect/zoom-from-space')
+      expect(useStore.getState().effects.selectedId).toBe('openeffect/zoom-from-space')
     })
 
     it('setSearchQuery updates searchQuery', () => {
-      useEffectsStore.getState().setSearchQuery('portrait')
-      expect(useEffectsStore.getState().searchQuery).toBe('portrait')
+      setSearchQuery('portrait')
+      expect(useStore.getState().effects.searchQuery).toBe('portrait')
     })
 
     it('setActiveCategory updates activeCategory', () => {
-      useEffectsStore.getState().setActiveCategory('cinematic')
-      expect(useEffectsStore.getState().activeCategory).toBe('cinematic')
+      setActiveCategory('cinematic')
+      expect(useStore.getState().effects.activeCategory).toBe('cinematic')
     })
   })
 
-  describe('useFilteredEffects (filter logic)', () => {
+  describe('selectFilteredEffects (filter logic)', () => {
     it('returns all effects when no search/category filter is active', () => {
-      useEffectsStore.setState({ effects: mockEffects })
+      useStore.setState((s) => { s.effects.items = mockEffects })
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(3)
     })
 
     it('filters by name (case-insensitive)', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setSearchQuery('warm hug')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setSearchQuery('warm hug')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('hug-effect')
     })
 
     it('filters by name with mixed case query', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setSearchQuery('ZOOM')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setSearchQuery('ZOOM')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('zoom-from-space')
     })
 
     it('filters by tags', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setSearchQuery('embrace')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setSearchQuery('embrace')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('hug-effect')
     })
 
     it('filters by description', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setSearchQuery('seamless')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setSearchQuery('seamless')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('dance-loop')
     })
 
     it('category "single-image" returns only single-image effects', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setActiveCategory('single-image')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setActiveCategory('single-image')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(2)
       expect(filtered.every((e) => e.type === 'single-image')).toBe(true)
     })
 
     it('category "all" returns everything', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setActiveCategory('all')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setActiveCategory('all')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(3)
     })
 
     it('combined search + category filter', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setActiveCategory('single-image')
-      useEffectsStore.getState().setSearchQuery('dance')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setActiveCategory('single-image')
+      setSearchQuery('dance')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('dance-loop')
     })
 
     it('returns empty array when no effects match', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setSearchQuery('nonexistent-effect-xyz')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setSearchQuery('nonexistent-effect-xyz')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(0)
     })
 
     it('category filter by category field matches', () => {
-      useEffectsStore.setState({ effects: mockEffects })
-      useEffectsStore.getState().setActiveCategory('emotional')
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setActiveCategory('emotional')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('hug-effect')
     })
   })
 
-  describe('useSelectedEffect (selector logic)', () => {
+  describe('selectSelectedEffect (selector logic)', () => {
     it('returns correct effect when ID matches', () => {
-      useEffectsStore.setState({
-        effects: mockEffects,
-        selectedEffectId: 'openeffect/zoom-from-space',
+      useStore.setState((s) => {
+        s.effects.items = mockEffects
+        s.effects.selectedId = 'openeffect/zoom-from-space'
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
@@ -265,27 +241,27 @@ describe('effectsStore', () => {
     })
 
     it('returns null when no selection', () => {
-      useEffectsStore.setState({
-        effects: mockEffects,
-        selectedEffectId: null,
+      useStore.setState((s) => {
+        s.effects.items = mockEffects
+        s.effects.selectedId = null
       })
       const selected = getSelectedEffect()
       expect(selected).toBeNull()
     })
 
     it('returns null when ID does not match any effect', () => {
-      useEffectsStore.setState({
-        effects: mockEffects,
-        selectedEffectId: 'openeffect/nonexistent',
+      useStore.setState((s) => {
+        s.effects.items = mockEffects
+        s.effects.selectedId = 'openeffect/nonexistent'
       })
       const selected = getSelectedEffect()
       expect(selected).toBeNull()
     })
 
     it('matches effect using namespace/id format', () => {
-      useEffectsStore.setState({
-        effects: mockEffects,
-        selectedEffectId: 'openeffect/hug-effect',
+      useStore.setState((s) => {
+        s.effects.items = mockEffects
+        s.effects.selectedId = 'openeffect/hug-effect'
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()

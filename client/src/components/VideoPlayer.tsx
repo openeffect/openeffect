@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Play, Pause, Maximize2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/Button'
 
 interface VideoPlayerProps {
   src: string

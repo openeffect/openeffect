@@ -1,5 +1,5 @@
 import { forwardRef, type LabelHTMLAttributes } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 
 type LabelVariant = 'form' | 'section'
 

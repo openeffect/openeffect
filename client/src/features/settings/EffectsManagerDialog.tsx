@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { Link, Trash2, Loader2 } from 'lucide-react'
-import { useEffectsStore } from '@/store/effectsStore'
-import { api } from '@/lib/api'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { FileDropzone } from '@/primitives/FileDropzone'
+import { useStore } from '@/store'
+import { selectEffects } from '@/store/selectors/effectsSelectors'
+import { loadEffects } from '@/store/actions/effectsActions'
+import { api } from '@/utils/api'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { Label } from '@/components/ui/Label'
+import { Separator } from '@/components/ui/Separator'
+import { FileDropzone } from '@/components/FileDropzone'
 
 interface EffectsManagerDialogProps {
   isOpen: boolean
@@ -15,8 +17,7 @@ interface EffectsManagerDialogProps {
 }
 
 export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogProps) {
-  const effects = useEffectsStore((s) => s.effects)
-  const loadEffects = useEffectsStore((s) => s.loadEffects)
+  const effects = useStore(selectEffects)
 
   const installedEffects = effects.filter((e) => e.source !== 'official')
 

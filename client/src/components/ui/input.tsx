@@ -1,6 +1,6 @@
 import { forwardRef, useRef, type InputHTMLAttributes } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, type, ...props }, ref) => {

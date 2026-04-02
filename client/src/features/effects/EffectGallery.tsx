@@ -1,24 +1,31 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffectsStore, useFilteredEffects, useSelectedEffect } from '@/store/effectsStore'
+import { useStore } from '@/store'
+import {
+  selectEffectsStatus,
+  selectActiveCategory,
+  selectFilteredEffects,
+  selectSelectedEffect,
+} from '@/store/selectors/effectsSelectors'
+import { loadEffects } from '@/store/actions/effectsActions'
 import { GalleryFilters } from './GalleryFilters'
 import { EffectCard } from './EffectCard'
 import { EffectHero } from './EffectHero'
-import { formatEffectType } from '@/lib/formatters'
+import { formatEffectType } from '@/utils/formatters'
 import { Loader2, Sparkles } from 'lucide-react'
-import { Separator } from '@/components/ui/separator'
-import { cn } from '@/lib/utils'
+import { Separator } from '@/components/ui/Separator'
+import { cn } from '@/utils/cn'
+import type { EffectManifest } from '@/types/api'
 
 export function EffectGallery() {
-  const loadEffects = useEffectsStore((s) => s.loadEffects)
-  const status = useEffectsStore((s) => s.status)
-  const activeCategory = useEffectsStore((s) => s.activeCategory)
-  const filteredEffects = useFilteredEffects()
-  const selectedEffect = useSelectedEffect()
+  const status = useStore(selectEffectsStatus)
+  const activeCategory = useStore(selectActiveCategory)
+  const filteredEffects = useStore(selectFilteredEffects)
+  const selectedEffect = useStore(selectSelectedEffect)
 
   useEffect(() => {
     if (status === 'idle') loadEffects()
-  }, [status, loadEffects])
+  }, [status])
 
   if (status === 'loading') {
     return (
@@ -91,8 +98,8 @@ export function EffectGallery() {
   )
 }
 
-function groupByType(effects: ReturnType<typeof useFilteredEffects>) {
-  const groups: Record<string, typeof effects> = {}
+function groupByType(effects: EffectManifest[]) {
+  const groups: Record<string, EffectManifest[]> = {}
   for (const e of effects) {
     const t = e.type
     if (!groups[t]) groups[t] = []

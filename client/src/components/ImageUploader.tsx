@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload, X, ImageIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { Label } from '@/components/ui/label'
+import { cn } from '@/utils/cn'
+import { Label } from '@/components/ui/Label'
 
 interface ImageUploaderProps {
   label: string

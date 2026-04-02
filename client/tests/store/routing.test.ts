@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
 // Test the parseHash function from the router module
-import { parseHash } from '../../src/lib/router'
+import { parseHash } from '../../src/utils/router'
 
 describe('URL routing', () => {
   describe('parseHash', () => {

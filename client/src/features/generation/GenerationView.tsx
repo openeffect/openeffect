@@ -1,14 +1,16 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, AlertCircle, Download, ArrowLeft } from 'lucide-react'
-import { useGenerationStore } from '@/store/generationStore'
-import { useEditorStore } from '@/store/editorStore'
-import { Progress } from '@/components/ui/progress'
-import { VideoPlayer } from '@/primitives/VideoPlayer'
-import { Button } from '@/components/ui/button'
+import { useStore } from '@/store'
+import { selectViewingJobId, selectJobs } from '@/store/selectors/generationSelectors'
+import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
+import { closeJob } from '@/store/actions/generationActions'
+import { Progress } from '@/components/ui/Progress'
+import { VideoPlayer } from '@/components/VideoPlayer'
+import { Button } from '@/components/ui/Button'
 
 export function GenerationView() {
-  const viewingJobId = useGenerationStore((s) => s.viewingJobId)
-  const activeJobs = useGenerationStore((s) => s.activeJobs)
+  const viewingJobId = useStore(selectViewingJobId)
+  const activeJobs = useStore(selectJobs)
 
   const job = viewingJobId ? activeJobs.get(viewingJobId) : null
   if (!job) return null
@@ -164,14 +166,14 @@ function FailedView({
 
 /* --- Back to Editor --- */
 function BackToEditorButton({ className }: { className?: string }) {
-  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
+  const isEditorOpen = useStore(selectEditorIsOpen)
   if (!isEditorOpen) return null
   return (
     <div className={className}>
       <Button
         variant="outline"
         size="sm"
-        onClick={() => useGenerationStore.getState().closeJob()}
+        onClick={closeJob}
       >
         <ArrowLeft size={14} />
         Back to Editor

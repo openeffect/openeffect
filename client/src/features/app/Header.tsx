@@ -1,13 +1,15 @@
 import { RefreshCw, History, Package, Settings, Loader2, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useActiveJobCount, useGenerationStore } from '@/store/generationStore'
-import { useHistoryStore } from '@/store/historyStore'
-import { useConfigStore } from '@/store/configStore'
-import { useEditorStore } from '@/store/editorStore'
-import { useEffectsStore } from '@/store/effectsStore'
+import { useStore } from '@/store'
+import { selectActiveJobCount, selectRestoringFromUrl } from '@/store/selectors/generationSelectors'
+import { selectIsForking } from '@/store/selectors/editorSelectors'
+import { selectUpdateAvailable } from '@/store/selectors/configSelectors'
+import { openHistory } from '@/store/actions/historyActions'
+import { openBlankEditor } from '@/store/actions/editorActions'
+import { goHome } from '@/store/actions/appActions'
 import { HistoryPanel } from '@/features/history/HistoryPanel'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 
 interface HeaderProps {
   onEffectsOpen: () => void
@@ -15,11 +17,10 @@ interface HeaderProps {
 }
 
 export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
-  const activeCount = useActiveJobCount()
-  const restoringFromUrl = useGenerationStore((s) => s.restoringFromUrl)
-  const isForking = useEditorStore((s) => s.isForking)
-  const openHistory = useHistoryStore((s) => s.open)
-  const updateAvailable = useConfigStore((s) => s.updateAvailable)
+  const activeCount = useStore(selectActiveJobCount)
+  const restoringFromUrl = useStore(selectRestoringFromUrl)
+  const isForking = useStore(selectIsForking)
+  const updateAvailable = useStore(selectUpdateAvailable)
   const isLoading = restoringFromUrl || isForking
 
   return (
@@ -29,9 +30,7 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
         href="#"
         onClick={(e) => {
           e.preventDefault()
-          if (useEditorStore.getState().isEditorOpen && !useEditorStore.getState().confirmClose()) return
-          useEditorStore.getState().closeEditor()
-          useEffectsStore.getState().selectEffect(null)
+          goHome()
         }}
         className="flex items-center gap-2.5 no-underline hover:opacity-80"
       >
@@ -97,7 +96,7 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
           <HistoryPanel />
         </div>
 
-        <Button variant="ghost" size="icon" onClick={() => useEditorStore.getState().openBlankEditor()} title="Create Effect" className="bg-muted text-secondary-foreground">
+        <Button variant="ghost" size="icon" onClick={openBlankEditor} title="Create Effect" className="bg-muted text-secondary-foreground">
           <Plus size={16} />
         </Button>
 

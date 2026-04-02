@@ -1,14 +1,14 @@
 import { useEffect } from 'react'
 import { Cloud, ChevronRight, ChevronDown } from 'lucide-react'
 import type { ModelInfo } from '@/types/api'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/Button'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
+} from '@/components/ui/DropdownMenu'
+import { cn } from '@/utils/cn'
 
 interface ModelSelectorProps {
   models: string[]

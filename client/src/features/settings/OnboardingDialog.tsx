@@ -1,17 +1,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Cloud, ExternalLink, Loader2, Sparkles } from 'lucide-react'
-import { useConfigStore } from '@/store/configStore'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { saveApiKey, dismissOnboarding } from '@/store/actions/configActions'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 
 export function OnboardingDialog() {
   const [apiKey, setApiKey] = useState('')
   const [savingKey, setSavingKey] = useState(false)
-
-  const saveApiKey = useConfigStore((s) => s.saveApiKey)
-  const dismissOnboarding = useConfigStore((s) => s.dismissOnboarding)
 
   const handleSaveKey = async () => {
     if (!apiKey.trim()) return

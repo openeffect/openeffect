@@ -1,18 +1,18 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion, LayoutGroup } from 'framer-motion'
 import { Header } from './Header'
 import { EffectGallery } from '@/features/effects/EffectGallery'
 import { EffectPanel } from '@/features/effects/EffectPanel'
-
-const EffectEditor = lazy(() => import('@/features/editor/EffectEditor').then((m) => ({ default: m.EffectEditor })))
+import { EffectEditor } from '@/features/editor/EffectEditor'
 import { GenerationView } from '@/features/generation/GenerationView'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { EffectsManagerDialog } from '@/features/settings/EffectsManagerDialog'
 import { OnboardingDialog } from '@/features/settings/OnboardingDialog'
-import { useGenerationStore } from '@/store/generationStore'
-import { useSelectedEffect } from '@/store/effectsStore'
-import { useConfigStore } from '@/store/configStore'
-import { useEditorStore } from '@/store/editorStore'
+import { useStore } from '@/store'
+import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
+import { selectViewingJobId, selectJobs } from '@/store/selectors/generationSelectors'
+import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
+import { selectShowOnboarding } from '@/store/selectors/configSelectors'
 import { useSse } from '@/hooks/useSse'
 
 const PANEL_WIDTH_PERCENT = 35
@@ -28,11 +28,11 @@ const panelVariants = {
 export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
-  const viewingJobId = useGenerationStore((s) => s.viewingJobId)
-  const activeJobs = useGenerationStore((s) => s.activeJobs)
-  const selectedEffect = useSelectedEffect()
-  const showOnboarding = useConfigStore((s) => s.showOnboarding)
-  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
+  const viewingJobId = useStore(selectViewingJobId)
+  const activeJobs = useStore(selectJobs)
+  const selectedEffect = useStore(selectSelectedEffect)
+  const showOnboarding = useStore(selectShowOnboarding)
+  const isEditorOpen = useStore(selectEditorIsOpen)
 
   useSse(viewingJobId)
 
@@ -77,7 +77,7 @@ export function Layout() {
                   exit="exit"
                   className="h-full"
                 >
-                  <Suspense><EffectEditor /></Suspense>
+                  <EffectEditor />
                 </motion.div>
               )}
               {leftPanelKey === 'gallery' && (

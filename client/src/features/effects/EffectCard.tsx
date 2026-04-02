@@ -1,18 +1,19 @@
 import { motion } from 'framer-motion'
 import { Sparkles } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
-import { useEffectsStore } from '@/store/effectsStore'
-import { formatEffectType, isVideoUrl } from '@/lib/formatters'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { useStore } from '@/store'
+import { selectSelectedId } from '@/store/selectors/effectsSelectors'
+import { selectEffect } from '@/store/actions/effectsActions'
+import { formatEffectType, isVideoUrl } from '@/utils/formatters'
+import { Badge } from '@/components/ui/Badge'
+import { cn } from '@/utils/cn'
 
 interface EffectCardProps {
   effect: EffectManifest
 }
 
 export function EffectCard({ effect }: EffectCardProps) {
-  const selectEffect = useEffectsStore((s) => s.selectEffect)
-  const selectedId = useEffectsStore((s) => s.selectedEffectId)
+  const selectedId = useStore(selectSelectedId)
 
   const fullId = `${effect.namespace}/${effect.id}`
   const isSelected = selectedId === fullId

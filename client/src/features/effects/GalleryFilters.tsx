@@ -1,15 +1,26 @@
-import { useRef } from 'react'
 import { Search, X, ChevronDown, Check } from 'lucide-react'
-import { useEffectsStore } from '@/store/effectsStore'
-import { formatEffectType } from '@/lib/formatters'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+import { useStore } from '@/store'
+import {
+  selectEffects,
+  selectSearchQuery,
+  selectActiveSource,
+  selectActiveCategory,
+} from '@/store/selectors/effectsSelectors'
+import {
+  setSearchQuery,
+  setActiveSource,
+  setActiveCategory,
+} from '@/store/actions/effectsActions'
+import { formatEffectType } from '@/utils/formatters'
+import { Input } from '@/components/ui/Input'
+import { cn } from '@/utils/cn'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
+} from '@/components/ui/DropdownMenu'
+import type { EffectSource } from '@/store/types'
 
 const SOURCE_OPTIONS = [
   { id: 'official', label: 'Official' },
@@ -18,13 +29,10 @@ const SOURCE_OPTIONS = [
 ] as const
 
 export function GalleryFilters() {
-  const effects = useEffectsStore((s) => s.effects)
-  const searchQuery = useEffectsStore((s) => s.searchQuery)
-  const setSearchQuery = useEffectsStore((s) => s.setSearchQuery)
-  const activeSource = useEffectsStore((s) => s.activeSource)
-  const setActiveSource = useEffectsStore((s) => s.setActiveSource)
-  const activeCategory = useEffectsStore((s) => s.activeCategory)
-  const setActiveCategory = useEffectsStore((s) => s.setActiveCategory)
+  const effects = useStore(selectEffects)
+  const searchQuery = useStore(selectSearchQuery)
+  const activeSource = useStore(selectActiveSource)
+  const activeCategory = useStore(selectActiveCategory)
 
   const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
   const hasMine = effects.some((e) => e.source === 'local')
@@ -54,7 +62,7 @@ export function GalleryFilters() {
             .map((opt) => (
             <DropdownMenuItem
               key={opt.id}
-              onClick={() => setActiveSource(opt.id)}
+              onClick={() => setActiveSource(opt.id as EffectSource)}
               className={cn(activeSource === opt.id && 'text-primary')}
             >
               {opt.label}
@@ -93,7 +101,7 @@ export function GalleryFilters() {
           placeholder="Search..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-foreground/[0.03] py-1.5 pl-8 pr-8 text-xs"
+          className="bg-muted py-1.5 pl-8 pr-8 text-xs"
         />
         {searchQuery && (
           <button
@@ -122,7 +130,7 @@ function FilterDropdown({
   children: React.ReactNode
 }) {
   return (
-    <div className="inline-flex items-center overflow-hidden rounded-lg border bg-foreground/[0.03] transition-colors hover:border-foreground/15">
+    <div className="inline-flex items-center overflow-hidden rounded-lg border bg-muted transition-colors hover:border-foreground/15">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs outline-none">

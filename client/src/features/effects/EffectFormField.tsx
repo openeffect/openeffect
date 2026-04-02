@@ -1,9 +1,9 @@
 import type { InputFieldSchema } from '@/types/api'
-import { ImageUploader } from '@/primitives/ImageUploader'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Button } from '@/components/ui/button'
+import { ImageUploader } from '@/components/ImageUploader'
+import { Label } from '@/components/ui/Label'
+import { Input } from '@/components/ui/Input'
+import { Textarea } from '@/components/ui/Textarea'
+import { Button } from '@/components/ui/Button'
 
 interface EffectFormFieldProps {
   schema: InputFieldSchema

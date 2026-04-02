@@ -6,14 +6,29 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
-import { useEditorStore } from '@/store/editorStore'
-import { useEffectsStore } from '@/store/effectsStore'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { FileDropzone } from '@/primitives/FileDropzone'
-import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { useStore, getState } from '@/store'
+import {
+  selectEditorYaml,
+  selectSaveError,
+  selectEditingEffectId,
+  selectIsSaving,
+  selectSavedManifest,
+  selectEditorLastSavedYaml,
+  selectAssetFiles,
+} from '@/store/selectors/editorSelectors'
+import {
+  updateYaml,
+  saveEffect,
+  closeEditor,
+  confirmClose,
+} from '@/store/actions/editorActions'
+import { selectEffect } from '@/store/actions/effectsActions'
+import { api } from '@/utils/api'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
+import { FileDropzone } from '@/components/FileDropzone'
+import { cn } from '@/utils/cn'
 
 const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
 
@@ -76,15 +91,12 @@ const syntaxColors = syntaxHighlighting(HighlightStyle.define([
 export function EffectEditor() {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const yamlContent = useEditorStore((s) => s.yamlContent)
-  const saveError = useEditorStore((s) => s.saveError)
-  const editingEffectId = useEditorStore((s) => s.editingEffectId)
-  const isSaving = useEditorStore((s) => s.isSaving)
-  const savedManifest = useEditorStore((s) => s.savedManifest)
-  const lastSavedYaml = useEditorStore((s) => s.lastSavedYaml)
-  const updateYaml = useEditorStore((s) => s.updateYaml)
-  const saveEffect = useEditorStore((s) => s.saveEffect)
-  const closeEditor = useEditorStore((s) => s.closeEditor)
+  const yamlContent = useStore(selectEditorYaml)
+  const saveError = useStore(selectSaveError)
+  const editingEffectId = useStore(selectEditingEffectId)
+  const isSaving = useStore(selectIsSaving)
+  const savedManifest = useStore(selectSavedManifest)
+  const lastSavedYaml = useStore(selectEditorLastSavedYaml)
   const isNew = !editingEffectId
   const isDirty = isNew || yamlContent !== lastSavedYaml
 
@@ -95,9 +107,9 @@ export function EffectEditor() {
     const saveKeymap = keymap.of([{
       key: 'Mod-s',
       run: () => {
-        const store = useEditorStore.getState()
-        if (store.isDirty() || !store.editingEffectId) {
-          store.saveEffect()
+        const s = getState()
+        if (s.editor.yamlContent !== s.editor.lastSavedYaml || !s.editor.editingEffectId) {
+          saveEffect()
         }
         return true  // always prevent browser save dialog
       },
@@ -142,6 +154,16 @@ export function EffectEditor() {
     }
   }
 
+  const handleClose = () => {
+    if (!confirmClose()) return
+    closeEditor()
+    if (editingEffectId) {
+      selectEffect(editingEffectId, true)
+    } else {
+      selectEffect(null)
+    }
+  }
+
   const effectName = editingEffectId || (savedManifest ? `${savedManifest.namespace}/${savedManifest.id}` : 'New Effect')
 
   return (
@@ -153,15 +175,7 @@ export function EffectEditor() {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => {
-              if (!useEditorStore.getState().confirmClose()) return
-              closeEditor()
-              if (editingEffectId) {
-                useEffectsStore.getState().selectEffect(editingEffectId)
-              } else {
-                useEffectsStore.getState().selectEffect(null)
-              }
-            }}
+            onClick={handleClose}
             title="Close editor"
           >
             <ArrowLeft size={14} />
@@ -210,7 +224,7 @@ export function EffectEditor() {
 
 function AssetPanel({ effectId }: { effectId: string }) {
   const [isOpen, setIsOpen] = useState(true)
-  const storeFiles = useEditorStore((s) => s.assetFiles)
+  const storeFiles = useStore(selectAssetFiles)
   const [files, setFiles] = useState(storeFiles)
   const [renamingFile, setRenamingFile] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')

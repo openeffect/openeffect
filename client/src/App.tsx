@@ -1,13 +1,11 @@
 import { useEffect } from 'react'
-import { Layout } from '@/layout/Layout'
-import { useConfigStore } from '@/store/configStore'
+import { Layout } from '@/features/app/Layout'
+import { initializeApp } from '@/store/actions/appActions'
 
 export function App() {
-  const loadConfig = useConfigStore((s) => s.loadConfig)
-
   useEffect(() => {
-    loadConfig()
-  }, [loadConfig])
+    initializeApp()
+  }, [])
 
   return <Layout />
 }

@@ -1,35 +1,49 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { X, MoreVertical, GitFork, Download, Pencil, Trash2 } from 'lucide-react'
-import { useSelectedEffect, useEffectsStore } from '@/store/effectsStore'
-import { useGenerationStore } from '@/store/generationStore'
-import { useConfigStore } from '@/store/configStore'
-import { useEditorStore } from '@/store/editorStore'
-import { api } from '@/lib/api'
-import { formatEffectType } from '@/lib/formatters'
+import { useStore } from '@/store'
+import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
+import { selectRestoredParams } from '@/store/selectors/generationSelectors'
+import { selectAvailableModels } from '@/store/selectors/configSelectors'
+import {
+  selectEditorIsOpen,
+  selectSavedManifest,
+  selectEditingEffectId,
+  selectEditorYaml,
+  selectEditorLastSavedYaml,
+} from '@/store/selectors/editorSelectors'
+import { selectEffect } from '@/store/actions/effectsActions'
+import { startGeneration, clearRestoredParams } from '@/store/actions/generationActions'
+import {
+  confirmClose,
+  closeEditor,
+  forkEffect,
+  editEffect,
+} from '@/store/actions/editorActions'
+import { deleteEffect } from '@/store/actions/effectsActions'
+import { api } from '@/utils/api'
+import { formatEffectType } from '@/utils/formatters'
 import { EffectFormRenderer } from './EffectFormRenderer'
 import { ModelSelector } from './ModelSelector'
 import { AdvancedSettings } from './AdvancedSettings'
 import { GenerateButton } from './GenerateButton'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
-import type { GenerationRequest, ModelParam } from '@/types/api'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Label } from '@/components/ui/Label'
+import { Input } from '@/components/ui/Input'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/DropdownMenu'
+import type { ModelParam } from '@/types/api'
 
 export function EffectPanel() {
-  const selectedEffect = useSelectedEffect()
-  const editorSavedManifest = useEditorStore((s) => s.savedManifest)
-  const isEditorOpen = useEditorStore((s) => s.isEditorOpen)
-  const editingEffectId = useEditorStore((s) => s.editingEffectId)
-  const editorYaml = useEditorStore((s) => s.yamlContent)
-  const editorLastSaved = useEditorStore((s) => s.lastSavedYaml)
+  const selectedEffect = useStore(selectSelectedEffect)
+  const editorSavedManifest = useStore(selectSavedManifest)
+  const isEditorOpen = useStore(selectEditorIsOpen)
+  const editingEffectId = useStore(selectEditingEffectId)
+  const editorYaml = useStore(selectEditorYaml)
+  const editorLastSaved = useStore(selectEditorLastSavedYaml)
+  const restoredParams = useStore(selectRestoredParams)
+  const availableModels = useStore(selectAvailableModels)
+
   const manifest = isEditorOpen ? (editorSavedManifest ?? selectedEffect) : selectedEffect
-  const selectEffect = useEffectsStore((s) => s.selectEffect)
-  const startGeneration = useGenerationStore((s) => s.startGeneration)
-  const restoredParams = useGenerationStore((s) => s.restoredParams)
-  const availableModels = useConfigStore((s) => s.availableModels)
 
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [selectedModel, setSelectedModel] = useState(manifest?.generation?.default_model ?? '')
@@ -130,7 +144,7 @@ export function EffectPanel() {
     setValues(next)
 
     setAdvancedValues(restoredParams.userParams ?? {})
-    useGenerationStore.setState({ restoredParams: null })
+    clearRestoredParams()
   }, [restoredParams, manifest])
 
   const handleChange = useCallback((key: string, value: unknown) => {
@@ -167,48 +181,17 @@ export function EffectPanel() {
 
   if (!manifest) return null
 
-  const fullId = `${manifest.namespace}/${manifest.id}`
-
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      const inputs: Record<string, string> = {}
-      for (const [key, schema] of Object.entries(manifest?.inputs ?? {})) {
-        if (schema.type === 'image') {
-          const val = values[key]
-          if (val instanceof File) {
-            const uploaded = await api.upload(val)
-            inputs[key] = uploaded.ref_id
-          } else if (val && typeof val === 'object' && '__restored' in (val as Record<string, unknown>)) {
-            inputs[key] = (val as { filename: string }).filename
-          } else if (schema.required) {
-            alert(`Please upload ${schema.label}`)
-            setIsGenerating(false)
-            return
-          }
-        } else {
-          const val = values[key]
-          if (val != null && val !== '') {
-            inputs[key] = String(val)
-          } else if (schema.type === 'select' && 'default' in schema) {
-            inputs[key] = schema.default
-          }
-        }
-      }
-
-      const request: GenerationRequest = {
-        effect_id: fullId,
-        model_id: selectedModel || manifest?.generation?.default_model,
-        provider_id: selectedProvider,
-        inputs,
-        output: outputValues,
-        user_params:
-          Object.keys(advancedValues).length > 0
-            ? (advancedValues as Record<string, number | string>)
-            : undefined,
-      }
-
-      await startGeneration(request, manifest.name)
+      await startGeneration(
+        manifest,
+        values,
+        selectedModel || manifest.generation.default_model,
+        selectedProvider,
+        outputValues,
+        advancedValues,
+      )
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Generation failed')
     } finally {
@@ -247,8 +230,8 @@ export function EffectPanel() {
             className="h-7 w-7"
             onClick={() => {
               if (isEditorOpen) {
-                if (!useEditorStore.getState().confirmClose()) return
-                useEditorStore.getState().closeEditor()
+                if (!confirmClose()) return
+                closeEditor()
               }
               selectEffect(null)
             }}
@@ -388,38 +371,12 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
 
 /* ─── Three-dot menu for Fork / Edit / Export ─── */
 function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }) {
-  const forkEffect = useEditorStore((s) => s.forkEffect)
-  const selectEffect = useEffectsStore((s) => s.selectEffect)
-  const loadEffects = useEffectsStore((s) => s.loadEffects)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const isLocal = effect.source === 'local'
   const canDelete = effect.source !== 'official'
 
-  const handleFork = () => forkEffect(effect)
-
-  const handleEdit = async () => {
-    const fullId = `${effect.namespace}/${effect.id}`
-    try {
-      const { yaml, files } = await api.getEffectEditorData(effect.namespace, effect.id)
-      useEditorStore.getState().openEditor(yaml, fullId, effect, files)
-    } catch {
-      forkEffect(effect)
-    }
-  }
-
   const handleExport = () => {
     window.open(api.exportEffect(effect.namespace, effect.id), '_blank')
-  }
-
-  const handleDelete = async () => {
-    try {
-      await api.uninstallEffect(effect.namespace, effect.id)
-      useEditorStore.getState().closeEditor()
-      selectEffect(null)
-      await loadEffects()
-    } catch {
-      // ignore
-    }
   }
 
   return (
@@ -430,12 +387,12 @@ function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={handleFork}>
+        <DropdownMenuItem onClick={() => forkEffect(effect)}>
           <GitFork size={14} />
           Fork
         </DropdownMenuItem>
         {isLocal && (
-          <DropdownMenuItem onClick={handleEdit}>
+          <DropdownMenuItem onClick={() => editEffect(effect)}>
             <Pencil size={14} />
             Edit
           </DropdownMenuItem>
@@ -446,7 +403,7 @@ function EffectMenu({ effect }: { effect: import('@/types/api').EffectManifest }
         </DropdownMenuItem>
         {canDelete && (
           confirmDelete ? (
-            <DropdownMenuItem onClick={handleDelete} className="text-destructive hover:bg-destructive/15">
+            <DropdownMenuItem onClick={() => deleteEffect(effect.namespace, effect.id)} className="text-destructive hover:bg-destructive/15">
               <Trash2 size={14} />
               Confirm delete
             </DropdownMenuItem>

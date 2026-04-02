@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, Type, Sparkles } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
-import { isVideoUrl } from '@/lib/formatters'
-import { Badge } from '@/components/ui/badge'
+import { isVideoUrl } from '@/utils/formatters'
+import { Badge } from '@/components/ui/Badge'
 
 interface EffectHeroProps {
   effect: EffectManifest

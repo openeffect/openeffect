@@ -1,24 +1,31 @@
 import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, X, AlertCircle, Loader2, Download, Trash2 } from 'lucide-react'
-import { useHistoryStore } from '@/store/historyStore'
-import { Progress } from '@/components/ui/progress'
-import { formatRelativeTime } from '@/lib/formatters'
+import { useStore } from '@/store'
+import { selectHistoryIsOpen, selectHistoryItems } from '@/store/selectors/historySelectors'
+import {
+  closeHistory,
+  deleteHistoryItem,
+  openHistoryItem,
+} from '@/store/actions/historyActions'
+import { Progress } from '@/components/ui/Progress'
+import { formatRelativeTime } from '@/utils/formatters'
 
 export function HistoryPanel() {
-  const isOpen = useHistoryStore((s) => s.isOpen)
-  const items = useHistoryStore((s) => s.items)
-  const close = useHistoryStore((s) => s.close)
-  const deleteItem = useHistoryStore((s) => s.deleteItem)
+  const isOpen = useStore(selectHistoryIsOpen)
+  const items = useStore(selectHistoryItems)
   const popupRef = useRef<HTMLDivElement>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  // Auto-clear confirmation when popup closes (derived, not an effect)
+  const activeConfirmId = isOpen ? confirmDeleteId : null
 
   // Close on click outside
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        close()
+        closeHistory()
       }
     }
     const timer = setTimeout(() => document.addEventListener('mousedown', handler), 0)
@@ -26,36 +33,26 @@ export function HistoryPanel() {
       clearTimeout(timer)
       document.removeEventListener('mousedown', handler)
     }
-  }, [isOpen, close])
+  }, [isOpen])
 
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (confirmDeleteId) {
+        if (activeConfirmId) {
           setConfirmDeleteId(null)
         } else {
-          close()
+          closeHistory()
         }
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [isOpen, close, confirmDeleteId])
-
-  // Clear confirmation when popup closes
-  useEffect(() => {
-    if (!isOpen) setConfirmDeleteId(null)
-  }, [isOpen])
-
-  const handleOpen = (id: string) => {
-    window.location.hash = `#generations/${id}`
-    close()
-  }
+  }, [isOpen, activeConfirmId])
 
   const handleDelete = async (id: string) => {
-    await deleteItem(id)
+    await deleteHistoryItem(id)
     setConfirmDeleteId(null)
   }
 
@@ -90,7 +87,7 @@ export function HistoryPanel() {
                   <div
                     key={item.id}
                     className="cursor-pointer rounded-lg p-3 transition-colors hover:bg-muted"
-                    onClick={() => handleOpen(item.id)}
+                    onClick={() => openHistoryItem(item.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -137,7 +134,7 @@ export function HistoryPanel() {
                         </a>
                       )}
                       {item.status !== 'processing' && (
-                        confirmDeleteId === item.id ? (
+                        activeConfirmId === item.id ? (
                           <>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDelete(item.id) }}

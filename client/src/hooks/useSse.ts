@@ -1,11 +1,7 @@
 import { useEffect } from 'react'
-import { useGenerationStore } from '@/store/generationStore'
+import { updateJobProgress, completeJob, failJob } from '@/store/actions/generationActions'
 
 export function useSse(jobId: string | null) {
-  const updateJobProgress = useGenerationStore((s) => s.updateJobProgress)
-  const completeJob = useGenerationStore((s) => s.completeJob)
-  const failJob = useGenerationStore((s) => s.failJob)
-
   useEffect(() => {
     if (!jobId) return
 
@@ -53,5 +49,5 @@ export function useSse(jobId: string | null) {
       es?.close()
       if (retryTimer) clearTimeout(retryTimer)
     }
-  }, [jobId, updateJobProgress, completeJob, failJob])
+  }, [jobId])
 }

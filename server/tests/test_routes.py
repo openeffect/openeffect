@@ -54,7 +54,7 @@ def client(tmp_path):
     app.state.config_service = config_service
     app.state.install_service = install_service
     app.state.effect_loader = effect_loader
-    app.state.generation_service = MagicMock()
+    app.state.run_service = MagicMock()
     app.state.history_service = history_service
     app.state.model_service = model_service
     app.state.storage_service = storage_service
@@ -142,27 +142,33 @@ class TestConfigRoute:
         assert data["has_api_key"] is True
 
 
-class TestGenerationsRoute:
-    def test_generations_empty_on_start(self, client):
-        resp = client.get("/api/generations")
+class TestRunsRoute:
+    def test_runs_empty_on_start(self, client):
+        resp = client.get("/api/runs")
         assert resp.status_code == 200
         data = resp.json()
         assert data == {"items": [], "total": 0, "active_count": 0}
 
-    def test_generations_respects_limit_and_offset_params(self, client):
-        resp = client.get("/api/generations?limit=10&offset=0")
+    def test_runs_respects_limit_and_offset_params(self, client):
+        resp = client.get("/api/runs?limit=10&offset=0")
         assert resp.status_code == 200
         data = resp.json()
         assert data["items"] == []
 
-    def test_delete_nonexistent_generation_returns_404(self, client):
-        resp = client.delete("/api/generations/nonexistent-id-12345")
+    def test_runs_supports_effect_id_filter(self, client):
+        resp = client.get("/api/runs?effect_id=openeffect/hdr")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["items"] == []
+
+    def test_delete_nonexistent_run_returns_404(self, client):
+        resp = client.delete("/api/runs/nonexistent-id-12345")
         assert resp.status_code == 404
         data = resp.json()
         assert data["detail"]["code"] == "NOT_FOUND"
 
-    def test_get_nonexistent_generation_returns_404(self, client):
-        resp = client.get("/api/generations/nonexistent-id-12345")
+    def test_get_nonexistent_run_returns_404(self, client):
+        resp = client.get("/api/runs/nonexistent-id-12345")
         assert resp.status_code == 404
         data = resp.json()
         assert data["detail"]["code"] == "NOT_FOUND"

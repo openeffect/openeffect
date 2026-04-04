@@ -1,275 +1,242 @@
 import asyncio
 import uuid
 import logging
-import venv
 from pathlib import Path
 from typing import Any, AsyncIterator
 
 logger = logging.getLogger(__name__)
 
 
-MODELS = [
+# ─── Model Registry ──────────────────────────────────────────────────────────
+# supports_end_frame: "none" | "optional" | "required"
+
+MODELS: list[dict[str, Any]] = [
+    # ── WAN ──────────────────────────────────────────────────────────────
     {
-        "id": "kling-v3",
-        "name": "Kling v3",
-        "description": "High-quality video generation",
+        "id": "wan-2.2",
+        "name": "WAN 2.2",
+        "group": "WAN",
+        "description": "Affordable, good for quick iterations",
+        "supports_start_frame": True,
+        "supports_end_frame": "optional",
+        "supports_audio": False,
         "providers": [
-            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.15/sec"},
+            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.08/sec"},
         ],
+        "fal": {
+            "i2v_endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
+            "t2v_endpoint": "fal-ai/wan/v2.2-a14b/text-to-video",
+            "role_params": {"start_frame": "image_url", "end_frame": "end_image_url"},
+            "output_translation": {"aspect_ratio": "passthrough", "duration": "num_frames"},
+            "fps": 16,
+        },
         "output_params": [
-            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "9:16",
-             "options": [{"value": "9:16", "label": "9:16"}, {"value": "16:9", "label": "16:9"}, {"value": "1:1", "label": "1:1"}]},
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 10, "step": 1},
+            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "auto",
+             "options": [{"value": "auto", "label": "Auto"}, {"value": "16:9", "label": "16:9"}, {"value": "9:16", "label": "9:16"}]},
+            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 1, "max": 10, "step": 1},
+            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+             "options": [{"value": "480p", "label": "480p"}, {"value": "720p", "label": "720p"}]},
         ],
         "advanced_params": [
-            {"key": "guidance_scale", "label": "Guidance scale", "type": "slider", "default": 8.0, "min": 1.0, "max": 20.0, "step": 0.5, "hint": "Higher = closer to prompt"},
-            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 30, "min": 10, "max": 50, "step": 5, "hint": "More steps = better quality but slower"},
+            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.5, "hint": "Higher = closer to prompt"},
+            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 27, "min": 10, "max": 50, "step": 1, "hint": "More = better but slower"},
             {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
         ],
     },
     {
-        "id": "wan-2.2",
-        "name": "Wan 2.2",
-        "description": "Fast video generation",
+        "id": "wan-2.6",
+        "name": "WAN 2.6",
+        "group": "WAN",
+        "description": "Longer videos up to 15s, 1080p quality",
+        "supports_start_frame": True,
+        "supports_end_frame": "none",
+        "supports_audio": False,
         "providers": [
             {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.10/sec"},
-            # {"id": "local", "name": "Local", "type": "local"},  # disabled for now
         ],
+        "fal": {
+            "i2v_endpoint": "wan/v2.6/image-to-video",
+            "t2v_endpoint": "wan/v2.6/image-to-video",
+            "role_params": {"start_frame": "image_url"},
+            "output_translation": {"aspect_ratio": "passthrough", "duration": "passthrough"},
+        },
         "output_params": [
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 10, "step": 1},
+            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "16:9",
+             "options": [{"value": "16:9", "label": "16:9"}, {"value": "9:16", "label": "9:16"}, {"value": "1:1", "label": "1:1"}, {"value": "4:3", "label": "4:3"}, {"value": "3:4", "label": "3:4"}]},
+            {"key": "duration", "label": "Duration", "type": "select", "default": "5",
+             "options": [{"value": "5", "label": "5s"}, {"value": "10", "label": "10s"}, {"value": "15", "label": "15s"}]},
+            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+             "options": [{"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
         ],
         "advanced_params": [
-            {"key": "fps", "label": "Frames per second", "type": "slider", "default": 16, "min": 8, "max": 24, "step": 1, "hint": "Higher = smoother but slower"},
-            {"key": "guidance_scale", "label": "Guidance scale", "type": "slider", "default": 7.5, "min": 1.0, "max": 20.0, "step": 0.5, "hint": "Higher = closer to prompt"},
-            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 30, "min": 10, "max": 50, "step": 5, "hint": "More steps = better quality but slower"},
+            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
+        ],
+    },
+    # ── Kling 2.5 ────────────────────────────────────────────────────────
+    {
+        "id": "kling-2.5",
+        "name": "Kling 2.5 Turbo",
+        "group": "Kling",
+        "description": "Fast and affordable",
+        "supports_start_frame": True,
+        "supports_end_frame": "optional",
+        "supports_audio": False,
+        "providers": [
+            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.07/sec"},
+        ],
+        "fal": {
+            "i2v_endpoint": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+            "t2v_endpoint": "fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
+            "role_params": {"start_frame": "image_url", "end_frame": "tail_image_url"},
+            "output_translation": {"aspect_ratio": "passthrough", "duration": "passthrough"},
+        },
+        "output_params": [
+            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "9:16",
+             "options": [{"value": "9:16", "label": "9:16"}, {"value": "16:9", "label": "16:9"}, {"value": "1:1", "label": "1:1"}]},
+            {"key": "duration", "label": "Duration", "type": "select", "default": "5",
+             "options": [{"value": "5", "label": "5s"}, {"value": "10", "label": "10s"}]},
+        ],
+        "advanced_params": [
+            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1, "hint": "0-1 range"},
+        ],
+    },
+    # ── Kling 3.0 V3 ────────────────────────────────────────────────────
+    {
+        "id": "kling-v3",
+        "name": "Kling 3.0 V3",
+        "group": "Kling",
+        "description": "Best for cinematic shots, supports AI audio",
+        "supports_start_frame": True,
+        "supports_end_frame": "none",
+        "supports_audio": True,
+        "audio_param_key": "generate_audio",
+        "providers": [
+            {"id": "fal", "name": "fal.ai (Standard)", "type": "cloud", "cost": "~$0.08/sec"},
+        ],
+        "fal": {
+            "i2v_endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
+            "t2v_endpoint": "fal-ai/kling-video/v3/standard/text-to-video",
+            "role_params": {"start_frame": "start_image_url"},
+            "output_translation": {"duration": "passthrough"},
+        },
+        "output_params": [
+            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 15, "step": 1},
+        ],
+        "advanced_params": [
+            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+        ],
+    },
+    # ── Kling 3.0 O3 ────────────────────────────────────────────────────
+    {
+        "id": "kling-o3",
+        "name": "Kling 3.0 O3",
+        "group": "Kling",
+        "description": "Best quality, supports AI audio",
+        "supports_start_frame": True,
+        "supports_end_frame": "optional",
+        "supports_audio": True,
+        "audio_param_key": "generate_audio",
+        "providers": [
+            {"id": "fal", "name": "fal.ai (Standard)", "type": "cloud", "cost": "~$0.08/sec"},
+        ],
+        "fal": {
+            "i2v_endpoint": "fal-ai/kling-video/o3/standard/image-to-video",
+            "t2v_endpoint": "fal-ai/kling-video/o3/standard/image-to-video",
+            "role_params": {"start_frame": "image_url", "end_frame": "end_image_url"},
+            "output_translation": {"duration": "passthrough"},
+        },
+        "output_params": [
+            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 10, "min": 3, "max": 15, "step": 1},
+        ],
+        "advanced_params": [
+            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+        ],
+    },
+    # ── PixVerse V6 ───────────────────────────────────────────────────
+    {
+        "id": "pixverse-v6",
+        "name": "PixVerse V6",
+        "group": "PixVerse",
+        "description": "Creative styles, AI audio, up to 15s",
+        "supports_start_frame": True,
+        "supports_end_frame": "none",
+        "supports_audio": True,
+        "audio_param_key": "generate_audio_switch",
+        "providers": [
+            {"id": "fal", "name": "fal.ai", "type": "cloud", "cost": "~$0.05/sec"},
+        ],
+        "fal": {
+            "i2v_endpoint": "fal-ai/pixverse/v6/image-to-video",
+            "t2v_endpoint": "fal-ai/pixverse/v6/image-to-video",
+            "role_params": {"start_frame": "image_url"},
+            "output_translation": {"duration": "passthrough"},
+        },
+        "output_params": [
+            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+             "options": [{"value": "360p", "label": "360p"}, {"value": "540p", "label": "540p"}, {"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
+            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 1, "max": 15, "step": 1},
+            {"key": "style", "label": "Style", "type": "select", "default": "",
+             "options": [{"value": "", "label": "None"}, {"value": "anime", "label": "Anime"}, {"value": "3d_animation", "label": "3D Animation"}, {"value": "clay", "label": "Clay"}, {"value": "comic", "label": "Comic"}, {"value": "cyberpunk", "label": "Cyberpunk"}]},
+        ],
+        "advanced_params": [
             {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
         ],
     },
 ]
 
+# Build lookup dicts
+MODELS_BY_ID: dict[str, dict[str, Any]] = {m["id"]: m for m in MODELS}
 
-_RUNNER_SCRIPT = '''#!/usr/bin/env python
-"""Wan 2.2 runner for OpenEffect. Reads request from stdin, writes progress to stdout."""
-import json, sys, torch
-from pathlib import Path
 
-def main():
-    request = json.loads(sys.stdin.read())
-    weights_dir = str(Path(__file__).parent / "weights")
+def get_fal_config(model_id: str) -> dict[str, Any] | None:
+    """Get the fal.ai endpoint config for a model."""
+    model = MODELS_BY_ID.get(model_id)
+    return model.get("fal") if model else None
 
-    print(json.dumps({"type": "progress", "progress": 10, "message": "Loading model..."}), flush=True)
 
-    from diffusers import DiffusionPipeline
+def get_compatible_model_ids(input_roles: set[str]) -> list[str]:
+    """Return model IDs compatible with the given input roles."""
+    has_start = "start_frame" in input_roles
+    has_end = "end_frame" in input_roles
+    has_any_image = has_start or has_end
 
-    # Detect available device and memory
-    if torch.cuda.is_available():
-        device = "cuda"
-        dtype = torch.float16
-    elif torch.backends.mps.is_available():
-        import platform
-        # Check available memory
-        try:
-            import psutil
-            mem_gb = psutil.virtual_memory().total / (1024**3)
-        except ImportError:
-            mem_gb = 8  # assume low memory if psutil not available
-        # Only use MPS if we have enough memory (16GB+), otherwise CPU
-        if mem_gb >= 16:
-            device = "mps"
-            dtype = torch.float32
-        else:
-            device = "cpu"
-            dtype = torch.float32
-    else:
-        device = "cpu"
-        dtype = torch.float32
+    result = []
+    for model in MODELS:
+        if not has_any_image:
+            # Text-only: all models work
+            result.append(model["id"])
+        elif has_start and has_end:
+            # Both frames: need end_frame support ("optional" or "required")
+            if model["supports_end_frame"] in ("optional", "required"):
+                result.append(model["id"])
+        elif has_start:
+            # Start only: any model that supports start_frame, skip those requiring end_frame
+            if model["supports_start_frame"] and model["supports_end_frame"] != "required":
+                result.append(model["id"])
+        elif has_end:
+            # End only: we swap to start_frame + reverse, so need start_frame support
+            if model["supports_start_frame"] and model["supports_end_frame"] != "required":
+                result.append(model["id"])
 
-    pipe = DiffusionPipeline.from_pretrained(weights_dir, torch_dtype=dtype)
-
-    if device == "cuda":
-        pipe.enable_model_cpu_offload(device="cuda")
-    elif device == "mps":
-        pipe.enable_model_cpu_offload(device="mps")
-    # CPU: no .to() needed, already on CPU
-
-    steps = min(request["parameters"].get("num_inference_steps", 20), 20)
-
-    print(json.dumps({"type": "progress", "progress": 30, "message": f"Generating ({steps} steps, this may take several minutes)..."}), flush=True)
-
-    def step_callback(pipe, step, timestep, kwargs):
-        pct = 30 + int((step / steps) * 65)  # 30-95%
-        print(json.dumps({"type": "progress", "progress": pct, "message": f"Step {step + 1}/{steps}..."}), flush=True)
-        return kwargs
-
-    output = pipe(
-        prompt=request["prompt"],
-        negative_prompt=request.get("negative_prompt", ""),
-        num_inference_steps=steps,
-        guidance_scale=request["parameters"].get("guidance_scale", 7.5),
-        height=320,
-        width=512,
-        num_frames=16,
-        callback_on_step_end=step_callback,
-    )
-
-    output_path = request["output_path"]
-    if hasattr(output, "frames") and output.frames:
-        from diffusers.utils import export_to_video
-        export_to_video(output.frames[0], output_path)
-    else:
-        Path(output_path).write_bytes(b"")
-
-    print(json.dumps({"type": "completed", "video_path": output_path}), flush=True)
-
-if __name__ == "__main__":
-    main()
-'''
+    return result
 
 
 class ModelService:
     def __init__(self, models_dir: Path):
         self._models_dir = models_dir
-        self._install_jobs: dict[str, dict[str, Any]] = {}
-
-    def is_installed(self, model_id: str) -> bool:
-        model_dir = self._models_dir / model_id
-        return (model_dir / ".venv" / "bin" / "python").exists() or \
-               (model_dir / ".venv" / "Scripts" / "python.exe").exists()
 
     def get_available_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
         models = []
         for model in MODELS:
-            m = dict(model)
+            m = {k: v for k, v in model.items() if k != "fal"}
             providers = []
             for provider in model["providers"]:
                 p = dict(provider)
                 if provider["type"] == "cloud":
                     p["is_available"] = bool(api_key)
-                elif provider["type"] == "local":
-                    p["is_available"] = self.is_installed(model["id"])
                 else:
                     p["is_available"] = False
                 providers.append(p)
             m["providers"] = providers
             models.append(m)
         return models
-
-    async def install(self, model_id: str) -> str:
-        # Verify model exists and has a local provider
-        model_def = next((m for m in MODELS if m["id"] == model_id), None)
-        if not model_def:
-            raise ValueError(f"Unknown model: {model_id}")
-        if not any(p["type"] == "local" for p in model_def["providers"]):
-            raise ValueError(f"Model {model_id} has no local provider")
-
-        install_id = str(uuid.uuid4())
-        self._install_jobs[install_id] = {
-            "model_id": model_id,
-            "status": "started",
-            "progress": 0,
-        }
-
-        asyncio.create_task(self._run_install(install_id, model_id))
-        return install_id
-
-    async def _run_install(self, install_id: str, model_id: str) -> None:
-        job = self._install_jobs[install_id]
-        try:
-            model_dir = self._models_dir / model_id
-            model_dir.mkdir(parents=True, exist_ok=True)
-
-            venv_dir = model_dir / ".venv"
-
-            job.update({"progress": 10, "message": "Creating isolated environment..."})
-            await asyncio.to_thread(
-                venv.create, str(venv_dir), with_pip=True, clear=True
-            )
-
-            if (venv_dir / "bin" / "pip").exists():
-                pip = str(venv_dir / "bin" / "pip")
-                python = str(venv_dir / "bin" / "python")
-            elif (venv_dir / "Scripts" / "pip.exe").exists():
-                pip = str(venv_dir / "Scripts" / "pip.exe")
-                python = str(venv_dir / "Scripts" / "python.exe")
-            else:
-                raise RuntimeError("pip not found in created venv")
-
-            job.update({"progress": 20, "message": "Installing PyTorch (this may take a while)..."})
-            proc = await asyncio.create_subprocess_exec(
-                pip, "install", "torch", "torchvision", "torchaudio",
-                "--index-url", "https://download.pytorch.org/whl/cpu",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"Failed to install PyTorch: {stderr.decode()[-500:]}")
-
-            job.update({"progress": 40, "message": "Installing diffusers..."})
-            proc = await asyncio.create_subprocess_exec(
-                pip, "install", "diffusers", "transformers", "accelerate", "safetensors",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"Failed to install diffusers: {stderr.decode()[-500:]}")
-
-            job.update({"progress": 60, "message": "Downloading model weights (~7GB)..."})
-            proc = await asyncio.create_subprocess_exec(
-                pip, "install", "huggingface-hub",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            await proc.communicate()
-
-            proc = await asyncio.create_subprocess_exec(
-                python, "-c",
-                "from huggingface_hub import snapshot_download; "
-                f"snapshot_download('Wan-AI/Wan2.1-T2V-1.3B-Diffusers', local_dir='{model_dir / 'weights'}')",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"Failed to download model: {stderr.decode()[-500:]}")
-
-            job.update({"progress": 90, "message": "Setting up runner..."})
-            runner_path = model_dir / "runner.py"
-            runner_path.write_text(_RUNNER_SCRIPT)
-
-            job.update({"progress": 95, "message": "Verifying installation..."})
-            proc = await asyncio.create_subprocess_exec(
-                python, "-c",
-                "import torch; import diffusers; print('OK')",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(f"Verification failed: {stderr.decode()[-500:]}")
-
-            job.update({"status": "completed", "progress": 100, "message": "Installation complete"})
-
-        except Exception as e:
-            logger.exception(f"Installation failed for {model_id}")
-            job.update({"status": "failed", "error": str(e)})
-
-    async def stream_install(self, install_id: str) -> AsyncIterator[dict[str, Any]]:
-        job = self._install_jobs.get(install_id)
-        if not job:
-            yield {"event": "failed", "data": {"install_job_id": install_id, "error": "Install job not found"}}
-            return
-
-        last_progress = -1
-        while True:
-            if job.get("progress", 0) != last_progress:
-                last_progress = job.get("progress", 0)
-                if job.get("status") == "completed":
-                    yield {"event": "completed", "data": {"install_job_id": install_id, "model_id": job["model_id"]}}
-                    break
-                elif job.get("status") == "failed":
-                    yield {"event": "failed", "data": {"install_job_id": install_id, "error": job.get("error", "Unknown error")}}
-                    break
-                else:
-                    yield {"event": "progress", "data": {
-                        "install_job_id": install_id,
-                        "progress": last_progress,
-                        "message": job.get("message", ""),
-                    }}
-            await asyncio.sleep(0.5)

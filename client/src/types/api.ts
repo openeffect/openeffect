@@ -10,6 +10,8 @@ export type InputFieldSchema =
       required: boolean
       label: string
       hint?: string
+      default?: string
+      advanced?: boolean
     }
   | {
       type: 'text'
@@ -20,6 +22,7 @@ export type InputFieldSchema =
       max_length?: number
       multiline: boolean
       hint?: string
+      advanced?: boolean
     }
   | {
       type: 'select'
@@ -30,6 +33,7 @@ export type InputFieldSchema =
       default: string
       display?: 'pills' | 'dropdown'
       hint?: string
+      advanced?: boolean
     }
   | {
       type: 'slider'
@@ -42,6 +46,7 @@ export type InputFieldSchema =
       default: number
       unit?: string
       hint?: string
+      advanced?: boolean
     }
   | {
       type: 'number'
@@ -53,6 +58,7 @@ export type InputFieldSchema =
       step?: number
       default: number
       hint?: string
+      advanced?: boolean
     }
 
 export interface Assets {
@@ -72,6 +78,7 @@ export interface GenerationConfig {
   default_model: string
   defaults: Record<string, number | string>
   model_overrides: Record<string, ModelOverride>
+  reverse: boolean
 }
 
 export interface EffectManifest {
@@ -89,9 +96,11 @@ export interface EffectManifest {
   inputs: Record<string, InputFieldSchema>
   generation: GenerationConfig
   source: 'official' | 'url' | 'archive' | 'local'
+  db_id: string
+  compatible_models: string[]
 }
 
-export interface GenerationRecord {
+export interface RunRecord {
   id: string
   effect_id: string
   effect_name: string
@@ -100,8 +109,7 @@ export interface GenerationRecord {
   progress: number
   progress_msg: string | null
   video_url: string | null
-  thumbnail_url: string | null
-  manifest_yaml: unknown
+  inputs: unknown
   error: string | null
   created_at: string
   updated_at: string
@@ -132,7 +140,10 @@ export interface ModelProvider {
 export interface ModelInfo {
   id: string
   name: string
+  group: string
   description: string
+  supports_audio: boolean
+  audio_param_key?: string
   providers: ModelProvider[]
   output_params?: ModelParam[]
   advanced_params?: ModelParam[]
@@ -157,7 +168,7 @@ export interface UploadResponse {
   }
 }
 
-export interface GenerationRequest {
+export interface RunRequest {
   effect_id: string
   model_id: string
   provider_id: string
@@ -166,13 +177,13 @@ export interface GenerationRequest {
   user_params?: Record<string, number | string>
 }
 
-export interface GenerateResponse {
+export interface RunResponse {
   job_id: string
   status: string
 }
 
-export interface GenerationsResponse {
-  items: GenerationRecord[]
+export interface RunsResponse {
+  items: RunRecord[]
   total: number
   active_count: number
 }

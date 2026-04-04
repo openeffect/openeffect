@@ -57,7 +57,7 @@ def client(tmp_path, storage_dir):
     app.state.config_service = config_service
     app.state.install_service = install_service
     app.state.effect_loader = effect_loader
-    app.state.generation_service = MagicMock()
+    app.state.run_service = MagicMock()
     app.state.history_service = history_service
     app.state.model_service = model_service
     app.state.storage_service = storage_service

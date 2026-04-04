@@ -6,7 +6,7 @@ from pydantic import BaseModel
 router = APIRouter()
 
 
-class GenerationRequest(BaseModel):
+class RunRequest(BaseModel):
     effect_id: str
     model_id: str
     provider_id: str  # "fal" or "local"
@@ -15,11 +15,11 @@ class GenerationRequest(BaseModel):
     user_params: dict[str, float | int | str] | None = None
 
 
-@router.post("/generate")
-async def start_generation(req: GenerationRequest, request: Request):
-    gen_service = request.app.state.generation_service
+@router.post("/run")
+async def start_run(req: RunRequest, request: Request):
+    run_service = request.app.state.run_service
     try:
-        job_id = await gen_service.start(req)
+        job_id = await run_service.start(req)
         return {"job_id": job_id, "status": "queued"}
     except ValueError as e:
         raise HTTPException(status_code=422, detail={"error": str(e), "code": "INVALID_REQUEST"})
@@ -27,12 +27,12 @@ async def start_generation(req: GenerationRequest, request: Request):
         raise HTTPException(status_code=401, detail={"error": str(e), "code": "NO_API_KEY"})
 
 
-@router.get("/generate/{job_id}/stream")
-async def stream_generation(job_id: str, request: Request):
-    gen_service = request.app.state.generation_service
+@router.get("/run/{job_id}/stream")
+async def stream_run(job_id: str, request: Request):
+    run_service = request.app.state.run_service
 
     async def event_stream():
-        async for event in gen_service.stream(job_id):
+        async for event in run_service.stream(job_id):
             yield f"event: {event['event']}\ndata: {json.dumps(event['data'])}\n\n"
 
     return StreamingResponse(

@@ -1,135 +1,121 @@
 import { setState, getState } from '../index'
-import {
-  mutateSetEffects,
-  mutateSetEffectsStatus,
-  mutateSelectEffect,
-  mutateSetSearchQuery,
-  mutateSetActiveSource,
-  mutateSetActiveCategory,
-} from '../mutations/effectsMutations'
-import { mutateClearViewingJob } from '../mutations/generationMutations'
+import { mutateSelectEffect } from '../mutations/effectsMutations'
+import { mutateClearViewingJob } from '../mutations/runMutations'
 import { mutateCloseEditor } from '../mutations/editorMutations'
-import { restoreFromUrl } from './generationActions'
+import { restoreFromUrl } from './runActions'
 import { openEditor } from './editorActions'
 import { api } from '@/utils/api'
-import { parseHash, writeHash, initPopstateListener } from '@/utils/router'
+import { parseRoute, navigate, initRouteListener } from '@/utils/router'
 import type { EffectManifest } from '@/types/api'
 import type { EffectSource } from '../types'
 
-function isValidEffectId(effects: EffectManifest[], id: string): boolean {
-  return effects.some((e) => `${e.namespace}/${e.id}` === id)
+function findEffectByDbId(effects: EffectManifest[], dbId: string): EffectManifest | null {
+  return effects.find((e) => e.db_id === dbId) ?? null
 }
 
-async function restoreEditor(effectId: string): Promise<void> {
+async function restoreEditor(dbId: string, effectsList?: EffectManifest[]): Promise<void> {
   try {
-    const [ns, id] = effectId.split('/')
-    if (!ns || !id) return
-    const { yaml, files } = await api.getEffectEditorData(ns, id)
-    const effects = getState().effects.items
-    const manifest = effects.find((e) => `${e.namespace}/${e.id}` === effectId)
-    openEditor(yaml, effectId, manifest, files)
-    selectEffect(effectId, true)
+    const effects = effectsList ?? getState().effects.items
+    const manifest = findEffectByDbId(effects, dbId)
+    if (!manifest) { navigate('/'); return }
+    const { yaml, files } = await api.getEffectEditorData(manifest.namespace, manifest.id)
+    openEditor(yaml, dbId, manifest, files)
+    selectEffect(dbId, true)
   } catch {
-    writeHash(null)
+    navigate('/')
   }
 }
 
 export async function loadEffects(): Promise<void> {
   setState((s) => {
-    mutateSetEffectsStatus(s, 'loading', null)
+    s.effects.status = 'loading'
+    s.effects.error = null
   }, 'effects/loadStart')
 
   try {
     const effects = await api.getEffects()
 
-    // After loading, check if URL hash points to a valid effect or generation
-    const parsed = parseHash()
+    const route = parseRoute()
     let selectedId: string | null = null
 
-    if (parsed?.mode === 'effect' && isValidEffectId(effects, parsed.id)) {
-      selectedId = parsed.id
-    } else if (parsed?.mode === 'edit') {
-      restoreEditor(parsed.id)
-    } else if (parsed?.mode === 'generation') {
-      restoreFromUrl(parsed.id).then((effectId) => {
-        if (effectId) selectEffect(effectId, true)
-      })
+    if (route.page === 'effect') {
+      if (effects.some((e) => e.db_id === route.effectId)) {
+        selectedId = route.effectId
+      }
+      if (route.runId) {
+        restoreFromUrl(route.runId).then((effectId) => {
+          if (effectId) selectEffect(effectId, true)
+        })
+      }
+    } else if (route.page === 'edit') {
+      restoreEditor(route.effectId, effects)
     }
 
     setState((s) => {
-      mutateSetEffects(s, effects)
-      mutateSetEffectsStatus(s, 'succeeded')
+      s.effects.items = effects
+      s.effects.status = 'succeeded'
       mutateSelectEffect(s, selectedId)
     }, 'effects/load')
 
-    // Wire up popstate listener now that effects are loaded
-    initPopstateListener(
-      (id) => {
+    initRouteListener(
+      (dbId, runId) => {
         setState((s) => {
           mutateCloseEditor(s)
-          mutateSelectEffect(s, id)
+          mutateSelectEffect(s, dbId)
         }, 'router/effect')
+        if (runId) {
+          restoreFromUrl(runId)
+        }
       },
-      (id) => restoreEditor(id),
-      (id) => {
-        restoreFromUrl(id).then((effectId) => {
-          if (effectId) selectEffect(effectId, true)
-        })
-      },
+      (dbId) => restoreEditor(dbId),
       () => {
         setState((s) => {
           mutateClearViewingJob(s)
           mutateCloseEditor(s)
           mutateSelectEffect(s, null)
-        }, 'router/empty')
+        }, 'router/gallery')
       },
-      (id) => isValidEffectId(getState().effects.items, id),
     )
   } catch (e) {
     setState((s) => {
-      mutateSetEffectsStatus(
-        s,
-        'failed',
-        e instanceof Error ? e.message : 'Failed to load effects',
-      )
+      s.effects.status = 'failed'
+      s.effects.error = e instanceof Error ? e.message : 'Failed to load effects'
     }, 'effects/loadFailed')
   }
 }
 
-export function selectEffect(id: string | null, skipHash?: boolean): void {
-  if (!skipHash) {
-    writeHash(id ? `effects/${id}` : null)
+export function selectEffect(dbId: string | null, skipNav?: boolean): void {
+  if (!skipNav) {
+    navigate(dbId ? `/effects/${dbId}` : '/')
   }
   setState((s) => {
-    mutateSelectEffect(s, id)
-    if (id === null) {
+    mutateSelectEffect(s, dbId)
+    if (dbId === null) {
       mutateClearViewingJob(s)
     }
   }, 'effects/select')
 }
 
 export function setSearchQuery(query: string): void {
-  setState((s) => {
-    mutateSetSearchQuery(s, query)
-  }, 'effects/setSearchQuery')
+  setState((s) => { s.effects.searchQuery = query }, 'effects/setSearchQuery')
 }
 
 export function setActiveSource(source: EffectSource): void {
+  setState((s) => { s.effects.activeSource = source }, 'effects/setActiveSource')
+}
+
+export function setActiveType(type: string): void {
   setState((s) => {
-    mutateSetActiveSource(s, source)
-  }, 'effects/setActiveSource')
+    s.effects.activeType = type
+    s.effects.activeCategory = 'all'
+  }, 'effects/setActiveType')
 }
 
 export function setActiveCategory(category: string): void {
-  setState((s) => {
-    mutateSetActiveCategory(s, category)
-  }, 'effects/setActiveCategory')
+  setState((s) => { s.effects.activeCategory = category }, 'effects/setActiveCategory')
 }
 
-export async function deleteEffect(
-  namespace: string,
-  id: string,
-): Promise<void> {
+export async function deleteEffect(namespace: string, id: string): Promise<void> {
   try {
     await api.uninstallEffect(namespace, id)
     setState((s) => {

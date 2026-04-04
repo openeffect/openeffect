@@ -13,6 +13,7 @@ export const selectAssetFiles = (s: AppState) => s.editor.assetFiles
 export const selectIsSaving = (s: AppState) => s.editor.isSaving
 export const selectIsForking = (s: AppState) => s.editor.isForking
 export const selectSaveError = (s: AppState) => s.editor.saveError
+export const selectSaveVersion = (s: AppState) => s.editor.saveVersion
 
 // ─── Derived selectors ───────────────────────────────────────────────────────
 

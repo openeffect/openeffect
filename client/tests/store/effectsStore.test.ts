@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useStore } from '../../src/store'
 import { selectFilteredEffects, selectSelectedEffect } from '../../src/store/selectors/effectsSelectors'
-import { selectEffect, setSearchQuery, setActiveCategory } from '../../src/store/actions/effectsActions'
+import { selectEffect, setSearchQuery, setActiveType, setActiveCategory } from '../../src/store/actions/effectsActions'
 import type { EffectManifest } from '../../src/types/api'
 
 // --- Mock data ---
 
 const mockEffects: EffectManifest[] = [
   {
+    db_id: 'uuid-zoom-001',
     id: 'zoom-from-space',
     namespace: 'openeffect',
     name: 'Zoom From Space',
@@ -38,6 +39,7 @@ const mockEffects: EffectManifest[] = [
     },
   },
   {
+    db_id: 'uuid-hug-002',
     id: 'hug-effect',
     namespace: 'openeffect',
     name: 'Warm Hug',
@@ -76,6 +78,7 @@ const mockEffects: EffectManifest[] = [
     },
   },
   {
+    db_id: 'uuid-dance-003',
     id: 'dance-loop',
     namespace: 'openeffect',
     name: 'Dance Loop',
@@ -126,8 +129,9 @@ beforeEach(() => {
     s.effects.error = null
     s.effects.selectedId = null
     s.effects.searchQuery = ''
-    s.effects.activeCategory = 'all'
     s.effects.activeSource = 'all'
+    s.effects.activeType = 'all'
+    s.effects.activeCategory = 'all'
   })
 })
 
@@ -143,14 +147,25 @@ describe('effectsStore', () => {
       expect(useStore.getState().effects.searchQuery).toBe('portrait')
     })
 
+    it('setActiveType updates activeType', () => {
+      setActiveType('animation')
+      expect(useStore.getState().effects.activeType).toBe('animation')
+    })
+
     it('setActiveCategory updates activeCategory', () => {
       setActiveCategory('cinematic')
       expect(useStore.getState().effects.activeCategory).toBe('cinematic')
     })
+
+    it('setActiveType resets activeCategory', () => {
+      setActiveCategory('cinematic')
+      setActiveType('animation')
+      expect(useStore.getState().effects.activeCategory).toBe('all')
+    })
   })
 
   describe('selectFilteredEffects (filter logic)', () => {
-    it('returns all effects when no search/category filter is active', () => {
+    it('returns all effects when no filters are active', () => {
       useStore.setState((s) => { s.effects.items = mockEffects })
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(3)
@@ -188,24 +203,24 @@ describe('effectsStore', () => {
       expect(filtered[0].id).toBe('dance-loop')
     })
 
-    it('category "single-image" returns only single-image effects', () => {
+    it('type "single-image" returns only single-image effects', () => {
       useStore.setState((s) => { s.effects.items = mockEffects })
-      setActiveCategory('single-image')
+      setActiveType('single-image')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(2)
       expect(filtered.every((e) => e.type === 'single-image')).toBe(true)
     })
 
-    it('category "all" returns everything', () => {
+    it('type "all" returns everything', () => {
       useStore.setState((s) => { s.effects.items = mockEffects })
-      setActiveCategory('all')
+      setActiveType('all')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(3)
     })
 
-    it('combined search + category filter', () => {
+    it('combined search + type filter', () => {
       useStore.setState((s) => { s.effects.items = mockEffects })
-      setActiveCategory('single-image')
+      setActiveType('single-image')
       setSearchQuery('dance')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
@@ -219,20 +234,29 @@ describe('effectsStore', () => {
       expect(filtered).toHaveLength(0)
     })
 
-    it('category filter by category field matches', () => {
+    it('category filter matches category field', () => {
       useStore.setState((s) => { s.effects.items = mockEffects })
       setActiveCategory('emotional')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
       expect(filtered[0].id).toBe('hug-effect')
     })
+
+    it('combined type + category filter', () => {
+      useStore.setState((s) => { s.effects.items = mockEffects })
+      setActiveType('single-image')
+      setActiveCategory('fun')
+      const filtered = getFilteredEffects()
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].id).toBe('dance-loop')
+    })
   })
 
   describe('selectSelectedEffect (selector logic)', () => {
-    it('returns correct effect when ID matches', () => {
+    it('returns correct effect when db_id matches', () => {
       useStore.setState((s) => {
         s.effects.items = mockEffects
-        s.effects.selectedId = 'openeffect/zoom-from-space'
+        s.effects.selectedId = 'uuid-zoom-001'
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
@@ -252,16 +276,16 @@ describe('effectsStore', () => {
     it('returns null when ID does not match any effect', () => {
       useStore.setState((s) => {
         s.effects.items = mockEffects
-        s.effects.selectedId = 'openeffect/nonexistent'
+        s.effects.selectedId = 'nonexistent-uuid'
       })
       const selected = getSelectedEffect()
       expect(selected).toBeNull()
     })
 
-    it('matches effect using namespace/id format', () => {
+    it('matches effect using db_id', () => {
       useStore.setState((s) => {
         s.effects.items = mockEffects
-        s.effects.selectedId = 'openeffect/hug-effect'
+        s.effects.selectedId = 'uuid-hug-002'
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()

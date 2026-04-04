@@ -15,8 +15,7 @@ interface EffectCardProps {
 export function EffectCard({ effect }: EffectCardProps) {
   const selectedId = useStore(selectSelectedId)
 
-  const fullId = `${effect.namespace}/${effect.id}`
-  const isSelected = selectedId === fullId
+  const isSelected = selectedId === effect.db_id
   // Assets are pre-resolved URLs from the server
   const firstInputUrl = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.includes('.jpg') || v.includes('.jpeg') || v.includes('.png') || v.includes('.webp')) : null
   const posterUrl = firstInputUrl ?? null
@@ -24,7 +23,7 @@ export function EffectCard({ effect }: EffectCardProps) {
 
   return (
     <motion.div
-      onClick={() => selectEffect(fullId)}
+      onClick={() => selectEffect(effect.db_id)}
       className={cn(
         'group cursor-pointer overflow-hidden rounded-xl border-2 bg-card shadow-sm transition-shadow',
         isSelected
@@ -77,9 +76,9 @@ export function EffectCard({ effect }: EffectCardProps) {
         </Badge>
         {/* Author badge for installed effects */}
         {effect.source !== 'official' && (
-          <Badge variant="accent" className="absolute right-2 top-2 uppercase tracking-wide">
+          <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm">
             {effect.namespace}
-          </Badge>
+          </span>
         )}
       </div>
       <div className="p-3">

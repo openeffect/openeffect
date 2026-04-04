@@ -1,17 +1,8 @@
 import { setState, getState } from '../index'
-import {
-  mutateAddJob,
-  mutateUpdateJobProgress,
-  mutateCompleteJob,
-  mutateFailJob,
-  mutateSetViewingJob,
-  mutateClearViewingJob,
-  mutateSetRestoredParams,
-  mutateSetRestoringFromUrl,
-} from '../mutations/generationMutations'
+import { mutateClearViewingJob, mutateSetViewingRunRecord, mutateSetRestoredParams } from '../mutations/runMutations'
 import { api } from '@/utils/api'
-import { writeHash } from '@/utils/router'
-import type { EffectManifest, GenerationRequest } from '@/types/api'
+import { navigate } from '@/utils/router'
+import type { EffectManifest, RunRequest } from '@/types/api'
 
 // ─── Input preparation (extracted from EffectPanel) ──────────────────────────
 
@@ -49,7 +40,7 @@ async function prepareInputs(
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
-export async function startGeneration(
+export async function startRun(
   manifest: EffectManifest,
   values: Record<string, unknown>,
   selectedModel: string,
@@ -57,11 +48,10 @@ export async function startGeneration(
   outputValues: Record<string, string | number>,
   advancedValues: Record<string, unknown>,
 ): Promise<string> {
-  const fullId = `${manifest.namespace}/${manifest.id}`
   const inputs = await prepareInputs(manifest, values)
 
-  const request: GenerationRequest = {
-    effect_id: fullId,
+  const request: RunRequest = {
+    effect_id: manifest.db_id,
     model_id: selectedModel || manifest.generation.default_model,
     provider_id: selectedProvider,
     inputs,
@@ -72,10 +62,10 @@ export async function startGeneration(
         : undefined,
   }
 
-  const response = await api.generate(request)
+  const response = await api.run(request)
 
   setState((s) => {
-    mutateAddJob(s, {
+    s.run.jobs.set(response.job_id, {
       jobId: response.job_id,
       effectName: manifest.name,
       status: 'processing',
@@ -84,116 +74,99 @@ export async function startGeneration(
       videoUrl: null,
       error: null,
     })
-    mutateSetViewingJob(s, response.job_id, 'progress')
-  }, 'generation/start')
+    s.run.viewingJobId = response.job_id
+    s.run.leftPanel = 'progress'
+  }, 'run/start')
 
-  writeHash(`generations/${response.job_id}`)
+  navigate(`/effects/${manifest.db_id}`, { run: response.job_id })
   return response.job_id
 }
 
-export function updateJobProgress(
-  jobId: string,
-  progress: number,
-  message: string,
-): void {
+export function updateJobProgress(jobId: string, progress: number, message: string): void {
   setState((s) => {
-    mutateUpdateJobProgress(s, jobId, progress, message)
-  }, 'generation/progress')
+    const job = s.run.jobs.get(jobId)
+    if (job) {
+      job.progress = progress
+      job.message = message
+    }
+  }, 'run/progress')
 }
 
 export function completeJob(jobId: string, videoUrl: string): void {
   setState((s) => {
-    mutateCompleteJob(s, jobId, videoUrl)
-  }, 'generation/complete')
+    const job = s.run.jobs.get(jobId)
+    if (job) {
+      job.status = 'completed'
+      job.progress = 100
+      job.videoUrl = videoUrl
+      job.message = null
+    }
+    if (s.run.viewingJobId === jobId) {
+      s.run.leftPanel = 'run-result'
+    }
+  }, 'run/complete')
+
+  // Reload per-effect history so the new run appears at the top
+  const effectId = getState().history.effectId
+  if (effectId) {
+    import('./historyActions').then(({ loadEffectHistory }) => loadEffectHistory(effectId))
+  }
 }
 
 export function failJob(jobId: string, error: string): void {
   setState((s) => {
-    mutateFailJob(s, jobId, error)
-  }, 'generation/fail')
+    const job = s.run.jobs.get(jobId)
+    if (job) {
+      job.status = 'failed'
+      job.error = error
+    }
+  }, 'run/fail')
 }
 
 export function openJob(jobId: string): void {
-  const job = getState().generation.jobs.get(jobId)
+  const job = getState().run.jobs.get(jobId)
   if (!job) return
   setState((s) => {
-    mutateSetViewingJob(s, jobId, job.status === 'completed' ? 'result' : 'progress')
-  }, 'generation/openJob')
+    s.run.viewingJobId = jobId
+    s.run.leftPanel = job.status === 'completed' ? 'run-result' : 'progress'
+  }, 'run/openJob')
 }
 
 export function closeJob(): void {
   const s = getState()
-  if (s.editor.isOpen && s.editor.editingEffectId) {
-    writeHash(`effects/${s.editor.editingEffectId}/edit`)
+  if (s.editor.isOpen && s.effects.selectedId) {
+    navigate(`/effects/${s.effects.selectedId}/edit`)
+  } else if (s.effects.selectedId) {
+    navigate(`/effects/${s.effects.selectedId}`)
   } else {
-    writeHash(null)
+    navigate('/')
   }
   setState((s) => {
     mutateClearViewingJob(s)
-  }, 'generation/closeJob')
+  }, 'run/closeJob')
 }
 
 export async function restoreFromUrl(id: string): Promise<string | null> {
   setState((s) => {
-    mutateSetRestoringFromUrl(s, true)
-  }, 'generation/restoreStart')
+    s.run.restoringFromUrl = true
+  }, 'run/restoreStart')
 
   try {
-    const record = await api.getGeneration(id)
-
-    const manifestData = (
-      typeof record.manifest_yaml === 'string'
-        ? JSON.parse(record.manifest_yaml)
-        : record.manifest_yaml
-    ) as {
-      request?: {
-        effect_id?: string
-        model_id?: string
-        inputs?: Record<string, string>
-        output?: Record<string, string | number>
-        user_params?: Record<string, unknown>
-      }
-    } | null
-
-    const reqData = manifestData?.request ?? null
+    const record = await api.getRun(id)
 
     setState((s) => {
-      mutateAddJob(s, {
-        jobId: record.id,
-        effectName: record.effect_name,
-        status: record.status,
-        progress: record.progress,
-        message: record.progress_msg,
-        videoUrl: record.video_url,
-        error: record.error,
-      })
-      mutateSetViewingJob(
-        s,
-        record.id,
-        record.status === 'completed' ? 'result' : 'progress',
-      )
-      mutateSetRestoredParams(
-        s,
-        reqData
-          ? {
-              modelId: reqData.model_id ?? '',
-              inputs: reqData.inputs ?? {},
-              output: reqData.output ?? {},
-              userParams: reqData.user_params,
-            }
-          : null,
-      )
-      mutateSetRestoringFromUrl(s, false)
-    }, 'generation/restore')
+      mutateSetViewingRunRecord(s, record)
+      s.run.restoringFromUrl = false
+    }, 'run/restore')
 
-    return record.effect_id ?? reqData?.effect_id ?? null
+    return record.effect_id ?? null
   } catch (e) {
-    console.error('Failed to restore generation from URL:', e)
+    console.error('Failed to restore run from URL:', e)
     setState((s) => {
-      mutateSetRestoringFromUrl(s, false)
+      s.run.restoringFromUrl = false
       mutateClearViewingJob(s)
-    }, 'generation/restoreFailed')
-    writeHash(null)
+    }, 'run/restoreFailed')
+    navigate('/')
     return null
   }
 }
@@ -201,5 +174,5 @@ export async function restoreFromUrl(id: string): Promise<string | null> {
 export function clearRestoredParams(): void {
   setState((s) => {
     mutateSetRestoredParams(s, null)
-  }, 'generation/clearRestoredParams')
+  }, 'run/clearRestoredParams')
 }

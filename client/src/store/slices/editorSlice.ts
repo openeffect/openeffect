@@ -10,4 +10,5 @@ export const initialEditorState: EditorSlice = {
   isSaving: false,
   isForking: false,
   saveError: null,
+  saveVersion: 0,
 }

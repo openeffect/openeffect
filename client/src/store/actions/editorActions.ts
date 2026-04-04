@@ -1,19 +1,10 @@
 import { setState, getState } from '../index'
-import {
-  mutateOpenEditor,
-  mutateOpenBlankEditor,
-  mutateCloseEditor,
-  mutateUpdateYaml,
-  mutateSaveStart,
-  mutateSaveSuccess,
-  mutateSaveError,
-  mutateForkStart,
-  mutateForkSuccess,
-  mutateForkError,
-} from '../mutations/editorMutations'
+import { mutateCloseEditor } from '../mutations/editorMutations'
 import { mutateSelectEffect } from '../mutations/effectsMutations'
+import { mutateClearViewingJob } from '../mutations/runMutations'
 import { api } from '@/utils/api'
-import { writeHash } from '@/utils/router'
+import { navigate, replaceRoute } from '@/utils/router'
+import { manifestToYaml } from '@/utils/yaml'
 import type { EffectManifest } from '@/types/api'
 import type { AssetFile } from '../types'
 import { loadEffects, selectEffect } from './effectsActions'
@@ -70,6 +61,8 @@ generation:
 `
 
 const BLANK_MANIFEST: EffectManifest = {
+  db_id: '',
+  compatible_models: [],
   namespace: 'my',
   id: 'new-effect',
   name: 'New Effect',
@@ -105,6 +98,7 @@ const BLANK_MANIFEST: EffectManifest = {
     default_model: 'kling-v3',
     defaults: { duration: 5, guidance_scale: 8.0 },
     model_overrides: {},
+    reverse: false,
   },
   source: 'local',
 }
@@ -118,14 +112,29 @@ export function openEditor(
   files?: AssetFile[],
 ): void {
   setState((s) => {
-    mutateOpenEditor(s, yaml, effectId, manifest, files)
+    mutateClearViewingJob(s)
+    s.effects.rightTab = 'form'
+    s.editor.yamlContent = yaml
+    s.editor.lastSavedYaml = yaml
+    s.editor.savedManifest = manifest ?? null
+    s.editor.editingEffectId = effectId
+    s.editor.assetFiles = files ?? []
+    s.editor.isOpen = true
+    s.editor.saveError = null
   }, 'editor/open')
-  writeHash(`effects/${effectId}/edit`)
+  navigate(`/effects/${effectId}/edit`)
 }
 
 export function openBlankEditor(): void {
   setState((s) => {
-    mutateOpenBlankEditor(s, BLANK_TEMPLATE, BLANK_MANIFEST)
+    mutateClearViewingJob(s)
+    s.effects.rightTab = 'form'
+    s.editor.yamlContent = BLANK_TEMPLATE
+    s.editor.lastSavedYaml = BLANK_TEMPLATE
+    s.editor.savedManifest = BLANK_MANIFEST
+    s.editor.editingEffectId = null
+    s.editor.isOpen = true
+    s.editor.saveError = null
   }, 'editor/openBlank')
 }
 
@@ -144,93 +153,148 @@ export function confirmClose(): boolean {
 
 export function updateYaml(content: string): void {
   setState((s) => {
-    mutateUpdateYaml(s, content)
+    s.editor.yamlContent = content
+    s.editor.saveError = null
   }, 'editor/updateYaml')
 }
 
 export async function saveEffect(): Promise<void> {
   const { yamlContent, editingEffectId } = getState().editor
   setState((s) => {
-    mutateSaveStart(s)
+    s.editor.isSaving = true
+    s.editor.saveError = null
   }, 'editor/saveStart')
 
   try {
     const result = await api.saveEffect(yamlContent, editingEffectId)
-    const effectId = result.effect_id
+    const dbId = result.manifest.db_id ?? result.effect_id
 
-    // Read current yaml again (user may have typed during save)
     const currentYaml = getState().editor.yamlContent
     setState((s) => {
-      mutateSaveSuccess(s, effectId, result.manifest, currentYaml)
+      s.editor.editingEffectId = dbId
+      s.editor.savedManifest = result.manifest
+      s.editor.lastSavedYaml = currentYaml
+      s.editor.isSaving = false
+      s.editor.saveVersion++
     }, 'editor/save')
 
-    writeHash(`effects/${effectId}/edit`)
+    replaceRoute(`/effects/${dbId}/edit`)
 
-    // Reload effects list so gallery reflects changes
     await loadEffects()
-    selectEffect(effectId, true)
+    selectEffect(dbId, true)
   } catch (e) {
     setState((s) => {
-      mutateSaveError(s, e instanceof Error ? e.message : 'Save failed')
+      s.editor.isSaving = false
+      s.editor.saveError = e instanceof Error ? e.message : 'Save failed'
     }, 'editor/saveFailed')
   }
 }
 
 export async function forkEffect(effect: EffectManifest): Promise<void> {
   setState((s) => {
-    mutateForkStart(s)
+    s.editor.isForking = true
+    s.editor.saveError = null
   }, 'editor/forkStart')
 
   try {
-    // Fetch the original YAML from the server (preserves formatting)
-    const { yaml: originalYaml } = await api.getEffectEditorData(
-      effect.namespace,
-      effect.id,
-    )
+    const { yaml: originalYaml } = await api.getEffectEditorData(effect.namespace, effect.id)
 
-    // Modify namespace, id, and name in the YAML text
     const forkId = `${effect.id}-fork`
     const yamlContent = originalYaml
       .replace(/^namespace:\s*.+$/m, 'namespace: my')
       .replace(/^id:\s*.+$/m, `id: ${forkId}`)
       .replace(/^name:\s*.+$/m, `name: ${effect.name} (Fork)`)
 
-    // Save the fork to the server (copy assets from source)
     const sourceId = `${effect.namespace}/${effect.id}`
     const result = await api.saveEffect(yamlContent, null, sourceId)
-    const effectId = result.effect_id
+    const dbId = result.manifest.db_id ?? result.effect_id
 
-    // Reload effects so it appears in the gallery
     await loadEffects()
 
-    // Now open the editor with the saved fork
+    const forkedManifest = getState().effects.items.find((e) => e.db_id === dbId)
     const { yaml: savedYaml, files } = await api.getEffectEditorData(
-      ...effectId.split('/') as [string, string],
+      forkedManifest?.namespace ?? 'my',
+      forkedManifest?.id ?? result.effect_id.split('/')[1] ?? '',
     )
 
     setState((s) => {
-      mutateForkSuccess(s, savedYaml, result.manifest, effectId, files)
-      mutateSelectEffect(s, effectId)
+      mutateClearViewingJob(s)
+      s.editor.yamlContent = savedYaml
+      s.editor.lastSavedYaml = savedYaml
+      s.editor.savedManifest = result.manifest
+      s.editor.editingEffectId = dbId
+      s.editor.assetFiles = files
+      s.editor.isOpen = true
+      s.editor.isForking = false
+      s.editor.saveVersion++
+      mutateSelectEffect(s, dbId)
     }, 'editor/fork')
 
-    writeHash(`effects/${effectId}/edit`)
+    replaceRoute(`/effects/${dbId}/edit`)
   } catch (e) {
     setState((s) => {
-      mutateForkError(s, e instanceof Error ? e.message : 'Fork failed')
+      s.editor.isForking = false
+      s.editor.saveError = e instanceof Error ? e.message : 'Fork failed'
     }, 'editor/forkFailed')
   }
 }
 
-export async function editEffect(effect: EffectManifest): Promise<void> {
-  const fullId = `${effect.namespace}/${effect.id}`
+/** Fork from a stored manifest (e.g., from a run record when the effect is deleted). */
+export async function forkFromManifest(manifest: EffectManifest): Promise<void> {
+  setState((s) => {
+    s.editor.isForking = true
+    s.editor.saveError = null
+  }, 'editor/forkFromManifestStart')
+
   try {
-    const { yaml, files } = await api.getEffectEditorData(
-      effect.namespace,
-      effect.id,
+    const forkId = `${manifest.id}-fork`
+    const forkData = {
+      ...manifest,
+      namespace: 'my',
+      id: forkId,
+      name: `${manifest.name} (Fork)`,
+      assets: {},
+    }
+    const yamlContent = manifestToYaml(forkData as unknown as Record<string, unknown>)
+
+    const result = await api.saveEffect(yamlContent, null)
+    const dbId = result.manifest.db_id ?? result.effect_id
+
+    await loadEffects()
+
+    const forkedManifest = getState().effects.items.find((e) => e.db_id === dbId)
+    const { yaml: savedYaml, files } = await api.getEffectEditorData(
+      forkedManifest?.namespace ?? 'my',
+      forkedManifest?.id ?? result.effect_id.split('/')[1] ?? '',
     )
-    openEditor(yaml, fullId, effect, files)
+
+    setState((s) => {
+      mutateClearViewingJob(s)
+      s.editor.yamlContent = savedYaml
+      s.editor.lastSavedYaml = savedYaml
+      s.editor.savedManifest = result.manifest
+      s.editor.editingEffectId = dbId
+      s.editor.assetFiles = files
+      s.editor.isOpen = true
+      s.editor.isForking = false
+      s.editor.saveVersion++
+      mutateSelectEffect(s, dbId)
+    }, 'editor/forkFromManifest')
+
+    replaceRoute(`/effects/${dbId}/edit`)
+  } catch (e) {
+    setState((s) => {
+      s.editor.isForking = false
+      s.editor.saveError = e instanceof Error ? e.message : 'Fork failed'
+    }, 'editor/forkFromManifestFailed')
+  }
+}
+
+export async function editEffect(effect: EffectManifest): Promise<void> {
+  try {
+    const { yaml, files } = await api.getEffectEditorData(effect.namespace, effect.id)
+    openEditor(yaml, effect.db_id, effect, files)
   } catch {
-    // If fetching fails, fork instead
     forkEffect(effect)
   }
 }

@@ -7,5 +7,7 @@ export const initialEffectsState: EffectsSlice = {
   selectedId: null,
   searchQuery: '',
   activeSource: 'all',
+  activeType: 'all',
   activeCategory: 'all',
+  rightTab: 'form',
 }

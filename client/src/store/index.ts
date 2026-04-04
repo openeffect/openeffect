@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { devtools } from 'zustand/middleware'
 import type { AppState } from './types'
 import { initialEffectsState } from './slices/effectsSlice'
-import { initialGenerationState } from './slices/generationSlice'
+import { initialRunState } from './slices/runSlice'
 import { initialHistoryState } from './slices/historySlice'
 import { initialConfigState } from './slices/configSlice'
 import { initialEditorState } from './slices/editorSlice'
@@ -16,7 +16,7 @@ export const useStore = create<AppState>()(
   devtools(
     immer(() => ({
       effects: initialEffectsState,
-      generation: initialGenerationState,
+      run: initialRunState,
       history: initialHistoryState,
       config: initialConfigState,
       editor: initialEditorState,

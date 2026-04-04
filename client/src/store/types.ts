@@ -1,12 +1,13 @@
-import type { EffectManifest, GenerationRecord, ModelInfo } from '@/types/api'
+import type { EffectManifest, RunRecord, ModelInfo } from '@/types/api'
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
 export type ThemeSetting = 'dark' | 'light' | 'auto'
-export type LeftPanel = 'gallery' | 'progress' | 'result'
+export type LeftPanel = 'gallery' | 'run-result' | 'progress'
 export type JobStatus = 'processing' | 'completed' | 'failed'
 export type LoadStatus = 'idle' | 'loading' | 'succeeded' | 'failed'
 export type EffectSource = 'all' | 'official' | 'mine' | 'installed'
+export type RightTab = 'form' | 'history'
 
 export interface ActiveJob {
   jobId: string
@@ -40,23 +41,33 @@ export interface EffectsSlice {
   selectedId: string | null
   searchQuery: string
   activeSource: EffectSource
+  activeType: string
   activeCategory: string
+  rightTab: RightTab
 }
 
-export interface GenerationSlice {
+export interface RunSlice {
   jobs: Map<string, ActiveJob>
   viewingJobId: string | null
+  viewingRunRecord: RunRecord | null
   leftPanel: LeftPanel
   restoredParams: RestoredParams | null
   restoringFromUrl: boolean
 }
 
 export interface HistorySlice {
-  items: GenerationRecord[]
+  // Global history (header popup)
+  items: RunRecord[]
   total: number
   activeCount: number
   status: LoadStatus
   isOpen: boolean
+
+  // Per-effect history (right panel tab)
+  effectItems: RunRecord[]
+  effectTotal: number
+  effectStatus: LoadStatus
+  effectId: string | null
 }
 
 export interface ConfigSlice {
@@ -78,13 +89,14 @@ export interface EditorSlice {
   isSaving: boolean
   isForking: boolean
   saveError: string | null
+  saveVersion: number
 }
 
 // ─── Root state ──────────────────────────────────────────────────────────────
 
 export interface AppState {
   effects: EffectsSlice
-  generation: GenerationSlice
+  run: RunSlice
   history: HistorySlice
   config: ConfigSlice
   editor: EditorSlice

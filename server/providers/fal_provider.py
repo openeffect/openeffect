@@ -3,41 +3,7 @@ import os
 import fal_client
 from typing import AsyncIterator, Any
 from providers.base import BaseProvider, ProviderInput, ProviderEvent
-
-
-# Aspect ratio → (width, height) for models that use pixel dimensions
-RATIO_TO_RESOLUTION: dict[str, tuple[int, int]] = {
-    "9:16": (480, 832),
-    "16:9": (832, 480),
-    "1:1": (640, 640),
-}
-
-MODEL_CONFIG: dict[str, dict[str, Any]] = {
-    "wan-2.2": {
-        "i2v_endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
-        "t2v_endpoint": "fal-ai/wan/v2.2-a14b/text-to-video",
-        "role_params": {
-            "start_frame": "image_url",
-        },
-        "output_translation": {
-            "aspect_ratio": "resolution",
-            "duration": "num_frames",
-        },
-        "fps": 16,
-    },
-    "kling-v3": {
-        "i2v_endpoint": "fal-ai/kling-video/v3/pro/image-to-video",
-        "t2v_endpoint": "fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
-        "role_params": {
-            "start_frame": "image_url",
-            "end_frame": "tail_image_url",
-        },
-        "output_translation": {
-            "aspect_ratio": "passthrough",
-            "duration": "passthrough",
-        },
-    },
-}
+from services.model_service import get_fal_config
 
 
 class FalProvider(BaseProvider):
@@ -47,13 +13,11 @@ class FalProvider(BaseProvider):
     def _apply_output_params(self, arguments: dict[str, Any], input: ProviderInput, config: dict[str, Any]) -> None:
         translation = config.get("output_translation", {})
         for key, value in input.output.items():
+            if value == "" or value is None:
+                continue
             mode = translation.get(key, "passthrough")
             if mode == "passthrough":
                 arguments[key] = value
-            elif mode == "resolution" and key == "aspect_ratio":
-                w, h = RATIO_TO_RESOLUTION.get(str(value), (640, 640))
-                arguments["width"] = w
-                arguments["height"] = h
             elif mode == "num_frames" and key == "duration":
                 fps = int(input.parameters.get("fps", config.get("fps", 16)))
                 arguments["num_frames"] = int(value) * fps
@@ -63,13 +27,16 @@ class FalProvider(BaseProvider):
         os.environ["FAL_KEY"] = self._api_key
 
         model_id = input.parameters.get("_model_id", "wan-2.2")
-        config = MODEL_CONFIG.get(model_id, MODEL_CONFIG["wan-2.2"])
+        config = get_fal_config(model_id)
+        if not config:
+            yield ProviderEvent(type="failed", error=f"No fal.ai config for model {model_id}")
+            return
 
         endpoint = config["i2v_endpoint"] if input.image_inputs else config["t2v_endpoint"]
 
         arguments: dict[str, Any] = {
             "prompt": input.prompt,
-            **{k: v for k, v in input.parameters.items() if not k.startswith("_")},
+            **{k: v for k, v in input.parameters.items() if not k.startswith("_") and v != "" and v is not None},
         }
 
         if input.negative_prompt:
@@ -86,46 +53,66 @@ class FalProvider(BaseProvider):
                 url = await fal_client.upload_file_async(local_path)
                 arguments[param_name] = url
 
-        # Submit job (non-blocking)
         yield ProviderEvent(type="progress", progress=10, message="Submitting to fal.ai...")
-        handle = await fal_client.submit_async(endpoint, arguments=arguments)
 
-        # Yield the request_id so it can be stored for crash recovery
-        yield ProviderEvent(
-            type="submitted",
-            request_id=handle.request_id,
-            endpoint=endpoint,
-        )
+        # Use subscribe_async with queue-based event bridging
+        event_queue: asyncio.Queue[ProviderEvent | None] = asyncio.Queue()
+        request_id_holder: list[str] = []
 
-        # Poll for status
-        yield ProviderEvent(type="progress", progress=15, message="Waiting for fal.ai...")
+        async def on_enqueue(request_id: str) -> None:
+            request_id_holder.append(request_id)
+            await event_queue.put(ProviderEvent(
+                type="submitted",
+                request_id=request_id,
+                endpoint=endpoint,
+            ))
+
+        async def on_queue_update(update: Any) -> None:
+            if isinstance(update, fal_client.Queued):
+                pos = update.position
+                msg = f"In queue (position {pos})..." if pos > 0 else "Starting run..."
+                await event_queue.put(ProviderEvent(type="progress", progress=20, message=msg))
+            elif isinstance(update, fal_client.InProgress):
+                logs = update.logs or []
+                if logs:
+                    msg = logs[-1].get("message", "Generating...")
+                else:
+                    msg = "Generating..."
+                await event_queue.put(ProviderEvent(type="progress", progress=50, message=msg))
+
+        async def run_subscribe() -> None:
+            try:
+                result = await fal_client.subscribe_async(
+                    endpoint,
+                    arguments=arguments,
+                    with_logs=True,
+                    on_enqueue=on_enqueue,
+                    on_queue_update=on_queue_update,
+                )
+                if isinstance(result, dict) and "video" in result:
+                    video_url = result["video"].get("url", "") if isinstance(result["video"], dict) else result["video"]
+                    await event_queue.put(ProviderEvent(type="completed", video_url=video_url))
+                else:
+                    await event_queue.put(ProviderEvent(type="failed", error="Unexpected response from fal.ai"))
+            except Exception as e:
+                await event_queue.put(ProviderEvent(type="failed", error=str(e)))
+            finally:
+                await event_queue.put(None)  # sentinel
+
+        # Run subscribe in background, yield events as they come
+        task = asyncio.create_task(run_subscribe())
 
         try:
             while True:
-                status = await handle.status()
-
-                if isinstance(status, fal_client.Queued):
-                    pos = status.position
-                    msg = f"In queue (position {pos})..." if pos > 0 else "Starting generation..."
-                    yield ProviderEvent(type="progress", progress=20, message=msg)
-                elif isinstance(status, fal_client.InProgress):
-                    logs = status.logs or []
-                    msg = logs[-1].get("message", "Generating...") if logs else "Generating..."
-                    yield ProviderEvent(type="progress", progress=50, message=msg)
-                elif isinstance(status, fal_client.Completed):
+                event = await event_queue.get()
+                if event is None:
                     break
-
-                await asyncio.sleep(1)
-
-            result = await handle.get()
-
-            if isinstance(result, dict) and "video" in result:
-                video_url = result["video"].get("url", "") if isinstance(result["video"], dict) else result["video"]
-                yield ProviderEvent(type="completed", video_url=video_url)
-            else:
-                yield ProviderEvent(type="failed", error="Unexpected response from fal.ai")
-        except Exception as e:
-            yield ProviderEvent(type="failed", error=str(e))
+                yield event
+                if event.type in ("completed", "failed"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
 
     @staticmethod
     async def recover(api_key: str, request_id: str, endpoint: str) -> ProviderEvent:
@@ -142,7 +129,6 @@ class FalProvider(BaseProvider):
                     return ProviderEvent(type="completed", video_url=video_url)
                 return ProviderEvent(type="failed", error="Unexpected response from fal.ai")
             elif isinstance(status, (fal_client.Queued, fal_client.InProgress)):
-                # Still running — wait for it
                 result = await handle.get()
                 if isinstance(result, dict) and "video" in result:
                     video_url = result["video"].get("url", "") if isinstance(result["video"], dict) else result["video"]

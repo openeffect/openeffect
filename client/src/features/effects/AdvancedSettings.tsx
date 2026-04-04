@@ -11,12 +11,13 @@ interface AdvancedSettingsProps {
   values: Record<string, unknown>
   onChange: (key: string, value: unknown) => void
   manifestDefaults?: Record<string, unknown>
+  children?: React.ReactNode
 }
 
-export function AdvancedSettings({ parameters, values, onChange, manifestDefaults }: AdvancedSettingsProps) {
+export function AdvancedSettings({ parameters, values, onChange, manifestDefaults, children }: AdvancedSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  if (parameters.length === 0) return null
+  if (parameters.length === 0 && !children) return null
 
   return (
     <div>
@@ -37,6 +38,7 @@ export function AdvancedSettings({ parameters, values, onChange, manifestDefault
             exit={{ height: 0, opacity: 0, overflow: 'hidden', transition: { duration: 0.15 } }}
           >
             <div className="space-y-5 pb-2 pt-4">
+              {children}
               {parameters.map((param) => {
                 const effectDefault = manifestDefaults?.[param.key]
                 const defaultVal = effectDefault ?? param.default

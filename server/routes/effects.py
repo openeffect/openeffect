@@ -28,6 +28,8 @@ class RenameAssetRequest(BaseModel):
 
 def _serialize_effect(loaded) -> dict:
     """Serialize a LoadedEffect with pre-resolved asset URLs."""
+    from services.model_service import get_compatible_model_ids
+
     data = loaded.manifest.model_dump()
     uuid = Path(loaded.assets_dir).name
 
@@ -41,7 +43,22 @@ def _serialize_effect(loaded) -> dict:
                 for key, filename in data["assets"]["inputs"].items()
             }
 
+    # Compute compatible models from input roles
+    input_roles = set()
+    for field in loaded.manifest.inputs.values():
+        if field.type == "image" and field.role in ("start_frame", "end_frame"):
+            input_roles.add(field.role)
+    compatible = get_compatible_model_ids(input_roles)
+
+    # If manifest explicitly lists models, intersect to limit the selection
+    manifest_models = loaded.manifest.generation.models
+    if manifest_models:
+        compatible = [m for m in compatible if m in manifest_models]
+
+    data["compatible_models"] = compatible
+
     data["source"] = loaded.source
+    data["db_id"] = loaded.db_id
     return data
 
 

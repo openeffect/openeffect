@@ -1,53 +1,61 @@
 import { setState, getState } from '../index'
-import {
-  mutateSetHistory,
-  mutateRemoveHistoryItem,
-  mutateSetHistoryOpen,
-  mutateSetHistoryStatus,
-} from '../mutations/historyMutations'
-import { mutateClearViewingJob } from '../mutations/generationMutations'
+import { mutateClearViewingJob, mutateSetViewingRunRecord } from '../mutations/runMutations'
 import { mutateSelectEffect } from '../mutations/effectsMutations'
 import { api } from '@/utils/api'
-import { writeHash } from '@/utils/router'
+import { navigate } from '@/utils/router'
+
+/** Look up the DB UUID for an effect by its namespace/id. Falls back to the fullId itself (for orphaned effects). */
+function effectDbId(fullId: string): string {
+  const effects = getState().effects.items
+  const effect = effects.find((e) => `${e.namespace}/${e.id}` === fullId)
+  return effect?.db_id ?? fullId
+}
 
 // Timer lives outside state — it's an implementation detail, not reactive state
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-export async function loadHistory(): Promise<void> {
-  setState((s) => {
-    mutateSetHistoryStatus(s, 'loading')
-  }, 'history/loadStart')
+// ─── Global history (header popup) ──────────────────────────────────────────
+
+export async function loadHistory(offset = 0): Promise<void> {
+  setState((s) => { s.history.status = 'loading' }, 'history/loadStart')
   try {
-    const data = await api.getGenerations()
+    const data = await api.getRuns(50, offset)
     setState((s) => {
-      mutateSetHistory(s, data.items, data.total, data.active_count)
-      mutateSetHistoryStatus(s, 'succeeded')
+      if (offset === 0) {
+        s.history.items = data.items
+        s.history.total = data.total
+        s.history.activeCount = data.active_count
+      } else {
+        s.history.items = [...s.history.items, ...data.items]
+        s.history.total = data.total
+        s.history.activeCount = data.active_count
+      }
+      s.history.status = 'succeeded'
     }, 'history/load')
     if (data.active_count === 0) {
       stopPolling()
     }
   } catch {
-    setState((s) => {
-      mutateSetHistoryStatus(s, 'failed')
-    }, 'history/loadFailed')
+    setState((s) => { s.history.status = 'failed' }, 'history/loadFailed')
   }
 }
 
 export async function deleteHistoryItem(id: string): Promise<void> {
   try {
-    await api.deleteGeneration(id)
+    await api.deleteRun(id)
     setState((s) => {
-      mutateRemoveHistoryItem(s, id)
-      // Close everything if we just deleted the one being viewed
-      if (s.generation.viewingJobId === id) {
+      s.history.items = s.history.items.filter((i) => i.id !== id)
+      s.history.total = Math.max(0, s.history.total - 1)
+      s.history.effectItems = s.history.effectItems.filter((i) => i.id !== id)
+      // Close if we just deleted the one being viewed
+      if (s.run.viewingJobId === id || s.run.viewingRunRecord?.id === id) {
         mutateClearViewingJob(s)
         mutateSelectEffect(s, null)
       }
     }, 'history/delete')
-    // Clean up URL if we were viewing the deleted item
-    const viewingJobId = getState().generation.viewingJobId
-    if (viewingJobId === null) {
-      writeHash(null)
+    const { run } = getState()
+    if (run.viewingJobId === null && run.viewingRunRecord === null) {
+      navigate('/')
     }
   } catch {
     // API failed — don't remove from local state
@@ -55,30 +63,26 @@ export async function deleteHistoryItem(id: string): Promise<void> {
 }
 
 export function openHistory(): void {
-  setState((s) => {
-    mutateSetHistoryOpen(s, true)
-  }, 'history/open')
+  setState((s) => { s.history.isOpen = true }, 'history/open')
   loadHistory()
   startPolling()
 }
 
 export function closeHistory(): void {
-  setState((s) => {
-    mutateSetHistoryOpen(s, false)
-  }, 'history/close')
+  setState((s) => { s.history.isOpen = false }, 'history/close')
   stopPolling()
 }
 
-export function openHistoryItem(id: string): void {
-  window.location.hash = `#generations/${id}`
+export function openHistoryItem(item: { id: string; effect_id: string }): void {
   closeHistory()
+  navigate(`/effects/${effectDbId(item.effect_id)}`, { run: item.id })
 }
 
 export function startPolling(): void {
   if (pollTimer) return
   pollTimer = setInterval(() => {
     const s = getState()
-    if (s.history.isOpen && s.history.activeCount > 0) {
+    if (s.history.isOpen && s.history.activeCount > 0 && s.history.status !== 'loading') {
       loadHistory()
     } else {
       stopPolling()
@@ -90,5 +94,66 @@ export function stopPolling(): void {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
+  }
+}
+
+// ─── Per-effect history (right panel tab) ───────────────────────────────────
+
+export async function loadEffectHistory(effectId: string, offset = 0): Promise<void> {
+  setState((s) => { s.history.effectStatus = 'loading' }, 'history/effectLoadStart')
+
+  try {
+    const data = await api.getRuns(20, offset, effectId)
+    setState((s) => {
+      if (offset === 0) {
+        s.history.effectItems = data.items
+        s.history.effectTotal = data.total
+        s.history.effectId = effectId
+      } else {
+        s.history.effectItems = [...s.history.effectItems, ...data.items]
+      }
+      s.history.effectStatus = 'succeeded'
+    }, 'history/effectLoad')
+  } catch {
+    setState((s) => { s.history.effectStatus = 'failed' }, 'history/effectLoadFailed')
+  }
+}
+
+export function clearEffectHistory(): void {
+  setState((s) => {
+    s.history.effectItems = []
+    s.history.effectTotal = 0
+    s.history.effectStatus = 'idle'
+    s.history.effectId = null
+  }, 'history/effectClear')
+}
+
+export async function openRunFromHistory(runId: string, effectFullId: string): Promise<void> {
+  try {
+    const record = await api.getRun(runId)
+    setState((s) => {
+      mutateSetViewingRunRecord(s, record)
+    }, 'history/openRun')
+    navigate(`/effects/${effectDbId(effectFullId)}`, { run: runId })
+  } catch (e) {
+    console.error('Failed to load run:', e)
+  }
+}
+
+export async function deleteRunFromHistory(runId: string, effectFullId: string): Promise<void> {
+  try {
+    await api.deleteRun(runId)
+    setState((s) => {
+      s.history.items = s.history.items.filter((i) => i.id !== runId)
+      s.history.total = Math.max(0, s.history.total - 1)
+      s.history.effectItems = s.history.effectItems.filter((i) => i.id !== runId)
+      if (s.run.viewingRunRecord?.id === runId || s.run.viewingJobId === runId) {
+        mutateClearViewingJob(s)
+      }
+    }, 'history/deleteRun')
+    navigate(`/effects/${effectDbId(effectFullId)}`)
+    await loadEffectHistory(effectFullId)
+  } catch {
+    // API failed
   }
 }

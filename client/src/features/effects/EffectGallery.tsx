@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '@/store'
 import {
   selectEffectsStatus,
-  selectActiveCategory,
+  selectActiveType,
   selectFilteredEffects,
   selectSelectedEffect,
 } from '@/store/selectors/effectsSelectors'
@@ -19,7 +19,7 @@ import type { EffectManifest } from '@/types/api'
 
 export function EffectGallery() {
   const status = useStore(selectEffectsStatus)
-  const activeCategory = useStore(selectActiveCategory)
+  const activeType = useStore(selectActiveType)
   const filteredEffects = useStore(selectFilteredEffects)
   const selectedEffect = useStore(selectSelectedEffect)
 
@@ -37,7 +37,7 @@ export function EffectGallery() {
   }
 
   const grouped =
-    activeCategory === 'all' ? groupByType(filteredEffects) : { [activeCategory]: filteredEffects }
+    activeType === 'all' ? groupByType(filteredEffects) : { [activeType]: filteredEffects }
 
   const showHero = selectedEffect && !!(
     selectedEffect.assets.preview ||
@@ -69,10 +69,10 @@ export function EffectGallery() {
 
       {/* Scrollable zone: Effect grid */}
       <div className="flex-1 overflow-y-auto">
-        <div className={cn('px-6 pb-8', activeCategory !== 'all' && 'pt-4')}>
+        <div className={cn('px-6 pb-8', activeType !== 'all' && 'pt-4')}>
           {Object.entries(grouped).map(([type, effects]) => (
             <div key={type}>
-              {activeCategory === 'all' && (
+              {activeType === 'all' && (
                 <h2 className="flex items-center gap-2 py-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                   <Separator className="flex-1" />
                   {formatEffectType(type)}

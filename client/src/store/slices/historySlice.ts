@@ -6,4 +6,9 @@ export const initialHistoryState: HistorySlice = {
   activeCount: 0,
   status: 'idle',
   isOpen: false,
+
+  effectItems: [],
+  effectTotal: 0,
+  effectStatus: 'idle',
+  effectId: null,
 }

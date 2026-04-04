@@ -8,7 +8,7 @@ from config.settings import get_settings
 from config.config_service import ConfigService
 from services.install_service import InstallService
 from services.effect_loader import EffectLoaderService
-from services.generation_service import GenerationService
+from services.run_service import RunService
 from services.history_service import HistoryService
 from services.model_service import ModelService
 from services.storage_service import StorageService
@@ -23,7 +23,8 @@ async def lifespan(app: FastAPI):
     # Init user data dir
     settings.user_data_dir.mkdir(parents=True, exist_ok=True)
     (settings.user_data_dir / "uploads").mkdir(exist_ok=True)
-    (settings.user_data_dir / "generations").mkdir(exist_ok=True)
+    (settings.user_data_dir / "runs").mkdir(exist_ok=True)
+
     (settings.user_data_dir / "effects").mkdir(exist_ok=True)
 
     # Init DB
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
     )
     history_service = HistoryService(db_path)
     model_service = ModelService(settings.user_data_dir / "models")
-    generation_service = GenerationService(
+    run_service = RunService(
         effect_loader=effect_loader,
         config_service=config_service,
         history_service=history_service,
@@ -60,14 +61,14 @@ async def lifespan(app: FastAPI):
     )
 
     # Recover any stuck processing jobs from a previous crash
-    await generation_service.recover_stuck_jobs()
+    await run_service.recover_stuck_jobs()
 
     # Store services on app state
     app.state.settings = settings
     app.state.config_service = config_service
     app.state.install_service = install_service
     app.state.effect_loader = effect_loader
-    app.state.generation_service = generation_service
+    app.state.run_service = run_service
     app.state.history_service = history_service
     app.state.model_service = model_service
     app.state.storage_service = storage_service

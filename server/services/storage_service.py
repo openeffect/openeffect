@@ -121,11 +121,12 @@ class StorageService:
                         if not variant_path.exists():
                             shutil.copy2(str(original_path), str(variant_path))
 
-                # 4. Insert DB row
+                # 4. Insert DB row (ON CONFLICT handles race with concurrent identical uploads)
                 now = datetime.now(timezone.utc).isoformat()
                 await db.execute(
                     """INSERT INTO uploads (id, hash, filename, ext, mime, size, ref_count, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, 0, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+                       ON CONFLICT(hash) DO NOTHING""",
                     (ref_id, file_hash, original_filename, ext, mime, total, now),
                 )
                 await db.commit()

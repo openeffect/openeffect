@@ -1,9 +1,9 @@
 import { setState, getState } from '../index'
 import { mutateCloseEditor } from '../mutations/editorMutations'
 import { mutateSelectEffect } from '../mutations/effectsMutations'
-import { mutateClearViewingJob } from '../mutations/generationMutations'
+import { mutateClearViewingJob } from '../mutations/runMutations'
 import { loadConfig, initThemeListener } from './configActions'
-import { writeHash } from '@/utils/router'
+import { navigate } from '@/utils/router'
 
 /** Called once from App.tsx on mount. Initializes all app state. */
 export async function initializeApp(): Promise<void> {
@@ -12,7 +12,7 @@ export async function initializeApp(): Promise<void> {
 }
 
 /**
- * Navigate home — close editor (with confirm), deselect effect, clear generation.
+ * Navigate home — close editor (with confirm), deselect effect, clear run.
  * Used by the logo click handler.
  */
 export function goHome(): void {
@@ -25,5 +25,5 @@ export function goHome(): void {
     mutateSelectEffect(s, null)
     mutateClearViewingJob(s)
   }, 'app/goHome')
-  writeHash(null)
+  navigate('/')
 }

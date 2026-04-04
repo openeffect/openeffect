@@ -30,6 +30,7 @@ class InputFieldSchema(BaseModel):
     default: Any = None
     unit: str | None = None
     hint: str | None = None
+    advanced: bool = False
 
     @field_validator("role")
     @classmethod
@@ -53,14 +54,15 @@ class ModelOverride(BaseModel):
 class GenerationConfig(BaseModel):
     prompt: str
     negative_prompt: str = ""
-    models: list[str]
-    default_model: str
+    models: list[str] = []
+    default_model: str = ""
     defaults: dict[str, Any] = {}
     model_overrides: dict[str, ModelOverride] = {}
+    reverse: bool = False
 
     @model_validator(mode="after")
     def validate_default_model(self) -> GenerationConfig:
-        if self.default_model not in self.models:
+        if self.models and self.default_model and self.default_model not in self.models:
             raise ValueError(f"default_model '{self.default_model}' not in models")
         return self
 
@@ -93,4 +95,11 @@ class EffectManifest(BaseModel):
             raise ValueError("At most 1 input may have role 'start_frame'")
         if role_counts.get("end_frame", 0) > 1:
             raise ValueError("At most 1 input may have role 'end_frame'")
+        # end_frame requires start_frame to also exist
+        if role_counts.get("end_frame", 0) > 0 and role_counts.get("start_frame", 0) == 0:
+            raise ValueError("Effects with 'end_frame' must also have a 'start_frame' input")
+        # start_frame must be required
+        for field in self.inputs.values():
+            if field.role == "start_frame" and not field.required:
+                raise ValueError("Input with role 'start_frame' must have required: true")
         return self

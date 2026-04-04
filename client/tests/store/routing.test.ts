@@ -1,44 +1,55 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
-// Test the parseHash function from the router module
-import { parseHash } from '../../src/utils/router'
+import { parseRoute } from '../../src/utils/router'
+
+// URLs now use single-segment UUIDs: /effects/:uuid
 
 describe('URL routing', () => {
-  describe('parseHash', () => {
-    it('returns null for empty hash', () => {
-      expect(parseHash('')).toBeNull()
+  describe('parseRoute', () => {
+    it('returns gallery for root path', () => {
+      expect(parseRoute('/')).toEqual({ page: 'gallery' })
     })
 
-    it('parses effect URL', () => {
-      expect(parseHash('effects/single-image/zoom-from-space')).toEqual({
-        mode: 'effect',
-        id: 'single-image/zoom-from-space',
+    it('returns gallery for /effects', () => {
+      expect(parseRoute('/effects')).toEqual({ page: 'gallery' })
+    })
+
+    it('parses effect URL with UUID', () => {
+      expect(parseRoute('/effects/abc-123-def')).toEqual({
+        page: 'effect',
+        effectId: 'abc-123-def',
+        runId: null,
       })
     })
 
-    it('parses generation URL', () => {
-      expect(parseHash('generations/019504a3-7c5f-7000')).toEqual({
-        mode: 'generation',
-        id: '019504a3-7c5f-7000',
+    it('parses edit URL with UUID', () => {
+      expect(parseRoute('/effects/abc-123-def/edit')).toEqual({
+        page: 'edit',
+        effectId: 'abc-123-def',
       })
     })
 
-    it('returns null for unknown prefix', () => {
-      expect(parseHash('settings')).toBeNull()
+    it('returns gallery for unknown paths', () => {
+      expect(parseRoute('/settings')).toEqual({ page: 'gallery' })
     })
 
-    it('returns null for bare effect ID without prefix', () => {
-      expect(parseHash('single-image/zoom-from-space')).toBeNull()
+    it('returns gallery for bare effects prefix', () => {
+      expect(parseRoute('/effects')).toEqual({ page: 'gallery' })
     })
 
-    it('handles effects/ with no ID', () => {
-      const result = parseHash('effects/')
-      expect(result).toEqual({ mode: 'effect', id: '' })
+    it('parses real UUID format', () => {
+      expect(parseRoute('/effects/019504a3-7c5f-7000-8abc-1234567890ab')).toEqual({
+        page: 'effect',
+        effectId: '019504a3-7c5f-7000-8abc-1234567890ab',
+        runId: null,
+      })
     })
 
-    it('handles generations/ with no ID', () => {
-      const result = parseHash('generations/')
-      expect(result).toEqual({ mode: 'generation', id: '' })
+    it('parses edit with real UUID', () => {
+      expect(parseRoute('/effects/019504a3-7c5f-7000-8abc-1234567890ab/edit')).toEqual({
+        page: 'edit',
+        effectId: '019504a3-7c5f-7000-8abc-1234567890ab',
+      })
     })
   })
 })

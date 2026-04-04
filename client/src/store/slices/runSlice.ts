@@ -1,8 +1,9 @@
-import type { GenerationSlice } from '../types'
+import type { RunSlice } from '../types'
 
-export const initialGenerationState: GenerationSlice = {
+export const initialRunState: RunSlice = {
   jobs: new Map(),
   viewingJobId: null,
+  viewingRunRecord: null,
   leftPanel: 'gallery',
   restoredParams: null,
   restoringFromUrl: false,

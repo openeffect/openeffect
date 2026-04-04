@@ -92,13 +92,13 @@ describe('api', () => {
     })
   })
 
-  describe('generate', () => {
-    it('sends generation request and returns job_id', async () => {
+  describe('run', () => {
+    it('sends run request and returns job_id', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ job_id: 'job-123', status: 'queued' }),
       })
-      const result = await api.generate({
+      const result = await api.run({
         effect_id: 'single-image/zoom-from-space',
         model_id: 'wan-2.2',
         provider_id: 'fal',

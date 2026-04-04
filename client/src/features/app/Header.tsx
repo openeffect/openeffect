@@ -1,7 +1,7 @@
 import { RefreshCw, History, Package, Settings, Loader2, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/store'
-import { selectActiveJobCount, selectRestoringFromUrl } from '@/store/selectors/generationSelectors'
+import { selectActiveJobCount, selectRestoringFromUrl } from '@/store/selectors/runSelectors'
 import { selectIsForking } from '@/store/selectors/editorSelectors'
 import { selectUpdateAvailable } from '@/store/selectors/configSelectors'
 import { openHistory } from '@/store/actions/historyActions'
@@ -68,30 +68,33 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
-        <AnimatePresence>
-          {activeCount > 0 && (
-            <motion.button
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              onClick={openHistory}
-              className="mr-1 flex items-center gap-1.5 rounded-full bg-accent-dim px-2.5 py-1 text-xs font-semibold text-accent"
-            >
+        {/* History button + popup */}
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={openHistory}
+            title="History"
+            className={activeCount > 0
+              ? 'relative bg-primary/15 text-primary ring-1 ring-primary/30'
+              : 'bg-muted text-secondary-foreground'
+            }
+          >
+            {activeCount > 0 ? (
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
               >
-                <RefreshCw size={12} />
+                <RefreshCw size={16} />
               </motion.div>
-              {activeCount}
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        {/* History button + popup */}
-        <div className="relative">
-          <Button variant="ghost" size="icon" onClick={openHistory} title="History" className="bg-muted text-secondary-foreground">
-            <History size={16} />
+            ) : (
+              <History size={16} />
+            )}
+            {activeCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
+                {activeCount}
+              </span>
+            )}
           </Button>
           <HistoryPanel />
         </div>

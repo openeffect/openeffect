@@ -1,4 +1,4 @@
-import yaml
+import json
 import aiosqlite
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,7 +9,7 @@ from config.settings import get_settings
 
 
 @dataclass
-class GenerationRecord:
+class RunRecord:
     id: str
     effect_id: str
     effect_name: str
@@ -18,9 +18,7 @@ class GenerationRecord:
     progress: int = 0
     progress_msg: str | None = None
     video_url: str | None = None
-    thumbnail_url: str | None = None
-    manifest_yaml: str | None = None
-    prompt_used: str | None = None
+    inputs: str | None = None
     error: str | None = None
     created_at: str = ""
     updated_at: str = ""
@@ -29,13 +27,13 @@ class GenerationRecord:
     provider_endpoint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        # Parse manifest_yaml from string to dict for output
-        manifest = None
-        if self.manifest_yaml:
+        # Parse inputs from JSON string to dict for output
+        parsed_inputs = None
+        if self.inputs:
             try:
-                manifest = yaml.safe_load(self.manifest_yaml)
-            except (yaml.YAMLError, TypeError):
-                manifest = self.manifest_yaml
+                parsed_inputs = json.loads(self.inputs)
+            except (json.JSONDecodeError, TypeError):
+                parsed_inputs = self.inputs
 
         return {
             "id": self.id,
@@ -46,8 +44,7 @@ class GenerationRecord:
             "progress": self.progress,
             "progress_msg": self.progress_msg,
             "video_url": self.video_url,
-            "thumbnail_url": self.thumbnail_url,
-            "manifest_yaml": manifest,
+            "inputs": parsed_inputs,
             "error": self.error,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -55,9 +52,9 @@ class GenerationRecord:
         }
 
     @staticmethod
-    def generation_folder(job_id: str) -> Path:
+    def run_folder(job_id: str) -> Path:
         settings = get_settings()
-        return settings.user_data_dir / "generations" / job_id
+        return settings.user_data_dir / "runs" / job_id
 
 
 class HistoryService:
@@ -76,18 +73,18 @@ class HistoryService:
             await self._db.close()
             self._db = None
 
-    async def create_processing(self, job: Any, manifest_yaml: str | None = None, prompt_used: str | None = None) -> GenerationRecord:
+    async def create_processing(self, job: Any, inputs_json: str | None = None) -> RunRecord:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            """INSERT INTO generations (id, effect_id, effect_name, model_id, status, progress, progress_msg, manifest_yaml, prompt_used, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?, ?)""",
-            (job.job_id, job.effect_id, job.effect_name, job.model_id, manifest_yaml, prompt_used, now, now),
+            """INSERT INTO runs (id, effect_id, effect_name, model_id, status, progress, progress_msg, inputs, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?)""",
+            (job.job_id, job.effect_id, job.effect_name, job.model_id, inputs_json, now, now),
         )
         await db.commit()
-        return GenerationRecord(
+        return RunRecord(
             id=job.job_id, effect_id=job.effect_id, effect_name=job.effect_name,
-            model_id=job.model_id, status="processing", manifest_yaml=manifest_yaml,
+            model_id=job.model_id, status="processing", inputs=inputs_json,
             created_at=now, updated_at=now,
         )
 
@@ -95,7 +92,7 @@ class HistoryService:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            "UPDATE generations SET progress=?, progress_msg=?, updated_at=? WHERE id=?",
+            "UPDATE runs SET progress=?, progress_msg=?, updated_at=? WHERE id=?",
             (progress, msg, now, job_id),
         )
         await db.commit()
@@ -103,25 +100,25 @@ class HistoryService:
     async def set_provider_request(self, job_id: str, request_id: str, endpoint: str) -> None:
         db = await self._get_db()
         await db.execute(
-            "UPDATE generations SET provider_request_id=?, provider_endpoint=? WHERE id=?",
+            "UPDATE runs SET provider_request_id=?, provider_endpoint=? WHERE id=?",
             (request_id, endpoint, job_id),
         )
         await db.commit()
 
-    async def get_stuck_processing(self) -> list[GenerationRecord]:
+    async def get_stuck_processing(self) -> list[RunRecord]:
         """Get all processing records that have a provider_request_id (recoverable)."""
         db = await self._get_db()
         cursor = await db.execute(
-            "SELECT * FROM generations WHERE status='processing' AND provider_request_id IS NOT NULL"
+            "SELECT * FROM runs WHERE status='processing' AND provider_request_id IS NOT NULL"
         )
         rows = await cursor.fetchall()
-        return [GenerationRecord(**dict(row)) for row in rows]
+        return [RunRecord(**dict(row)) for row in rows]
 
     async def complete(self, job_id: str, video_url: str, duration_ms: int) -> None:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            "UPDATE generations SET status='completed', video_url=?, duration_ms=?, progress=100, progress_msg=NULL, updated_at=? WHERE id=?",
+            "UPDATE runs SET status='completed', video_url=?, duration_ms=?, progress=100, progress_msg=NULL, updated_at=? WHERE id=?",
             (video_url, duration_ms, now, job_id),
         )
         await db.commit()
@@ -130,56 +127,52 @@ class HistoryService:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            "UPDATE generations SET status='failed', error=?, progress_msg=NULL, updated_at=? WHERE id=?",
+            "UPDATE runs SET status='failed', error=?, progress_msg=NULL, updated_at=? WHERE id=?",
             (error, now, job_id),
         )
         await db.commit()
 
-    async def get_all(self, limit: int = 50, offset: int = 0) -> list[GenerationRecord]:
+    async def get_all(self, limit: int = 50, offset: int = 0, effect_id: str | None = None) -> list[RunRecord]:
         limit = max(1, min(limit, 1000))
         offset = max(0, offset)
         db = await self._get_db()
-        cursor = await db.execute(
-            "SELECT * FROM generations ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+        if effect_id:
+            cursor = await db.execute(
+                "SELECT * FROM runs WHERE effect_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (effect_id, limit, offset),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
         rows = await cursor.fetchall()
-        return [GenerationRecord(**dict(row)) for row in rows]
+        return [RunRecord(**dict(row)) for row in rows]
 
-    async def get_by_id(self, job_id: str) -> GenerationRecord | None:
+    async def get_by_id(self, job_id: str) -> RunRecord | None:
         db = await self._get_db()
-        cursor = await db.execute("SELECT * FROM generations WHERE id=?", (job_id,))
+        cursor = await db.execute("SELECT * FROM runs WHERE id=?", (job_id,))
         row = await cursor.fetchone()
         if row:
-            return GenerationRecord(**dict(row))
+            return RunRecord(**dict(row))
         return None
 
-    async def count(self) -> int:
+    async def count(self, effect_id: str | None = None) -> int:
         db = await self._get_db()
-        cursor = await db.execute("SELECT COUNT(*) FROM generations")
+        if effect_id:
+            cursor = await db.execute("SELECT COUNT(*) FROM runs WHERE effect_id=?", (effect_id,))
+        else:
+            cursor = await db.execute("SELECT COUNT(*) FROM runs")
         row = await cursor.fetchone()
         return row[0] if row else 0
 
     async def active_count(self) -> int:
         db = await self._get_db()
-        cursor = await db.execute("SELECT COUNT(*) FROM generations WHERE status='processing'")
+        cursor = await db.execute("SELECT COUNT(*) FROM runs WHERE status='processing'")
         row = await cursor.fetchone()
         return row[0] if row else 0
 
-    async def get_overflow_ids(self, max_items: int = 100) -> list[str]:
-        """Return IDs of oldest non-processing generations that exceed max_items."""
-        db = await self._get_db()
-        cursor = await db.execute(
-            """SELECT id FROM generations
-               WHERE status != 'processing'
-               ORDER BY created_at DESC
-               LIMIT -1 OFFSET ?""",
-            (max_items,),
-        )
-        rows = await cursor.fetchall()
-        return [row[0] for row in rows]
-
     async def delete(self, job_id: str) -> None:
         db = await self._get_db()
-        await db.execute("DELETE FROM generations WHERE id=?", (job_id,))
+        await db.execute("DELETE FROM runs WHERE id=?", (job_id,))
         await db.commit()

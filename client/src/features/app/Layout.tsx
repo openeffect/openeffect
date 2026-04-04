@@ -4,13 +4,13 @@ import { Header } from './Header'
 import { EffectGallery } from '@/features/effects/EffectGallery'
 import { EffectPanel } from '@/features/effects/EffectPanel'
 import { EffectEditor } from '@/features/editor/EffectEditor'
-import { GenerationView } from '@/features/generation/GenerationView'
+import { RunView } from '@/features/run/RunView'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { EffectsManagerDialog } from '@/features/settings/EffectsManagerDialog'
 import { OnboardingDialog } from '@/features/settings/OnboardingDialog'
 import { useStore } from '@/store'
-import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
-import { selectViewingJobId, selectJobs } from '@/store/selectors/generationSelectors'
+import { selectSelectedId } from '@/store/selectors/effectsSelectors'
+import { selectViewingJobId, selectJobs, selectViewingRunRecord } from '@/store/selectors/runSelectors'
 import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
 import { selectShowOnboarding } from '@/store/selectors/configSelectors'
 import { useSse } from '@/hooks/useSse'
@@ -29,18 +29,20 @@ export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
   const viewingJobId = useStore(selectViewingJobId)
+  const viewingRunRecord = useStore(selectViewingRunRecord)
   const activeJobs = useStore(selectJobs)
-  const selectedEffect = useStore(selectSelectedEffect)
+  const selectedId = useStore(selectSelectedId)
   const showOnboarding = useStore(selectShowOnboarding)
   const isEditorOpen = useStore(selectEditorIsOpen)
 
   useSse(viewingJobId)
 
-  const rightOpen = !!selectedEffect || isEditorOpen
-  const showGeneration = viewingJobId && activeJobs.has(viewingJobId)
+  const rightOpen = !!selectedId || isEditorOpen
+  const activeJob = viewingJobId ? activeJobs.get(viewingJobId) : null
+  const showRun = !!(viewingRunRecord || activeJob)
 
-  // Left panel priority: generation > editor > gallery
-  const leftPanelKey = showGeneration ? 'generation' : isEditorOpen ? 'editor' : 'gallery'
+  // Left panel priority: run > editor > gallery (gallery stays visible when effect is selected)
+  const leftPanelKey = showRun ? 'run' : isEditorOpen ? 'editor' : 'gallery'
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -56,16 +58,16 @@ export function Layout() {
             transition={{ duration: SLIDE_DURATION, ease: SLIDE_EASE }}
           >
             <AnimatePresence mode="popLayout">
-              {leftPanelKey === 'generation' && (
+              {leftPanelKey === 'run' && (
                 <motion.div
-                  key="generation"
+                  key="run"
                   variants={panelVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   className="h-full"
                 >
-                  <GenerationView />
+                  <RunView />
                 </motion.div>
               )}
               {leftPanelKey === 'editor' && (
@@ -97,7 +99,7 @@ export function Layout() {
 
           {/* Right: Effect settings panel */}
           <AnimatePresence>
-            {(selectedEffect || isEditorOpen) && (
+            {rightOpen && (
               <motion.div
                 initial={{ x: '100%' }}
                 animate={{ x: 0, transition: { duration: SLIDE_DURATION, ease: SLIDE_EASE } }}

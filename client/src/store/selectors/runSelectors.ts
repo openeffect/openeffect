@@ -3,11 +3,12 @@ import type { AppState } from '../types'
 
 // ─── Base selectors ──────────────────────────────────────────────────────────
 
-export const selectJobs = (s: AppState) => s.generation.jobs
-export const selectViewingJobId = (s: AppState) => s.generation.viewingJobId
-export const selectLeftPanel = (s: AppState) => s.generation.leftPanel
-export const selectRestoredParams = (s: AppState) => s.generation.restoredParams
-export const selectRestoringFromUrl = (s: AppState) => s.generation.restoringFromUrl
+export const selectJobs = (s: AppState) => s.run.jobs
+export const selectViewingJobId = (s: AppState) => s.run.viewingJobId
+export const selectViewingRunRecord = (s: AppState) => s.run.viewingRunRecord
+export const selectLeftPanel = (s: AppState) => s.run.leftPanel
+export const selectRestoredParams = (s: AppState) => s.run.restoredParams
+export const selectRestoringFromUrl = (s: AppState) => s.run.restoringFromUrl
 
 // ─── Derived selectors ───────────────────────────────────────────────────────
 

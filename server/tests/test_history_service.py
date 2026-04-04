@@ -1,38 +1,39 @@
 """Unit tests for HistoryService with in-memory SQLite."""
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import aiosqlite
 import pytest
 
-from services.history_service import HistoryService, GenerationRecord
+from services.history_service import HistoryService, RunRecord
 
-# SQL from server/db/database.py
+# SQL matching server/db/database.py
 CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS generations (
-    id            TEXT PRIMARY KEY,
-    effect_id     TEXT NOT NULL,
-    effect_name   TEXT NOT NULL,
-    model_id      TEXT NOT NULL,
-    status        TEXT NOT NULL,
-    progress      INTEGER DEFAULT 0,
-    progress_msg  TEXT,
-    video_url     TEXT,
-    thumbnail_url TEXT,
-    manifest_yaml TEXT,
-    prompt_used   TEXT,
-    error         TEXT,
-    created_at    TEXT NOT NULL,
-    updated_at    TEXT NOT NULL,
-    duration_ms   INTEGER
+CREATE TABLE IF NOT EXISTS runs (
+    id                  TEXT PRIMARY KEY,
+    effect_id           TEXT NOT NULL,
+    effect_name         TEXT NOT NULL,
+    model_id            TEXT NOT NULL,
+    status              TEXT NOT NULL,
+    progress            INTEGER DEFAULT 0,
+    progress_msg        TEXT,
+    video_url           TEXT,
+    inputs              TEXT,
+    error               TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    duration_ms         INTEGER,
+    provider_request_id TEXT,
+    provider_endpoint   TEXT
 )
 """
 
 
 @dataclass
 class FakeJob:
-    """Minimal stand-in for GenerationJob, matching attributes used by create_processing."""
+    """Minimal stand-in for RunJob, matching attributes used by create_processing."""
     job_id: str
     effect_id: str
     effect_name: str
@@ -41,7 +42,7 @@ class FakeJob:
 
 @pytest.fixture
 async def db_path(tmp_path):
-    """Create a temporary DB file with the generations table."""
+    """Create a temporary DB file with the runs table."""
     path = tmp_path / "test_history.db"
     async with aiosqlite.connect(str(path)) as db:
         await db.execute(CREATE_TABLE_SQL)
@@ -225,13 +226,27 @@ class TestGetAll:
         page = await service.get_all(limit=3, offset=2)
         assert len(page) == 3
 
-    async def test_returns_generation_record_instances(self, service):
+    async def test_returns_run_record_instances(self, service):
         job = _make_job("job-type-check")
         await service.create_processing(job)
 
         items = await service.get_all()
         assert len(items) == 1
-        assert isinstance(items[0], GenerationRecord)
+        assert isinstance(items[0], RunRecord)
+
+    async def test_filters_by_effect_id(self, service):
+        await service.create_processing(_make_job("job-e1", effect_id="openeffect/hdr"))
+        await service.create_processing(_make_job("job-e2", effect_id="openeffect/glow"))
+        await service.create_processing(_make_job("job-e3", effect_id="openeffect/hdr"))
+
+        items = await service.get_all(effect_id="openeffect/hdr")
+        assert len(items) == 2
+        assert all(item.effect_id == "openeffect/hdr" for item in items)
+
+    async def test_filter_returns_empty_for_unknown_effect(self, service):
+        await service.create_processing(_make_job("job-f1", effect_id="openeffect/hdr"))
+        items = await service.get_all(effect_id="openeffect/nonexistent")
+        assert items == []
 
 
 class TestActiveCount:
@@ -284,6 +299,14 @@ class TestCount:
         total = await service.count()
         assert total == 2
 
+    async def test_count_by_effect_id(self, service):
+        await service.create_processing(_make_job("job-ce-1", effect_id="openeffect/hdr"))
+        await service.create_processing(_make_job("job-ce-2", effect_id="openeffect/glow"))
+        await service.create_processing(_make_job("job-ce-3", effect_id="openeffect/hdr"))
+
+        total = await service.count(effect_id="openeffect/hdr")
+        assert total == 2
+
 
 class TestDelete:
     async def test_removes_record(self, service):
@@ -333,7 +356,7 @@ class TestGetById:
         assert hasattr(record, "updated_at")
 
 
-class TestGenerationRecordToDict:
+class TestRunRecordToDict:
     async def test_to_dict_returns_expected_keys(self, service):
         await service.create_processing(_make_job("job-dict-1"))
         record = await service.get_by_id("job-dict-1")
@@ -341,44 +364,35 @@ class TestGenerationRecordToDict:
         d = record.to_dict()
         expected_keys = {
             "id", "effect_id", "effect_name", "model_id", "status",
-            "progress", "progress_msg", "video_url", "thumbnail_url",
-            "manifest_yaml", "error", "created_at", "updated_at", "duration_ms",
+            "progress", "progress_msg", "video_url", "inputs",
+            "error", "created_at", "updated_at", "duration_ms",
         }
         assert set(d.keys()) == expected_keys
 
-    async def test_to_dict_does_not_expose_prompt_used(self, service):
-        """to_dict should expose manifest_yaml but not prompt_used directly."""
-        await service.create_processing(_make_job("job-dict-2"))
-        record = await service.get_by_id("job-dict-2")
+    async def test_to_dict_parses_inputs_json(self, service):
+        """inputs stored as JSON string should be returned as parsed dict."""
+        inputs = {"prompt": "city night", "intensity": "0.8"}
+        job = _make_job("job-inputs-parse")
+        await service.create_processing(job, inputs_json=json.dumps(inputs))
+        record = await service.get_by_id("job-inputs-parse")
         assert record is not None
         d = record.to_dict()
-        assert "prompt_used" not in d
+        assert isinstance(d["inputs"], dict)
+        assert d["inputs"]["prompt"] == "city night"
 
-    async def test_to_dict_parses_manifest_yaml_string(self, service):
-        """manifest_yaml stored as string should be returned as parsed dict."""
-        import yaml
-        manifest = {"effect": {"id": "test"}, "request": {"model_id": "wan-2.2"}}
-        job = _make_job("job-manifest-parse")
-        await service.create_processing(job, manifest_yaml=yaml.dump(manifest, default_flow_style=False, sort_keys=False))
-        record = await service.get_by_id("job-manifest-parse")
+    async def test_to_dict_handles_null_inputs(self, service):
+        """Null inputs should return None in to_dict."""
+        await service.create_processing(_make_job("job-null-inputs"))
+        record = await service.get_by_id("job-null-inputs")
         assert record is not None
         d = record.to_dict()
-        assert isinstance(d["manifest_yaml"], dict)
-        assert d["manifest_yaml"]["effect"]["id"] == "test"
+        assert d["inputs"] is None
 
-    async def test_to_dict_handles_null_manifest_yaml(self, service):
-        """Null manifest_yaml should return None in to_dict."""
-        await service.create_processing(_make_job("job-null-manifest"))
-        record = await service.get_by_id("job-null-manifest")
+    async def test_to_dict_handles_malformed_inputs(self, service):
+        """Malformed JSON string should be returned as-is, not crash."""
+        job = _make_job("job-bad-json")
+        await service.create_processing(job, inputs_json="not valid json {{{")
+        record = await service.get_by_id("job-bad-json")
         assert record is not None
         d = record.to_dict()
-        assert d["manifest_yaml"] is None
-
-    async def test_to_dict_handles_malformed_manifest_yaml(self, service):
-        """Malformed YAML string should be returned as-is, not crash."""
-        job = _make_job("job-bad-yaml")
-        await service.create_processing(job, manifest_yaml="not: valid: yaml: {{{\n  broken")
-        record = await service.get_by_id("job-bad-yaml")
-        assert record is not None
-        d = record.to_dict()
-        assert d["manifest_yaml"] == "not: valid: yaml: {{{\n  broken"
+        assert d["inputs"] == "not valid json {{{"

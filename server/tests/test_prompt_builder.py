@@ -32,7 +32,7 @@ def make_manifest(**overrides) -> EffectManifest:
             negative_prompt="low quality, blurry",
             models=["kling-v3", "wan-2.2"],
             default_model="kling-v3",
-            defaults={"guidance_scale": 7.5, "num_inference_steps": 30},
+            defaults={"cfg_scale": 7.5, "num_inference_steps": 30},
             model_overrides={},
         ),
     }
@@ -160,17 +160,17 @@ class TestBuildParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                defaults={"guidance_scale": 7.5, "unknown_param": 42},
+                defaults={"cfg_scale": 7.5, "unknown_param": 42},
             ),
         )
         result = PromptBuilder.build_params(manifest, "kling-v3")
-        assert "guidance_scale" in result
+        assert "cfg_scale" in result
         assert "unknown_param" not in result
 
     def test_unknown_key_in_user_params_filtered(self):
         manifest = make_manifest()
-        result = PromptBuilder.build_params(manifest, "wan-2.2", {"guidance_scale": 8.0, "fake_key": 99})
-        assert result["guidance_scale"] == 8.0
+        result = PromptBuilder.build_params(manifest, "wan-2.2", {"cfg_scale": 8.0, "fake_key": 99})
+        assert result["cfg_scale"] == 8.0
         assert "fake_key" not in result
 
     def test_model_override_merges_on_top(self):
@@ -179,14 +179,14 @@ class TestBuildParams:
                 prompt="test",
                 models=["kling-v3", "wan-2.2"],
                 default_model="kling-v3",
-                defaults={"guidance_scale": 7.5},
+                defaults={"cfg_scale": 7.5},
                 model_overrides={
-                    "kling-v3": ModelOverride(defaults={"guidance_scale": 9.0}),
+                    "kling-v3": ModelOverride(defaults={"cfg_scale": 9.0}),
                 },
             ),
         )
         result = PromptBuilder.build_params(manifest, "kling-v3")
-        assert result["guidance_scale"] == 9.0
+        assert result["cfg_scale"] == 9.0
 
     def test_user_params_merge_on_top_of_override(self):
         manifest = make_manifest(
@@ -194,19 +194,19 @@ class TestBuildParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                defaults={"guidance_scale": 7.5},
+                defaults={"cfg_scale": 7.5},
                 model_overrides={
-                    "kling-v3": ModelOverride(defaults={"guidance_scale": 9.0}),
+                    "kling-v3": ModelOverride(defaults={"cfg_scale": 9.0}),
                 },
             ),
         )
-        result = PromptBuilder.build_params(manifest, "kling-v3", {"guidance_scale": 12.0})
-        assert result["guidance_scale"] == 12.0
+        result = PromptBuilder.build_params(manifest, "kling-v3", {"cfg_scale": 12.0})
+        assert result["cfg_scale"] == 12.0
 
     def test_empty_user_params(self):
         manifest = make_manifest()
         result = PromptBuilder.build_params(manifest, "wan-2.2", None)
-        assert result["guidance_scale"] == 7.5
+        assert result["cfg_scale"] == 7.5
         assert result["num_inference_steps"] == 30
 
     def test_unknown_model_returns_empty(self):
@@ -215,7 +215,7 @@ class TestBuildParams:
                 prompt="test",
                 models=["unknown-model"],
                 default_model="unknown-model",
-                defaults={"guidance_scale": 7.5},
+                defaults={"cfg_scale": 7.5},
             ),
         )
         result = PromptBuilder.build_params(manifest, "unknown-model")

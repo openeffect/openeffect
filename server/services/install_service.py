@@ -279,12 +279,14 @@ class InstallService:
     ) -> str:
         """Save or update a locally created/forked effect. fork_from = namespace/id to copy assets from."""
         if existing_effect_id:
-            # Update existing local effect
-            parts = existing_effect_id.split("/", 1)
-            if len(parts) != 2:
-                raise ValueError("Invalid effect_id format")
-            ns, eid = parts
-            existing = await self._get_existing(ns, eid)
+            # Update existing local effect — accept DB UUID or namespace/id
+            existing = None
+            if "/" in existing_effect_id:
+                ns, eid = existing_effect_id.split("/", 1)
+                existing = await self._get_existing(ns, eid)
+            else:
+                # DB UUID lookup
+                existing = await self._get_existing_by_uuid(existing_effect_id)
             if not existing:
                 raise ValueError(f"Effect {existing_effect_id} not found")
             if existing["source"] not in ("local", "archive"):
@@ -419,6 +421,15 @@ class InstallService:
                 "SELECT * FROM effects WHERE namespace=? AND effect_id=?",
                 (namespace, effect_id),
             )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            await db.close()
+
+    async def _get_existing_by_uuid(self, uuid: str) -> dict | None:
+        db = await self._get_db()
+        try:
+            cursor = await db.execute("SELECT * FROM effects WHERE id=?", (uuid,))
             row = await cursor.fetchone()
             return dict(row) if row else None
         finally:

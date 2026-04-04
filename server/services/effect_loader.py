@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class LoadedEffect:
     """Wraps a validated manifest with loader-specific metadata."""
     manifest: EffectManifest
+    db_id: str             # UUID from effects table
     full_id: str           # namespace/id
     assets_dir: Path       # UUID folder path
     source: str            # "official", "url", "archive", "local"
@@ -23,7 +24,8 @@ class EffectLoaderService:
     def __init__(self, install_service: InstallService, bundled_zip_path: Path | None = None):
         self._install = install_service
         self._bundled_zip = bundled_zip_path
-        self._cache: dict[str, LoadedEffect] = {}
+        self._cache: dict[str, LoadedEffect] = {}       # keyed by full_id (namespace/id)
+        self._uuid_cache: dict[str, LoadedEffect] = {}  # keyed by DB UUID
 
     async def load_all(self) -> None:
         """Load all effects from DB. Sync bundled effects on every startup."""
@@ -42,25 +44,34 @@ class EffectLoaderService:
         await self.reload()
 
     async def reload(self) -> None:
-        """Reload the in-memory cache from the DB."""
-        self._cache.clear()
+        """Reload the in-memory cache from the DB. Atomic swap to avoid empty cache during rebuild."""
+        new_cache: dict[str, LoadedEffect] = {}
+        new_uuid_cache: dict[str, LoadedEffect] = {}
         rows = await self._install.get_all_effects()
 
         for row in rows:
             try:
                 manifest_data = yaml.safe_load(row["manifest_yaml"])
                 manifest = EffectManifest(**manifest_data)
+                db_id = row["id"]
                 full_id = f"{manifest.namespace}/{manifest.id}"
                 assets_dir = Path(row["assets_dir"])
 
-                self._cache[full_id] = LoadedEffect(
+                loaded = LoadedEffect(
                     manifest=manifest,
+                    db_id=db_id,
                     full_id=full_id,
                     assets_dir=assets_dir,
                     source=row["source"],
                 )
+                new_cache[full_id] = loaded
+                new_uuid_cache[db_id] = loaded
             except Exception as e:
                 logger.warning(f"Failed to load effect from DB row {row['id']}: {e}")
+
+        # Atomic swap — no window where cache is empty
+        self._cache = new_cache
+        self._uuid_cache = new_uuid_cache
 
         logger.info(f"Loaded {len(self._cache)} effects from database")
 
@@ -76,6 +87,9 @@ class EffectLoaderService:
 
     def get_loaded(self, effect_id: str) -> LoadedEffect | None:
         return self._cache.get(effect_id)
+
+    def get_by_db_id(self, db_id: str) -> LoadedEffect | None:
+        return self._uuid_cache.get(db_id)
 
     def get_asset_path(self, uuid: str, filename: str) -> Path | None:
         """Resolve an asset file from a UUID folder. No DB query needed."""

@@ -158,7 +158,7 @@ export function EffectEditor() {
     if (!confirmClose()) return
     closeEditor()
     if (editingEffectId) {
-      selectEffect(editingEffectId, true)
+      selectEffect(editingEffectId)
     } else {
       selectEffect(null)
     }
@@ -171,15 +171,6 @@ export function EffectEditor() {
       {/* Editor header */}
       <div className="flex shrink-0 items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleClose}
-            title="Close editor"
-          >
-            <ArrowLeft size={14} />
-          </Button>
           <h2 className="text-sm font-bold text-foreground">{effectName}</h2>
           {editingEffectId ? (
             <Badge variant="accent">Editing</Badge>
@@ -198,6 +189,11 @@ export function EffectEditor() {
             {isSaving ? <Loader2 size={14} className="animate-spin" /> : isNew ? <Plus size={14} /> : <Save size={14} />}
             {isNew ? 'Create' : 'Save'}
           </Button>
+          {editingEffectId && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleClose} title="Close editor">
+              <X size={14} />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -229,7 +225,11 @@ function AssetPanel({ effectId }: { effectId: string }) {
   const [renamingFile, setRenamingFile] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
-  const [ns, id] = effectId.split('/')
+  // effectId is now a DB UUID — resolve to namespace/id for API calls
+  const effects = useStore((s) => s.effects.items)
+  const effect = effects.find((e) => e.db_id === effectId)
+  const ns = effect?.namespace
+  const id = effect?.id
 
   // Sync from store when it changes (e.g. on open)
   useEffect(() => {

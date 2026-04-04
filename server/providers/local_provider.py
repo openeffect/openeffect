@@ -61,6 +61,6 @@ class LocalProvider(BaseProvider):
                 yield ProviderEvent(type="failed", error=error_msg)
 
         except asyncio.TimeoutError:
-            yield ProviderEvent(type="failed", error="Generation timed out (10 minutes)")
+            yield ProviderEvent(type="failed", error="Run timed out (10 minutes)")
         except Exception as e:
             yield ProviderEvent(type="failed", error=str(e))

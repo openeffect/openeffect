@@ -2,10 +2,10 @@ import type {
   EffectManifest,
   AppConfig,
   UploadResponse,
-  GenerateResponse,
-  GenerationRequest,
-  GenerationRecord,
-  GenerationsResponse,
+  RunResponse,
+  RunRequest,
+  RunRecord,
+  RunsResponse,
 } from '@/types/api'
 
 class ApiError extends Error {
@@ -77,22 +77,25 @@ export const api = {
     return res.json() as Promise<UploadResponse>
   },
 
-  // Generation
-  generate: (req: GenerationRequest) =>
-    request<GenerateResponse>('/api/generate', {
+  // Run
+  run: (req: RunRequest) =>
+    request<RunResponse>('/api/run', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
 
-  // Generations (was History)
-  getGenerations: (limit = 50, offset = 0) =>
-    request<GenerationsResponse>(`/api/generations?limit=${limit}&offset=${offset}`),
+  // Runs (history)
+  getRuns: (limit = 50, offset = 0, effectId?: string) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (effectId) params.set('effect_id', effectId)
+    return request<RunsResponse>(`/api/runs?${params}`)
+  },
 
-  getGeneration: (id: string) =>
-    request<GenerationRecord>(`/api/generations/${id}`),
+  getRun: (id: string) =>
+    request<RunRecord>(`/api/runs/${id}`),
 
-  deleteGeneration: (id: string) =>
-    request<{ ok: boolean }>(`/api/generations/${id}`, { method: 'DELETE' }),
+  deleteRun: (id: string) =>
+    request<{ ok: boolean }>(`/api/runs/${id}`, { method: 'DELETE' }),
 
   // Config
   getConfig: () => request<AppConfig>('/api/config'),

@@ -10,32 +10,24 @@ async def init_db(db_path: Path) -> None:
 
     async with aiosqlite.connect(str(db_path)) as db:
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS generations (
-                id            TEXT PRIMARY KEY,
-                effect_id     TEXT NOT NULL,
-                effect_name   TEXT NOT NULL,
-                model_id      TEXT NOT NULL,
-                status        TEXT NOT NULL,
-                progress      INTEGER DEFAULT 0,
-                progress_msg  TEXT,
-                video_url     TEXT,
-                thumbnail_url TEXT,
-                manifest_yaml TEXT,
-                prompt_used   TEXT,
-                error         TEXT,
-                created_at    TEXT NOT NULL,
-                updated_at    TEXT NOT NULL,
-                duration_ms   INTEGER,
+            CREATE TABLE IF NOT EXISTS runs (
+                id                  TEXT PRIMARY KEY,
+                effect_id           TEXT NOT NULL,
+                effect_name         TEXT NOT NULL,
+                model_id            TEXT NOT NULL,
+                status              TEXT NOT NULL,
+                progress            INTEGER DEFAULT 0,
+                progress_msg        TEXT,
+                video_url           TEXT,
+                inputs              TEXT,
+                error               TEXT,
+                created_at          TEXT NOT NULL,
+                updated_at          TEXT NOT NULL,
+                duration_ms         INTEGER,
                 provider_request_id TEXT,
                 provider_endpoint   TEXT
             )
         """)
-        # Add columns if they don't exist (for existing DBs)
-        for col in ["provider_request_id TEXT", "provider_endpoint TEXT"]:
-            try:
-                await db.execute(f"ALTER TABLE generations ADD COLUMN {col}")
-            except Exception:
-                pass  # Column already exists
         await db.execute("""
             CREATE TABLE IF NOT EXISTS effects (
                 id            TEXT PRIMARY KEY,
@@ -63,4 +55,7 @@ async def init_db(db_path: Path) -> None:
                 created_at TEXT NOT NULL
             )
         """)
+        # Indexes for common query patterns
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
         await db.commit()

@@ -1,31 +1,15 @@
-import type { AppState, EffectSource } from '../types'
-import type { EffectManifest } from '@/types/api'
+import type { AppState, RightTab } from '../types'
 
-export function mutateSetEffects(s: AppState, effects: EffectManifest[]) {
-  s.effects.items = effects
-}
-
-export function mutateSetEffectsStatus(
-  s: AppState,
-  status: AppState['effects']['status'],
-  error?: string | null,
-) {
-  s.effects.status = status
-  if (error !== undefined) s.effects.error = error
-}
-
+/** Shared: used by historyActions, editorActions, effectsActions, appActions */
 export function mutateSelectEffect(s: AppState, id: string | null) {
+  if (id !== null && s.effects.selectedId === null) {
+    // Opening an effect after none was selected — reset to form tab
+    s.effects.rightTab = 'form'
+  }
   s.effects.selectedId = id
 }
 
-export function mutateSetSearchQuery(s: AppState, query: string) {
-  s.effects.searchQuery = query
-}
-
-export function mutateSetActiveSource(s: AppState, source: EffectSource) {
-  s.effects.activeSource = source
-}
-
-export function mutateSetActiveCategory(s: AppState, category: string) {
-  s.effects.activeCategory = category
+/** Shared: used by EffectPanel, RunView */
+export function mutateSetRightTab(s: AppState, tab: RightTab) {
+  s.effects.rightTab = tab
 }

@@ -4,11 +4,14 @@ import {
   selectEffects,
   selectSearchQuery,
   selectActiveSource,
+  selectActiveType,
   selectActiveCategory,
+  selectAvailableCategories,
 } from '@/store/selectors/effectsSelectors'
 import {
   setSearchQuery,
   setActiveSource,
+  setActiveType,
   setActiveCategory,
 } from '@/store/actions/effectsActions'
 import { formatEffectType } from '@/utils/formatters'
@@ -32,16 +35,22 @@ export function GalleryFilters() {
   const effects = useStore(selectEffects)
   const searchQuery = useStore(selectSearchQuery)
   const activeSource = useStore(selectActiveSource)
+  const activeType = useStore(selectActiveType)
   const activeCategory = useStore(selectActiveCategory)
+  const availableCategories = useStore(selectAvailableCategories)
 
   const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
   const hasMine = effects.some((e) => e.source === 'local')
   const showSourceFilter = hasInstalled || hasMine
 
-  const categories = Array.from(new Set(effects.map(e => e.type)))
+  const types = Array.from(new Set(effects.map(e => e.type)))
     .map(t => ({ id: t, label: formatEffectType(t) }))
 
+  const categories = availableCategories
+    .map(c => ({ id: c, label: formatEffectType(c) }))
+
   const sourceLabel = SOURCE_OPTIONS.find((o) => o.id === activeSource)?.label
+  const typeLabel = types.find((t) => t.id === activeType)?.label
   const categoryLabel = categories.find((c) => c.id === activeCategory)?.label
 
   return (
@@ -67,6 +76,25 @@ export function GalleryFilters() {
             >
               {opt.label}
               {activeSource === opt.id && <Check size={12} className="ml-auto text-primary" />}
+            </DropdownMenuItem>
+          ))}
+        </FilterDropdown>
+      )}
+      {/* Type filter */}
+      {types.length > 0 && (
+        <FilterDropdown
+          placeholder="Type"
+          value={typeLabel}
+          onClear={() => setActiveType('all')}
+        >
+          {types.map((t) => (
+            <DropdownMenuItem
+              key={t.id}
+              onClick={() => setActiveType(t.id)}
+              className={cn(activeType === t.id && 'text-primary')}
+            >
+              {t.label}
+              {activeType === t.id && <Check size={12} className="ml-auto text-primary" />}
             </DropdownMenuItem>
           ))}
         </FilterDropdown>

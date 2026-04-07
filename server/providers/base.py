@@ -8,7 +8,6 @@ class ProviderInput:
     prompt: str
     negative_prompt: str
     image_inputs: dict[str, str]
-    output: dict[str, Any]
     parameters: dict[str, Any]
 
 

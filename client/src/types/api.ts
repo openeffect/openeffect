@@ -66,9 +66,13 @@ export interface Assets {
   inputs?: Record<string, string>
 }
 
+export type ModelParamEntry =
+  | { default: number | string }
+  | { value: number | string }
+
 export interface ModelOverride {
   prompt?: string
-  defaults?: Record<string, number | string>
+  model_params?: Record<string, ModelParamEntry>
 }
 
 export interface GenerationConfig {
@@ -76,7 +80,7 @@ export interface GenerationConfig {
   negative_prompt: string
   models: string[]
   default_model: string
-  defaults: Record<string, number | string>
+  model_params: Record<string, ModelParamEntry>
   model_overrides: Record<string, ModelOverride>
   reverse: boolean
 }

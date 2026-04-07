@@ -67,7 +67,7 @@ generation:
     cartoon fire, plastic look, heavy artifacts,
     text overlay, watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -84,7 +84,7 @@ generation:
         {scene_prompt}
         High quality, smooth animation, realistic fire motion,
         no cuts, no full scene replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -97,6 +97,6 @@ generation:
         and background mood. {scene_prompt}
         Detailed image quality, smooth motion, no cuts,
         no abrupt transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

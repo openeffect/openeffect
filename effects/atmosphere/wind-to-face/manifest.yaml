@@ -63,7 +63,7 @@ generation:
     chaotic deformation, heavy artifacts, text overlay,
     watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 4
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -77,7 +77,7 @@ generation:
         outfit, pose, and scene continuity. The motion should feel elegant,
         realistic, and visually powerful. {scene_prompt}
         High quality, smooth animation, no cuts, no scene replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -88,6 +88,6 @@ generation:
         recognizable and stable. Preserve identity, composition, and background mood.
         {scene_prompt}
         Realistic motion, detailed image quality, no cuts, no abrupt transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

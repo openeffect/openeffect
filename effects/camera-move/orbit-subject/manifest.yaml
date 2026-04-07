@@ -64,7 +64,7 @@ generation:
     unrealistic camera path, heavy artifacts, text overlay,
     watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -79,7 +79,7 @@ generation:
         composition, and scene continuity. Strong parallax, realistic motion,
         dramatic but clean camera movement. {scene_prompt}
         High quality, seamless orbit shot, no cuts, no scene replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -91,6 +91,6 @@ generation:
         pose, composition, and overall scene consistency.
         {scene_prompt}
         Realistic motion, detailed image quality, no cuts, no abrupt transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

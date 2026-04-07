@@ -29,7 +29,7 @@ def make_valid_manifest(**overrides) -> dict:
             "prompt": "A test prompt. {prompt}",
             "models": ["kling-v3"],
             "default_model": "kling-v3",
-            "defaults": {},
+            "model_params": {},
         },
     }
     defaults.update(overrides)

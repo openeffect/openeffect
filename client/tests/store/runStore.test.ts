@@ -45,7 +45,7 @@ const mockManifest: EffectManifest = {
     negative_prompt: '',
     models: ['wan-2.2'],
     default_model: 'wan-2.2',
-    defaults: {},
+    model_params: {},
     model_overrides: {},
   },
 }

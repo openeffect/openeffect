@@ -2,13 +2,34 @@ import asyncio
 import uuid
 import logging
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 logger = logging.getLogger(__name__)
 
 
 # ─── Model Registry ──────────────────────────────────────────────────────────
 # supports_end_frame: "none" | "optional" | "required"
+#
+# Each model has a single `params` list. Every entry has a `ui`:
+#   - "main"     → rendered in the main form
+#   - "advanced" → rendered in the collapsed Advanced section
+#   - "none"     → not rendered at all (headless knob settable from manifest)
+#
+# An optional `transform_params` callable on a model turns user-facing params
+# into the model-native shape (e.g. WAN 2.2 wants num_frames, not duration in
+# seconds). Transforms are arbitrary Python — no declarative mini-DSL.
+
+
+def _wan22_transform(params: dict[str, Any]) -> dict[str, Any]:
+    """WAN 2.2 wants num_frames (seconds × fps) instead of duration (seconds)."""
+    out = dict(params)
+    if "duration" in out:
+        fps = 16
+        seconds = int(out.pop("duration"))
+        out["num_frames"] = seconds * fps
+        out["fps"] = fps
+    return out
+
 
 MODELS: list[dict[str, Any]] = [
     # ── WAN ──────────────────────────────────────────────────────────────
@@ -27,21 +48,22 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
             "t2v_endpoint": "fal-ai/wan/v2.2-a14b/text-to-video",
             "role_params": {"start_frame": "image_url", "end_frame": "end_image_url"},
-            "output_translation": {"aspect_ratio": "passthrough", "duration": "num_frames"},
-            "fps": 16,
         },
-        "output_params": [
-            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "auto",
+        "params": [
+            {"key": "aspect_ratio", "ui": "main", "type": "select", "label": "Aspect Ratio", "default": "auto",
              "options": [{"value": "auto", "label": "Auto"}, {"value": "16:9", "label": "16:9"}, {"value": "9:16", "label": "9:16"}]},
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 1, "max": 10, "step": 1},
-            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
+             "default": 5, "min": 1, "max": 10, "step": 1},
+            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "720p",
              "options": [{"value": "480p", "label": "480p"}, {"value": "720p", "label": "720p"}]},
+            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
+             "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.5, "hint": "Higher = closer to prompt"},
+            {"key": "num_inference_steps", "ui": "advanced", "type": "slider", "label": "Quality steps",
+             "default": 27, "min": 10, "max": 50, "step": 1, "hint": "More = better but slower"},
+            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
+            {"key": "negative_prompt", "ui": "none", "type": "text"},
         ],
-        "advanced_params": [
-            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.5, "hint": "Higher = closer to prompt"},
-            {"key": "num_inference_steps", "label": "Quality steps", "type": "slider", "default": 27, "min": 10, "max": 50, "step": 1, "hint": "More = better but slower"},
-            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
-        ],
+        "transform_params": _wan22_transform,
     },
     {
         "id": "wan-2.6",
@@ -58,18 +80,16 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "wan/v2.6/image-to-video",
             "t2v_endpoint": "wan/v2.6/image-to-video",
             "role_params": {"start_frame": "image_url"},
-            "output_translation": {"aspect_ratio": "passthrough", "duration": "passthrough"},
         },
-        "output_params": [
-            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "16:9",
+        "params": [
+            {"key": "aspect_ratio", "ui": "main", "type": "select", "label": "Aspect Ratio", "default": "16:9",
              "options": [{"value": "16:9", "label": "16:9"}, {"value": "9:16", "label": "9:16"}, {"value": "1:1", "label": "1:1"}, {"value": "4:3", "label": "4:3"}, {"value": "3:4", "label": "3:4"}]},
-            {"key": "duration", "label": "Duration", "type": "select", "default": "5",
+            {"key": "duration", "ui": "main", "type": "select", "label": "Duration", "default": "5",
              "options": [{"value": "5", "label": "5s"}, {"value": "10", "label": "10s"}, {"value": "15", "label": "15s"}]},
-            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "720p",
              "options": [{"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
-        ],
-        "advanced_params": [
-            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
+            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
+            {"key": "negative_prompt", "ui": "none", "type": "text"},
         ],
     },
     # ── Kling 2.5 ────────────────────────────────────────────────────────
@@ -88,16 +108,15 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
             "t2v_endpoint": "fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
             "role_params": {"start_frame": "image_url", "end_frame": "tail_image_url"},
-            "output_translation": {"aspect_ratio": "passthrough", "duration": "passthrough"},
         },
-        "output_params": [
-            {"key": "aspect_ratio", "label": "Aspect Ratio", "type": "select", "default": "9:16",
+        "params": [
+            {"key": "aspect_ratio", "ui": "main", "type": "select", "label": "Aspect Ratio", "default": "9:16",
              "options": [{"value": "9:16", "label": "9:16"}, {"value": "16:9", "label": "16:9"}, {"value": "1:1", "label": "1:1"}]},
-            {"key": "duration", "label": "Duration", "type": "select", "default": "5",
+            {"key": "duration", "ui": "main", "type": "select", "label": "Duration", "default": "5",
              "options": [{"value": "5", "label": "5s"}, {"value": "10", "label": "10s"}]},
-        ],
-        "advanced_params": [
-            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1, "hint": "0-1 range"},
+            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
+             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1, "hint": "0-1 range"},
+            {"key": "negative_prompt", "ui": "none", "type": "text"},
         ],
     },
     # ── Kling 3.0 V3 ────────────────────────────────────────────────────
@@ -117,13 +136,14 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
             "t2v_endpoint": "fal-ai/kling-video/v3/standard/text-to-video",
             "role_params": {"start_frame": "start_image_url"},
-            "output_translation": {"duration": "passthrough"},
         },
-        "output_params": [
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 3, "max": 15, "step": 1},
-        ],
-        "advanced_params": [
-            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+        "params": [
+            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
+             "default": 5, "min": 3, "max": 15, "step": 1},
+            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
+             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+            {"key": "negative_prompt", "ui": "none", "type": "text"},
+            {"key": "generate_audio", "ui": "none", "type": "boolean"},
         ],
     },
     # ── Kling 3.0 O3 ────────────────────────────────────────────────────
@@ -143,13 +163,13 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "fal-ai/kling-video/o3/standard/image-to-video",
             "t2v_endpoint": "fal-ai/kling-video/o3/standard/image-to-video",
             "role_params": {"start_frame": "image_url", "end_frame": "end_image_url"},
-            "output_translation": {"duration": "passthrough"},
         },
-        "output_params": [
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 10, "min": 3, "max": 15, "step": 1},
-        ],
-        "advanced_params": [
-            {"key": "cfg_scale", "label": "CFG scale", "type": "slider", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+        "params": [
+            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
+             "default": 10, "min": 3, "max": 15, "step": 1},
+            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
+             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
+            {"key": "generate_audio", "ui": "none", "type": "boolean"},
         ],
     },
     # ── PixVerse V6 ───────────────────────────────────────────────────
@@ -169,17 +189,19 @@ MODELS: list[dict[str, Any]] = [
             "i2v_endpoint": "fal-ai/pixverse/v6/image-to-video",
             "t2v_endpoint": "fal-ai/pixverse/v6/image-to-video",
             "role_params": {"start_frame": "image_url"},
-            "output_translation": {"duration": "passthrough"},
         },
-        "output_params": [
-            {"key": "resolution", "label": "Resolution", "type": "select", "default": "720p",
+        "params": [
+            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "720p",
              "options": [{"value": "360p", "label": "360p"}, {"value": "540p", "label": "540p"}, {"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
-            {"key": "duration", "label": "Duration (seconds)", "type": "slider", "default": 5, "min": 1, "max": 15, "step": 1},
-            {"key": "style", "label": "Style", "type": "select", "default": "",
+            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
+             "default": 5, "min": 1, "max": 15, "step": 1},
+            {"key": "style", "ui": "main", "type": "select", "label": "Style", "default": "",
              "options": [{"value": "", "label": "None"}, {"value": "anime", "label": "Anime"}, {"value": "3d_animation", "label": "3D Animation"}, {"value": "clay", "label": "Clay"}, {"value": "comic", "label": "Comic"}, {"value": "cyberpunk", "label": "Cyberpunk"}]},
-        ],
-        "advanced_params": [
-            {"key": "seed", "label": "Seed", "type": "number", "default": -1, "hint": "-1 = random"},
+            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
+            {"key": "negative_prompt", "ui": "none", "type": "text"},
+            {"key": "generate_audio_switch", "ui": "none", "type": "boolean"},
+            {"key": "generate_multi_clip_switch", "ui": "none", "type": "boolean"},
+            {"key": "thinking_type", "ui": "none", "type": "text"},
         ],
     },
 ]
@@ -192,6 +214,18 @@ def get_fal_config(model_id: str) -> dict[str, Any] | None:
     """Get the fal.ai endpoint config for a model."""
     model = MODELS_BY_ID.get(model_id)
     return model.get("fal") if model else None
+
+
+def get_model_params(model_id: str) -> list[dict[str, Any]]:
+    """Returns the consolidated params list for a model, or empty if unknown."""
+    model = MODELS_BY_ID.get(model_id)
+    return list(model.get("params", [])) if model else []
+
+
+def get_model_transform(model_id: str) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+    """Returns the model's params transform callable, if defined."""
+    model = MODELS_BY_ID.get(model_id)
+    return model.get("transform_params") if model else None
 
 
 def get_compatible_model_ids(input_roles: set[str]) -> list[str]:
@@ -221,6 +255,17 @@ def get_compatible_model_ids(input_roles: set[str]) -> list[str]:
     return result
 
 
+def _params_for_ui(model: dict[str, Any], ui_value: str) -> list[dict[str, Any]]:
+    """Filter a model's params by ui placement and strip the ui field."""
+    out = []
+    for p in model.get("params", []):
+        if p.get("ui") != ui_value:
+            continue
+        clean = {k: v for k, v in p.items() if k != "ui"}
+        out.append(clean)
+    return out
+
+
 class ModelService:
     def __init__(self, models_dir: Path):
         self._models_dir = models_dir
@@ -228,11 +273,15 @@ class ModelService:
     def get_available_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
         models = []
         for model in MODELS:
-            m = {k: v for k, v in model.items() if k != "fal"}
+            m = {k: v for k, v in model.items() if k not in ("fal", "params", "transform_params")}
             # Surface image roles supported by the provider so the playground UI
             # can render uploaders without knowing about fal internals.
             fal_cfg = model.get("fal") or {}
             m["supported_image_roles"] = list((fal_cfg.get("role_params") or {}).keys())
+            # Derive the per-ui param lists. `ui: "none"` entries are not
+            # exposed to the client — they're declared for routing/merging only.
+            m["output_params"] = _params_for_ui(model, "main")
+            m["advanced_params"] = _params_for_ui(model, "advanced")
             providers = []
             for provider in model["providers"]:
                 p = dict(provider)

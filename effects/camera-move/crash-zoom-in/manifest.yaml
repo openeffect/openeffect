@@ -64,7 +64,7 @@ generation:
     extreme fisheye distortion, heavy artifacts, text overlay,
     watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 4
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -78,7 +78,7 @@ generation:
         expression, outfit, and background continuity. Dramatic, energetic,
         realistic motion with strong focus and depth. {scene_prompt}
         High quality, smooth camera movement, no cuts, no scene replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -89,6 +89,6 @@ generation:
         Preserve identity, pose, composition, and overall scene consistency.
         {scene_prompt}
         Realistic motion, detailed image quality, no cuts, no abrupt transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

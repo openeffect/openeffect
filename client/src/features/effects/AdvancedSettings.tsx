@@ -10,11 +10,10 @@ interface AdvancedSettingsProps {
   parameters: ModelParam[]
   values: Record<string, unknown>
   onChange: (key: string, value: unknown) => void
-  manifestDefaults?: Record<string, unknown>
   children?: React.ReactNode
 }
 
-export function AdvancedSettings({ parameters, values, onChange, manifestDefaults, children }: AdvancedSettingsProps) {
+export function AdvancedSettings({ parameters, values, onChange, children }: AdvancedSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   if (parameters.length === 0 && !children) return null
@@ -40,8 +39,7 @@ export function AdvancedSettings({ parameters, values, onChange, manifestDefault
             <div className="space-y-5 pb-2 pt-4">
               {children}
               {parameters.map((param) => {
-                const effectDefault = manifestDefaults?.[param.key]
-                const defaultVal = effectDefault ?? param.default
+                const defaultVal = param.default
 
                 if (param.type === 'slider' && param.min != null && param.max != null) {
                   return (

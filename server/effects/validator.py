@@ -46,9 +46,54 @@ class Assets(BaseModel):
     inputs: dict[str, str] = {}       # keyed by input field name → filename in assets/
 
 
+class ModelParam(BaseModel):
+    """A single model parameter entry. Exactly one of `default` or `value` must be set.
+
+    `default` is an overridable starting value (user can change it in the UI).
+    `value` is a locked value — the UI hides the field and user input is ignored.
+    """
+    default: Any = None
+    value: Any = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> ModelParam:
+        has_default = self.default is not None
+        has_value = self.value is not None
+        if has_default and has_value:
+            raise ValueError("model param entry cannot set both 'default' and 'value'")
+        if not has_default and not has_value:
+            raise ValueError("model param entry must set either 'default' or 'value'")
+        return self
+
+    @property
+    def is_locked(self) -> bool:
+        return self.value is not None
+
+    @property
+    def effective_value(self) -> Any:
+        return self.value if self.is_locked else self.default
+
+
+def _coerce_model_params(v: Any) -> Any:
+    """Allow scalar shorthand: `key: 5` becomes `key: {default: 5}`.
+    Pre-built ModelParam / dict entries are passed through unchanged.
+    """
+    if not isinstance(v, dict):
+        return v
+    return {
+        k: (entry if isinstance(entry, (dict, ModelParam)) else {"default": entry})
+        for k, entry in v.items()
+    }
+
+
 class ModelOverride(BaseModel):
     prompt: str | None = None
-    defaults: dict[str, Any] | None = None
+    model_params: dict[str, ModelParam] = {}
+
+    @field_validator("model_params", mode="before")
+    @classmethod
+    def _coerce_scalars(cls, v: Any) -> Any:
+        return _coerce_model_params(v)
 
 
 class GenerationConfig(BaseModel):
@@ -56,9 +101,14 @@ class GenerationConfig(BaseModel):
     negative_prompt: str = ""
     models: list[str] = []
     default_model: str = ""
-    defaults: dict[str, Any] = {}
+    model_params: dict[str, ModelParam] = {}
     model_overrides: dict[str, ModelOverride] = {}
     reverse: bool = False
+
+    @field_validator("model_params", mode="before")
+    @classmethod
+    def _coerce_scalars(cls, v: Any) -> Any:
+        return _coerce_model_params(v)
 
     @model_validator(mode="after")
     def validate_default_model(self) -> GenerationConfig:

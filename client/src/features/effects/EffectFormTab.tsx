@@ -12,6 +12,7 @@ import {
   selectEditorLastSavedYaml,
 } from '@/store/selectors/editorSelectors'
 import { startRun } from '@/store/actions/runActions'
+import { lockedKeys, paramDefault } from '@/utils/modelParams'
 import { EffectFormRenderer } from './EffectFormRenderer'
 import { EffectFormField } from './EffectFormField'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -50,13 +51,19 @@ export function EffectFormTab() {
   const [generateAudio, setGenerateAudio] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
 
-  // Get model params
+  // Get model params, filtering out keys locked by the manifest
   const modelInfo = availableModels.find((m) => m.id === selectedModel)
-  const outputParams = modelInfo?.output_params ?? []
-  const advancedParams = (modelInfo?.advanced_params ?? []).map((p) => {
-    const manifestDefault = manifest?.generation?.defaults?.[p.key]
-    return manifestDefault !== undefined ? { ...p, default: manifestDefault } : p
-  })
+  const locked = useMemo(
+    () => manifest ? lockedKeys(manifest, selectedModel) : new Set<string>(),
+    [manifest, selectedModel],
+  )
+  const outputParams = (modelInfo?.output_params ?? []).filter((p) => !locked.has(p.key))
+  const advancedParams = (modelInfo?.advanced_params ?? [])
+    .filter((p) => !locked.has(p.key))
+    .map((p) => {
+      const v = manifest ? paramDefault(manifest, selectedModel, p.key) : undefined
+      return v !== undefined ? { ...p, default: v } : p
+    })
 
   // Initialize output values and auto-select first available provider when model changes
   const prevModelRef = useRef(selectedModel)
@@ -65,10 +72,8 @@ export function EffectFormTab() {
     prevModelRef.current = selectedModel
     const defaults: Record<string, string | number> = {}
     for (const param of outputParams) {
-      defaults[param.key] =
-        manifest?.generation.model_overrides?.[selectedModel]?.defaults?.[param.key]
-        ?? manifest?.generation.defaults?.[param.key]
-        ?? param.default
+      const v = manifest ? paramDefault(manifest, selectedModel, param.key) : undefined
+      defaults[param.key] = v ?? param.default
     }
     setOutputValues(defaults)
     setAdvancedValues({})
@@ -77,7 +82,7 @@ export function EffectFormTab() {
       const firstAvailable = modelInfo.providers.find((p) => p.is_available)
       setSelectedProvider(firstAvailable?.id ?? modelInfo.providers[0]?.id ?? '')
     }
-  }, [selectedModel, outputParams, modelInfo])
+  }, [selectedModel, outputParams, modelInfo, manifest])
 
   // Initialize form values from manifest on mount (component remounts via key on manifest change)
   useEffect(() => {
@@ -251,7 +256,6 @@ export function EffectFormTab() {
             parameters={advancedParams}
             values={advancedValues}
             onChange={handleAdvancedChange}
-            manifestDefaults={manifest?.generation?.defaults}
           >
             {/* Advanced manifest inputs (e.g., hidden start_frame with default asset) */}
             {advancedInputs.map(([key, schema]) => (

@@ -65,7 +65,7 @@ generation:
     overexposed face, broken lighting, unrealistic glow,
     heavy artifacts, text overlay, watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 4
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -80,7 +80,7 @@ generation:
         The effect should feel intense, stylish, supernatural, and clean.
         {scene_prompt}
         High quality, smooth animation, realistic eye light, no cuts, no scene replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -92,6 +92,6 @@ generation:
         Preserve realism and subject stability.
         {scene_prompt}
         Detailed image quality, smooth motion, no cuts, no abrupt transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

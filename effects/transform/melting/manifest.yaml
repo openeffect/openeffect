@@ -67,7 +67,7 @@ generation:
     chaotic deformation, broken facial structure, muddy texture,
     plastic look, heavy artifacts, text overlay, watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -84,7 +84,7 @@ generation:
         {scene_prompt}
         High quality, smooth animation, detailed liquid texture,
         no cuts, no full character destruction.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -96,6 +96,6 @@ generation:
         Preserve identity, composition, outfit form, and background mood.
         {scene_prompt}
         Detailed image quality, smooth motion, no cuts, no abrupt full deformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

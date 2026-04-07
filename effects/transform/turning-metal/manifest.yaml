@@ -66,7 +66,7 @@ generation:
     muddy reflections, messy transformation, full statue replacement,
     heavy artifacts, text overlay, watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -83,7 +83,7 @@ generation:
         {scene_prompt}
         High quality, smooth animation, detailed metallic reflections,
         no cuts, no full character replacement.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -95,6 +95,6 @@ generation:
         Preserve identity, composition, outfit form, and background mood.
         {scene_prompt}
         Detailed image quality, smooth motion, no cuts, no abrupt full transformation.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

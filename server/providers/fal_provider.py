@@ -10,19 +10,6 @@ class FalProvider(BaseProvider):
     def __init__(self, api_key: str):
         self._api_key = api_key
 
-    def _apply_output_params(self, arguments: dict[str, Any], input: ProviderInput, config: dict[str, Any]) -> None:
-        translation = config.get("output_translation", {})
-        for key, value in input.output.items():
-            if value == "" or value is None:
-                continue
-            mode = translation.get(key, "passthrough")
-            if mode == "passthrough":
-                arguments[key] = value
-            elif mode == "num_frames" and key == "duration":
-                fps = int(input.parameters.get("fps", config.get("fps", 16)))
-                arguments["num_frames"] = int(value) * fps
-                arguments["fps"] = fps
-
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
         os.environ["FAL_KEY"] = self._api_key
 
@@ -41,8 +28,6 @@ class FalProvider(BaseProvider):
 
         if input.negative_prompt:
             arguments["negative_prompt"] = input.negative_prompt
-
-        self._apply_output_params(arguments, input, config)
 
         # Upload images
         yield ProviderEvent(type="progress", progress=5, message="Uploading images...")

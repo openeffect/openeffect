@@ -63,7 +63,7 @@ generation:
     inaccurate identity, unrealistic transition, heavy artifacts,
     text overlay, watermark, logo, subtitles
 
-  defaults:
+  model_params:
     duration: 5
     guidance_scale: 7.5
     num_inference_steps: 30
@@ -78,7 +78,7 @@ generation:
         Smooth cinematic motion, dramatic scale, strong depth, realistic camera path.
         {scene_prompt}
         High quality, cinematic, seamless motion, no cuts.
-      defaults:
+      model_params:
         guidance_scale: 8.0
         num_inference_steps: 32
 
@@ -89,6 +89,6 @@ generation:
         Smooth continuous motion, epic atmosphere, dramatic perspective, detailed image quality.
         {scene_prompt}
         Realistic, visually coherent, no cuts, no sudden scene changes.
-      defaults:
+      model_params:
         guidance_scale: 7.0
         num_inference_steps: 28

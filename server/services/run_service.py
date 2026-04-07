@@ -18,7 +18,6 @@ from effects.prompt_builder import PromptBuilder
 from config.config_service import ConfigService
 from providers.factory import ModelProviderFactory
 from providers.base import ProviderInput
-from providers.model_params import KNOWN_MODEL_PARAMS
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +106,16 @@ class RunService:
         # normalized (role-keyed, fully-resolved) shape that's stable across
         # effect deletion. The client uses this for "Open in playground".
         prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
-        params = PromptBuilder.build_params(manifest, request.model_id, request.user_params)
+        raw_params: dict[str, Any] = {}
+        if request.output:
+            raw_params.update(request.output)
+        if request.user_params:
+            raw_params.update(request.user_params)
+        params = PromptBuilder.build_provider_io(
+            request.model_id,
+            raw_params=raw_params,
+            manifest=manifest,
+        )
         negative_prompt = manifest.generation.negative_prompt
         if "negative_prompt" in params:
             negative_prompt = str(params.pop("negative_prompt"))
@@ -146,7 +154,6 @@ class RunService:
             prompt=prompt,
             negative_prompt=negative_prompt,
             image_inputs=image_paths,
-            output=dict(request.output) if request.output else {},
             parameters={**params, "_model_id": request.model_id},
         )
 
@@ -196,9 +203,17 @@ class RunService:
         for ref_id in image_inputs.values():
             await self._storage.increment_ref(ref_id)
 
-        # Filter user_params + pull negative_prompt override
-        known = KNOWN_MODEL_PARAMS.get(request.model_id, set())
-        params = {k: v for k, v in (request.user_params or {}).items() if k in known}
+        # Route request values via the model registry, then pull out the
+        # negative_prompt if it was passed via user_params.
+        raw_params: dict[str, Any] = {}
+        if request.output:
+            raw_params.update(request.output)
+        if request.user_params:
+            raw_params.update(request.user_params)
+        params = PromptBuilder.build_provider_io(
+            request.model_id,
+            raw_params=raw_params,
+        )
         negative_prompt = request.negative_prompt or ""
         if "negative_prompt" in params:
             negative_prompt = str(params.pop("negative_prompt"))
@@ -229,7 +244,6 @@ class RunService:
             prompt=request.prompt,
             negative_prompt=negative_prompt,
             image_inputs=image_paths,
-            output=dict(request.output) if request.output else {},
             parameters={**params, "_model_id": request.model_id},
         )
 

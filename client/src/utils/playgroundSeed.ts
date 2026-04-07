@@ -1,6 +1,7 @@
-import type { EffectManifest, InputFieldSchema, ModelInfo, RunRecord } from '@/types/api'
+import type { EffectManifest, InputFieldSchema, ModelInfo, ModelParamEntry, RunRecord } from '@/types/api'
 import type { RestoredParams } from '@/store/types'
 import { parseRunInputs } from './runRecord'
+import { resolveModelParams } from './modelParams'
 
 const ROLE_LABELS: Record<string, string> = {
   start_frame: 'Start frame',
@@ -15,9 +16,9 @@ function humanizeRole(role: string): string {
 /**
  * Build a RestoredParams shape for "Try in playground" from an effect that
  * has never been run. The raw template (with `{placeholder}` tokens intact)
- * becomes the prompt. Manifest defaults + the default model's overrides are
- * merged and split between output_params and advanced_params based on the
- * model's param definitions.
+ * becomes the prompt. The manifest's `model_params` for the default model
+ * are unwrapped to their effective values and split between output_params
+ * and advanced_params based on the model's param definitions.
  */
 export function effectToPlaygroundParams(
   manifest: EffectManifest,
@@ -31,17 +32,15 @@ export function effectToPlaygroundParams(
   const prompt = override || manifest.generation.prompt
   const negativePrompt = manifest.generation.negative_prompt ?? ''
 
-  // Merge manifest.defaults + model_overrides[modelId].defaults, then split
-  // by which keys belong to output_params vs advanced_params on the model.
-  const mergedDefaults: Record<string, unknown> = {
-    ...manifest.generation.defaults,
-    ...(manifest.generation.model_overrides?.[modelId]?.defaults ?? {}),
-  }
+  // Resolve effective model_params (top-level + per-model override) and unwrap
+  // each entry to its scalar value, then split by output vs advanced.
+  const merged = resolveModelParams(manifest, modelId)
   const outputKeys = new Set((model?.output_params ?? []).map((p) => p.key))
   const output: Record<string, string | number> = {}
   const userParams: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(mergedDefaults)) {
-    if (outputKeys.has(k)) output[k] = v as string | number
+  for (const [k, entry] of Object.entries(merged)) {
+    const v = 'value' in entry ? entry.value : entry.default
+    if (outputKeys.has(k)) output[k] = v
     else userParams[k] = v
   }
 
@@ -79,7 +78,7 @@ export function runToPlaygroundParams(record: RunRecord): RestoredParams {
  * The playground prompt is taken as-is (it's already the final string the
  * user sent; there are no placeholders to preserve). Each image role becomes
  * an `image` input field in the manifest schema. All output + advanced
- * params are merged into `generation.defaults`.
+ * params are merged into `generation.model_params` as overridable defaults.
  */
 export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   const parsed = parseRunInputs(record)
@@ -104,15 +103,15 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
     }
   }
 
-  const mergedDefaults: Record<string, number | string> = {}
+  const mergedParams: Record<string, ModelParamEntry> = {}
   for (const [k, v] of Object.entries(parsed.output)) {
-    mergedDefaults[k] = v
+    mergedParams[k] = { default: v }
   }
   for (const [k, v] of Object.entries(parsed.userParams)) {
     if (typeof v === 'number' || typeof v === 'string') {
-      mergedDefaults[k] = v
+      mergedParams[k] = { default: v }
     } else if (typeof v === 'boolean') {
-      mergedDefaults[k] = String(v)
+      mergedParams[k] = { default: String(v) }
     }
   }
 
@@ -137,7 +136,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
       negative_prompt: negativePrompt,
       models: [record.model_id],
       default_model: record.model_id,
-      defaults: mergedDefaults,
+      model_params: mergedParams,
       model_overrides: {},
       reverse: false,
     },

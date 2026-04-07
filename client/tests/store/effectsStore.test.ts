@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useStore } from '../../src/store'
 import { selectFilteredEffects, selectSelectedEffect } from '../../src/store/selectors/effectsSelectors'
-import { selectEffect, setSearchQuery, setActiveType, setActiveCategory } from '../../src/store/actions/effectsActions'
+import { selectEffect, setSearchQuery, setActiveType } from '../../src/store/actions/effectsActions'
 import type { EffectManifest } from '../../src/types/api'
 
 // --- Mock data ---
@@ -16,7 +16,6 @@ const mockEffects: EffectManifest[] = [
     version: '1.0.0',
     author: 'openeffect',
     type: 'single-image',
-    category: 'cinematic',
     source: 'official',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
@@ -47,7 +46,6 @@ const mockEffects: EffectManifest[] = [
     version: '1.0.0',
     author: 'openeffect',
     type: 'image-transition',
-    category: 'emotional',
     source: 'official',
     tags: ['hug', 'embrace', 'love'],
     assets: {
@@ -86,7 +84,6 @@ const mockEffects: EffectManifest[] = [
     version: '1.0.0',
     author: 'openeffect',
     type: 'single-image',
-    category: 'fun',
     source: 'official',
     tags: ['dance', 'loop', 'animation'],
     assets: {
@@ -150,17 +147,6 @@ describe('effectsStore', () => {
     it('setActiveType updates activeType', () => {
       setActiveType('animation')
       expect(useStore.getState().effects.activeType).toBe('animation')
-    })
-
-    it('setActiveCategory updates activeCategory', () => {
-      setActiveCategory('cinematic')
-      expect(useStore.getState().effects.activeCategory).toBe('cinematic')
-    })
-
-    it('setActiveType resets activeCategory', () => {
-      setActiveCategory('cinematic')
-      setActiveType('animation')
-      expect(useStore.getState().effects.activeCategory).toBe('all')
     })
   })
 
@@ -234,22 +220,6 @@ describe('effectsStore', () => {
       expect(filtered).toHaveLength(0)
     })
 
-    it('category filter matches category field', () => {
-      useStore.setState((s) => { s.effects.items = mockEffects })
-      setActiveCategory('emotional')
-      const filtered = getFilteredEffects()
-      expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('hug-effect')
-    })
-
-    it('combined type + category filter', () => {
-      useStore.setState((s) => { s.effects.items = mockEffects })
-      setActiveType('single-image')
-      setActiveCategory('fun')
-      const filtered = getFilteredEffects()
-      expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('dance-loop')
-    })
   })
 
   describe('selectSelectedEffect (selector logic)', () => {

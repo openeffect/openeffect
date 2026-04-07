@@ -8,6 +8,5 @@ export const initialEffectsState: EffectsSlice = {
   searchQuery: '',
   activeSource: 'all',
   activeType: 'all',
-  activeCategory: 'all',
   rightTab: 'form',
 }

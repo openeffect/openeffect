@@ -32,7 +32,7 @@ export function EffectCard({ effect }: EffectCardProps) {
       )}
       whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
     >
-      <div className="relative aspect-[3/4] overflow-hidden bg-muted">
+      <div className="relative aspect-square overflow-hidden bg-muted">
         {/* Placeholder — always rendered behind, visible when no assets or assets fail to load */}
         <div className="absolute inset-0 flex items-center justify-center">
           <Sparkles size={28} className="text-muted-foreground opacity-30" />

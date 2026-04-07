@@ -42,7 +42,6 @@ export interface EffectsSlice {
   searchQuery: string
   activeSource: EffectSource
   activeType: string
-  activeCategory: string
   rightTab: RightTab
 }
 

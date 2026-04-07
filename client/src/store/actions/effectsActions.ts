@@ -143,10 +143,7 @@ export function setActiveSource(source: EffectSource): void {
 }
 
 export function setActiveType(type: string): void {
-  setState((s) => {
-    s.effects.activeType = type
-    s.effects.activeCategory = 'all'
-  }, 'effects/setActiveType')
+  setState((s) => { s.effects.activeType = type }, 'effects/setActiveType')
 }
 
 export async function toggleFavorite(effect: EffectManifest): Promise<void> {
@@ -166,10 +163,6 @@ export async function toggleFavorite(effect: EffectManifest): Promise<void> {
       if (item) item.is_favorite = !newValue
     }, 'effects/toggleFavoriteRevert')
   }
-}
-
-export function setActiveCategory(category: string): void {
-  setState((s) => { s.effects.activeCategory = category }, 'effects/setActiveCategory')
 }
 
 export async function deleteEffect(namespace: string, id: string): Promise<void> {

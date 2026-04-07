@@ -4,7 +4,6 @@ import { useStore } from '@/store'
 import {
   selectEffectsStatus,
   selectActiveType,
-  selectActiveCategory,
   selectActiveSource,
   selectSearchQuery,
   selectFilteredEffects,
@@ -28,7 +27,6 @@ const MAX_PER_TYPE_ON_HOME = 9
 export function EffectGallery() {
   const status = useStore(selectEffectsStatus)
   const activeType = useStore(selectActiveType)
-  const activeCategory = useStore(selectActiveCategory)
   const activeSource = useStore(selectActiveSource)
   const searchQuery = useStore(selectSearchQuery)
   const filteredEffects = useStore(selectFilteredEffects)
@@ -44,7 +42,7 @@ export function EffectGallery() {
   // position doesn't map to anything meaningful after the result set reshapes.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [activeType, activeCategory, activeSource, searchQuery])
+  }, [activeType, activeSource, searchQuery])
 
   if (status === 'loading') {
     return (
@@ -55,14 +53,13 @@ export function EffectGallery() {
     )
   }
 
-  // Favorites get their own section; remove them from the main grouped list
-  // so the same card doesn't render twice (favorites are already a subset of
-  // filteredEffects, so they'd otherwise appear in both blocks).
+  // Favorites also stay in their type section so favoriting feels like adding
+  // a shortcut, not removing the card. Different React keys (fav- prefix vs id)
+  // keep the duplicate render valid.
   const favorites = filteredEffects.filter((e) => e.is_favorite)
-  const nonFavorites = filteredEffects.filter((e) => !e.is_favorite)
 
   const grouped =
-    activeType === 'all' ? groupByType(nonFavorites) : { [activeType]: nonFavorites }
+    activeType === 'all' ? groupByType(filteredEffects) : { [activeType]: filteredEffects }
 
   const showHero = selectedEffect && !!(
     selectedEffect.assets.preview ||

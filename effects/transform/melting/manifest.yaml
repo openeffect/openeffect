@@ -7,8 +7,7 @@ description: >
 
 version: "0.1.0"
 author: openeffect-team
-type: animation
-category: transformation
+type: transform
 
 tags:
   - trending

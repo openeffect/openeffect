@@ -10,7 +10,6 @@ export const selectSelectedId = (s: AppState) => s.effects.selectedId
 export const selectSearchQuery = (s: AppState) => s.effects.searchQuery
 export const selectActiveSource = (s: AppState) => s.effects.activeSource
 export const selectActiveType = (s: AppState) => s.effects.activeType
-export const selectActiveCategory = (s: AppState) => s.effects.activeCategory
 export const selectRightTab = (s: AppState) => s.effects.rightTab
 
 // ─── Derived selectors ───────────────────────────────────────────────────────
@@ -27,15 +26,13 @@ export const selectFilteredEffects = createSelector(
   selectSearchQuery,
   selectActiveSource,
   selectActiveType,
-  selectActiveCategory,
-  (effects, query, source, type, category) => {
+  (effects, query, source, type) => {
     return effects.filter((e) => {
       if (source === 'official' && e.source !== 'official') return false
       if (source === 'mine' && e.source !== 'local') return false
       if (source === 'installed' && (e.source === 'official' || e.source === 'local'))
         return false
       if (type !== 'all' && e.type !== type) return false
-      if (category !== 'all' && e.category !== category) return false
       if (query) {
         const q = query.toLowerCase()
         return (
@@ -46,15 +43,5 @@ export const selectFilteredEffects = createSelector(
       }
       return true
     })
-  },
-)
-
-// Categories available for the currently selected type
-export const selectAvailableCategories = createSelector(
-  selectEffects,
-  selectActiveType,
-  (effects, type) => {
-    const filtered = type === 'all' ? effects : effects.filter((e) => e.type === type)
-    return Array.from(new Set(filtered.map((e) => e.category)))
   },
 )

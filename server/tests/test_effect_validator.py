@@ -18,7 +18,6 @@ def make_valid_manifest(**overrides) -> dict:
         "version": "1.0.0",
         "author": "test",
         "type": "animation",
-        "category": "test",
         "tags": [],
         "assets": {},
         "inputs": {

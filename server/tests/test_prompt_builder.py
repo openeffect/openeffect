@@ -20,7 +20,6 @@ def make_manifest(**overrides) -> EffectManifest:
         "version": "1.0.0",
         "author": "test",
         "type": "animation",
-        "category": "test",
         "tags": [],
         "assets": Assets(),
         "inputs": {

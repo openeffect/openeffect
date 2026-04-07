@@ -36,7 +36,6 @@ const mockManifest: EffectManifest = {
   version: '1.0.0',
   author: 'test',
   type: 'single-image',
-  category: 'cinematic',
   source: 'official',
   tags: [],
   assets: {},

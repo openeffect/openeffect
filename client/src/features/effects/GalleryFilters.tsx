@@ -5,14 +5,11 @@ import {
   selectSearchQuery,
   selectActiveSource,
   selectActiveType,
-  selectActiveCategory,
-  selectAvailableCategories,
 } from '@/store/selectors/effectsSelectors'
 import {
   setSearchQuery,
   setActiveSource,
   setActiveType,
-  setActiveCategory,
 } from '@/store/actions/effectsActions'
 import { formatEffectType } from '@/utils/formatters'
 import { Input } from '@/components/ui/Input'
@@ -36,8 +33,6 @@ export function GalleryFilters() {
   const searchQuery = useStore(selectSearchQuery)
   const activeSource = useStore(selectActiveSource)
   const activeType = useStore(selectActiveType)
-  const activeCategory = useStore(selectActiveCategory)
-  const availableCategories = useStore(selectAvailableCategories)
 
   const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
   const hasMine = effects.some((e) => e.source === 'local')
@@ -46,12 +41,8 @@ export function GalleryFilters() {
   const types = Array.from(new Set(effects.map(e => e.type)))
     .map(t => ({ id: t, label: formatEffectType(t) }))
 
-  const categories = availableCategories
-    .map(c => ({ id: c, label: formatEffectType(c) }))
-
   const sourceLabel = SOURCE_OPTIONS.find((o) => o.id === activeSource)?.label
   const typeLabel = types.find((t) => t.id === activeType)?.label
-  const categoryLabel = categories.find((c) => c.id === activeCategory)?.label
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-6 py-4">
@@ -95,25 +86,6 @@ export function GalleryFilters() {
             >
               {t.label}
               {activeType === t.id && <Check size={12} className="ml-auto text-primary" />}
-            </DropdownMenuItem>
-          ))}
-        </FilterDropdown>
-      )}
-      {/* Category filter */}
-      {categories.length > 0 && (
-        <FilterDropdown
-          placeholder="Category"
-          value={categoryLabel}
-          onClear={() => setActiveCategory('all')}
-        >
-          {categories.map((cat) => (
-            <DropdownMenuItem
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={cn(activeCategory === cat.id && 'text-primary')}
-            >
-              {cat.label}
-              {activeCategory === cat.id && <Check size={12} className="ml-auto text-primary" />}
             </DropdownMenuItem>
           ))}
         </FilterDropdown>

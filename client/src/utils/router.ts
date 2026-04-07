@@ -4,21 +4,37 @@
  * URL patterns:
  *   /                            → gallery
  *   /effects                     → gallery
+ *   /effects/new                 → blank editor (new effect)
  *   /effects/:uuid               → effect view
  *   /effects/:uuid?run=X         → effect with run opened
  *   /effects/:uuid/edit          → effect editor
+ *   /playground                  → playground
+ *   /playground?model=...        → playground with restored form state
  */
 
 export type ParsedRoute =
   | { page: 'gallery' }
   | { page: 'effect'; effectId: string; runId: string | null }
   | { page: 'edit'; effectId: string }
+  | { page: 'newEffect' }
+  | { page: 'playground'; runId: string | null }
 
 export function parseRoute(url?: string): ParsedRoute {
   if (!url && typeof window === 'undefined') return { page: 'gallery' }
 
   const pathname = url ?? window.location.pathname
   const search = url ? '' : window.location.search
+
+  // /playground
+  if (pathname === '/playground') {
+    const params = new URLSearchParams(search)
+    return { page: 'playground', runId: params.get('run') }
+  }
+
+  // /effects/new (must precede /effects/:uuid)
+  if (pathname === '/effects/new') {
+    return { page: 'newEffect' }
+  }
 
   // /effects/:uuid/edit
   const editMatch = pathname.match(/^\/effects\/([^/]+)\/edit$/)
@@ -73,6 +89,8 @@ export function initRouteListener(
   onEffect: (effectId: string, runId: string | null) => void,
   onEdit: (effectId: string) => void,
   onGallery: () => void,
+  onPlayground: (runId: string | null) => void,
+  onNewEffect: () => void,
 ): void {
   if (typeof window === 'undefined') return
 
@@ -82,6 +100,10 @@ export function initRouteListener(
       onEffect(route.effectId, route.runId)
     } else if (route.page === 'edit') {
       onEdit(route.effectId)
+    } else if (route.page === 'playground') {
+      onPlayground(route.runId)
+    } else if (route.page === 'newEffect') {
+      onNewEffect()
     } else {
       onGallery()
     }

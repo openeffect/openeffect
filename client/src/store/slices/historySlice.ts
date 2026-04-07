@@ -11,4 +11,9 @@ export const initialHistoryState: HistorySlice = {
   effectTotal: 0,
   effectStatus: 'idle',
   effectId: null,
+
+  playgroundItems: [],
+  playgroundTotal: 0,
+  playgroundStatus: 'idle',
+  playgroundLoaded: false,
 }

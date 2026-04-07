@@ -7,4 +7,5 @@ export const initialRunState: RunSlice = {
   leftPanel: 'gallery',
   restoredParams: null,
   restoringFromUrl: false,
+  lastAppliedRunId: null,
 }

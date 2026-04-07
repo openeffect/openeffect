@@ -229,6 +229,10 @@ class ModelService:
         models = []
         for model in MODELS:
             m = {k: v for k, v in model.items() if k != "fal"}
+            # Surface image roles supported by the provider so the playground UI
+            # can render uploaders without knowing about fal internals.
+            fal_cfg = model.get("fal") or {}
+            m["supported_image_roles"] = list((fal_cfg.get("role_params") or {}).keys())
             providers = []
             for provider in model["providers"]:
                 p = dict(provider)

@@ -8,10 +8,16 @@ router = APIRouter()
 
 
 @router.get("/runs")
-async def get_runs(request: Request, limit: int = 50, offset: int = 0, effect_id: str | None = None):
+async def get_runs(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    effect_id: str | None = None,
+    kind: str | None = None,
+):
     history = request.app.state.history_service
-    items = await history.get_all(limit=limit, offset=offset, effect_id=effect_id)
-    total = await history.count(effect_id=effect_id)
+    items = await history.get_all(limit=limit, offset=offset, effect_id=effect_id, kind=kind)
+    total = await history.count(effect_id=effect_id, kind=kind)
     active_count = await history.active_count()
     return {
         "items": [item.to_dict() for item in items],
@@ -59,16 +65,27 @@ async def delete_run(item_id: str, request: Request):
     if record.inputs:
         try:
             raw = json.loads(record.inputs)
-            # Support both structured format {"inputs": {...}} and flat format {...}
             inputs_data = raw.get("inputs", raw) if isinstance(raw, dict) else raw
-            # Look up the effect manifest to determine which inputs are images
-            loader = request.app.state.effect_loader
-            loaded = loader.get_by_db_id(record.effect_id) or loader.get_loaded(record.effect_id)
-            manifest = loaded.manifest if loaded else None
-            if manifest:
-                for key, field in manifest.inputs.items():
-                    if field.type == "image" and key in inputs_data:
-                        ref_ids.append(inputs_data[key])
+            if record.kind == "playground":
+                # Playground inputs are { prompt, negative_prompt, <role>: ref_id, ... }.
+                # Everything that isn't prompt/negative_prompt is an image ref.
+                if isinstance(inputs_data, dict):
+                    for key, value in inputs_data.items():
+                        if key in ("prompt", "negative_prompt"):
+                            continue
+                        if isinstance(value, str) and value:
+                            ref_ids.append(value)
+            else:
+                # Effect runs: look up manifest to determine image fields
+                loader = request.app.state.effect_loader
+                loaded = None
+                if record.effect_id:
+                    loaded = loader.get_by_db_id(record.effect_id) or loader.get_loaded(record.effect_id)
+                manifest = loaded.manifest if loaded else None
+                if manifest:
+                    for key, field in manifest.inputs.items():
+                        if field.type == "image" and key in inputs_data:
+                            ref_ids.append(inputs_data[key])
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 

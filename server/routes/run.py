@@ -15,11 +15,33 @@ class RunRequest(BaseModel):
     user_params: dict[str, float | int | str] | None = None
 
 
+class PlaygroundRunRequest(BaseModel):
+    model_id: str
+    provider_id: str = "fal"
+    prompt: str
+    negative_prompt: str = ""
+    image_inputs: dict[str, str] = {}  # role -> ref_id
+    output: dict[str, str | int] = {}
+    user_params: dict[str, float | int | str | bool] = {}
+
+
 @router.post("/run")
 async def start_run(req: RunRequest, request: Request):
     run_service = request.app.state.run_service
     try:
         job_id = await run_service.start(req)
+        return {"job_id": job_id, "status": "queued"}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail={"error": str(e), "code": "INVALID_REQUEST"})
+    except PermissionError as e:
+        raise HTTPException(status_code=401, detail={"error": str(e), "code": "NO_API_KEY"})
+
+
+@router.post("/playground/run")
+async def start_playground_run(req: PlaygroundRunRequest, request: Request):
+    run_service = request.app.state.run_service
+    try:
+        job_id = await run_service.start_playground(req)
         return {"job_id": job_id, "status": "queued"}
     except ValueError as e:
         raise HTTPException(status_code=422, detail={"error": str(e), "code": "INVALID_REQUEST"})

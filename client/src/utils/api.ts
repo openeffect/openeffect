@@ -4,6 +4,7 @@ import type {
   UploadResponse,
   RunResponse,
   RunRequest,
+  PlaygroundRunRequest,
   RunRecord,
   RunsResponse,
 } from '@/types/api'
@@ -65,6 +66,18 @@ export const api = {
   uninstallEffect: (namespace: string, effectId: string) =>
     request<{ ok: boolean }>(`/api/effects/${namespace}/${effectId}`, { method: 'DELETE' }),
 
+  toggleFavorite: (namespace: string, effectId: string, favorite: boolean) =>
+    request<{ ok: boolean; is_favorite: boolean }>(`/api/effects/${namespace}/${effectId}/favorite`, {
+      method: 'PATCH',
+      body: JSON.stringify({ favorite }),
+    }),
+
+  setEditable: (namespace: string, effectId: string, editable: boolean) =>
+    request<{ ok: boolean; editable: boolean }>(`/api/effects/${namespace}/${effectId}/editable`, {
+      method: 'PATCH',
+      body: JSON.stringify({ editable }),
+    }),
+
   // Upload
   upload: async (file: File): Promise<UploadResponse> => {
     const form = new FormData()
@@ -84,10 +97,17 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
+  playgroundRun: (req: PlaygroundRunRequest) =>
+    request<RunResponse>('/api/playground/run', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+
   // Runs (history)
-  getRuns: (limit = 50, offset = 0, effectId?: string) => {
+  getRuns: (limit = 50, offset = 0, effectId?: string, kind?: 'effect' | 'playground') => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
     if (effectId) params.set('effect_id', effectId)
+    if (kind) params.set('kind', kind)
     return request<RunsResponse>(`/api/runs?${params}`)
   },
 

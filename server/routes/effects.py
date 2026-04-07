@@ -59,6 +59,7 @@ def _serialize_effect(loaded) -> dict:
 
     data["source"] = loaded.source
     data["db_id"] = loaded.db_id
+    data["is_favorite"] = loaded.is_favorite
     return data
 
 
@@ -106,6 +107,64 @@ async def install_effect(request: Request, body: InstallUrlRequest | None = None
         return {"installed": installed}
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"error": str(e), "code": "INSTALL_ERROR"})
+
+
+class FavoriteRequest(BaseModel):
+    favorite: bool
+
+
+class EditableRequest(BaseModel):
+    editable: bool
+
+
+@router.patch("/effects/{namespace}/{effect_id}/editable")
+async def toggle_editable(namespace: str, effect_id: str, body: EditableRequest, request: Request):
+    install_service = request.app.state.install_service
+    loader = request.app.state.effect_loader
+
+    existing = await install_service._get_existing(namespace, effect_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail={"error": "Effect not found", "code": "NOT_FOUND"})
+
+    if existing["source"] == "official":
+        raise HTTPException(status_code=400, detail={"error": "Cannot modify official effects", "code": "OFFICIAL_READONLY"})
+
+    new_source = "local" if body.editable else "archive"
+    db = await install_service._get_db()
+    try:
+        await db.execute(
+            "UPDATE effects SET source=? WHERE namespace=? AND effect_id=?",
+            (new_source, namespace, effect_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+    await loader.reload()
+    return {"ok": True, "editable": body.editable}
+
+
+@router.patch("/effects/{namespace}/{effect_id}/favorite")
+async def toggle_favorite(namespace: str, effect_id: str, body: FavoriteRequest, request: Request):
+    install_service = request.app.state.install_service
+    loader = request.app.state.effect_loader
+
+    existing = await install_service._get_existing(namespace, effect_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail={"error": "Effect not found", "code": "NOT_FOUND"})
+
+    db = await install_service._get_db()
+    try:
+        await db.execute(
+            "UPDATE effects SET is_favorite=? WHERE namespace=? AND effect_id=?",
+            (1 if body.favorite else 0, namespace, effect_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+    await loader.reload()
+    return {"ok": True, "is_favorite": body.favorite}
 
 
 @router.delete("/effects/{namespace}/{effect_id}")

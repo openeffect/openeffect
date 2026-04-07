@@ -511,7 +511,7 @@ class InstallService:
     async def get_all_effects(self) -> list[dict[str, Any]]:
         db = await self._get_db()
         try:
-            cursor = await db.execute("SELECT * FROM effects ORDER BY installed_at")
+            cursor = await db.execute("SELECT * FROM effects ORDER BY installed_at DESC")
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         finally:

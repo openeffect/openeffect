@@ -12,8 +12,9 @@ async def init_db(db_path: Path) -> None:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id                  TEXT PRIMARY KEY,
-                effect_id           TEXT NOT NULL,
-                effect_name         TEXT NOT NULL,
+                kind                TEXT NOT NULL DEFAULT 'effect',
+                effect_id           TEXT,
+                effect_name         TEXT,
                 model_id            TEXT NOT NULL,
                 status              TEXT NOT NULL,
                 progress            INTEGER DEFAULT 0,
@@ -40,6 +41,7 @@ async def init_db(db_path: Path) -> None:
                 version       TEXT,
                 installed_at  TEXT NOT NULL,
                 updated_at    TEXT,
+                is_favorite   INTEGER DEFAULT 0,
                 UNIQUE(namespace, effect_id)
             )
         """)

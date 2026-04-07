@@ -21,3 +21,8 @@ export function mutateSetViewingRunRecord(s: AppState, record: RunRecord | null)
 export function mutateSetRestoredParams(s: AppState, params: RestoredParams | null) {
   s.run.restoredParams = params
 }
+
+/** Shared: used by runActions when applying params (Generate, Reuse, Apply-to-form). */
+export function mutateSetLastAppliedRunId(s: AppState, id: string | null) {
+  s.run.lastAppliedRunId = id
+}

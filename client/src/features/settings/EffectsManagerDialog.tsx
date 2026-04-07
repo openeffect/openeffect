@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Label } from '@/components/ui/Label'
 import { Separator } from '@/components/ui/Separator'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { FileDropzone } from '@/components/FileDropzone'
 
 interface EffectsManagerDialogProps {
@@ -143,6 +144,7 @@ function InstalledEffectRow({
   onUninstalled: () => void
 }) {
   const [uninstalling, setUninstalling] = useState(false)
+  const [editable, setEditable] = useState(effect.source === 'local')
 
   const handleUninstall = async () => {
     setUninstalling(true)
@@ -154,22 +156,39 @@ function InstalledEffectRow({
     }
   }
 
+  const handleToggleEditable = async (value: boolean) => {
+    setEditable(value)
+    try {
+      await api.setEditable(effect.namespace, effect.id, value)
+      onUninstalled() // reload effects list
+    } catch {
+      setEditable(!value) // revert
+    }
+  }
+
   return (
     <div className="flex items-center justify-between rounded-lg border p-3">
-      <div>
+      <div className="min-w-0 flex-1">
         <span className="text-sm font-medium text-foreground">{effect.name}</span>
         <p className="text-xs text-muted-foreground">{effect.namespace}/{effect.id}</p>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-        onClick={handleUninstall}
-        disabled={uninstalling}
-        title="Uninstall"
-      >
-        {uninstalling ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-      </Button>
+      <div className="flex items-center gap-3">
+        <Checkbox
+          label="Editable"
+          checked={editable}
+          onCheckedChange={(v) => handleToggleEditable(v === true)}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+          onClick={handleUninstall}
+          disabled={uninstalling}
+          title="Uninstall"
+        >
+          {uninstalling ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+        </Button>
+      </div>
     </div>
   )
 }

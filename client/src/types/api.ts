@@ -98,12 +98,14 @@ export interface EffectManifest {
   source: 'official' | 'url' | 'archive' | 'local'
   db_id: string
   compatible_models: string[]
+  is_favorite: boolean
 }
 
 export interface RunRecord {
   id: string
-  effect_id: string
-  effect_name: string
+  kind: 'effect' | 'playground'
+  effect_id: string | null
+  effect_name: string | null
   model_id: string
   status: 'processing' | 'completed' | 'failed'
   progress: number
@@ -147,6 +149,7 @@ export interface ModelInfo {
   providers: ModelProvider[]
   output_params?: ModelParam[]
   advanced_params?: ModelParam[]
+  supported_image_roles: string[]
 }
 
 export interface AppConfig {
@@ -175,6 +178,16 @@ export interface RunRequest {
   inputs: Record<string, string>
   output: Record<string, string | number>
   user_params?: Record<string, number | string>
+}
+
+export interface PlaygroundRunRequest {
+  model_id: string
+  provider_id: string
+  prompt: string
+  negative_prompt?: string
+  image_inputs?: Record<string, string>
+  output?: Record<string, string | number>
+  user_params?: Record<string, number | string | boolean>
 }
 
 export interface RunResponse {

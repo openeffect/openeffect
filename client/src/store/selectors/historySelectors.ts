@@ -14,3 +14,9 @@ export const selectEffectHistoryItems = (s: AppState) => s.history.effectItems
 export const selectEffectHistoryTotal = (s: AppState) => s.history.effectTotal
 export const selectEffectHistoryStatus = (s: AppState) => s.history.effectStatus
 export const selectEffectHistoryId = (s: AppState) => s.history.effectId
+
+// ─── Playground history (right panel tab) ───────────────────────────────────
+
+export const selectPlaygroundHistoryItems = (s: AppState) => s.history.playgroundItems
+export const selectPlaygroundHistoryTotal = (s: AppState) => s.history.playgroundTotal
+export const selectPlaygroundHistoryStatus = (s: AppState) => s.history.playgroundStatus

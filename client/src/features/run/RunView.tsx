@@ -1,31 +1,34 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, AlertCircle, Download, ArrowLeft, X, RotateCcw } from 'lucide-react'
+import { Sparkles, AlertCircle, Download, ArrowLeft, X, RotateCcw, FlaskConical, Save } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectViewingJobId, selectJobs, selectViewingRunRecord } from '@/store/selectors/runSelectors'
 import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
 import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
-import { closeJob } from '@/store/actions/runActions'
+import { closeJob, applyRunParams } from '@/store/actions/runActions'
+import { openInPlayground } from '@/store/actions/playgroundActions'
+import { createEffectFromRun } from '@/store/actions/editorActions'
 import { setState } from '@/store'
-import { mutateSetRestoredParams, mutateClearViewingJob } from '@/store/mutations/runMutations'
+import { mutateClearViewingJob } from '@/store/mutations/runMutations'
 import { navigate } from '@/utils/router'
-import { mutateSetRightTab } from '@/store/mutations/effectsMutations'
+import { parseRunInputs } from '@/utils/runRecord'
+import { runToPlaygroundParams } from '@/utils/playgroundSeed'
 import { Progress } from '@/components/ui/Progress'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/utils/cn'
 
 export function RunView() {
   const viewingJobId = useStore(selectViewingJobId)
   const activeJobs = useStore(selectJobs)
   const viewingRunRecord = useStore(selectViewingRunRecord)
-  const selectedEffect = useStore(selectSelectedEffect)
 
   const activeJob = viewingJobId ? activeJobs.get(viewingJobId) : null
 
   // Historical run record view
   if (viewingRunRecord && !activeJob) {
-    return <HistoricalRunView record={viewingRunRecord} hasEffect={!!selectedEffect} />
+    return <HistoricalRunView record={viewingRunRecord} />
   }
 
   // Active job view
@@ -49,27 +52,18 @@ export function RunView() {
 }
 
 /* --- Historical run result --- */
-function HistoricalRunView({ record, hasEffect }: {
+function HistoricalRunView({ record }: {
   record: import('@/types/api').RunRecord
-  hasEffect: boolean
 }) {
   const availableModels = useStore(selectAvailableModels)
+  const selectedEffect = useStore(selectSelectedEffect)
+  const canReuse = record.kind === 'playground' || !!selectedEffect
 
-  // Parse structured params
-  const raw = typeof record.inputs === 'string'
-    ? JSON.parse(record.inputs) as Record<string, unknown>
-    : (record.inputs as Record<string, unknown> | null)
+  // Parse structured params via the shared helper (used by RestoreFormBanner too)
+  const { inputs, output, userParams } = parseRunInputs(record)
 
-  const params = raw && 'inputs' in raw
-    ? raw as { inputs: Record<string, string>; output?: Record<string, string | number>; user_params?: Record<string, unknown> }
-    : { inputs: (raw ?? {}) as Record<string, string>, output: {}, user_params: {} }
-
-  // Flatten all params into categorized lists
-  const allEntries = {
-    ...params.inputs,
-    ...params.output,
-    ...params.user_params,
-  }
+  // Flatten all params into categorized lists for the params display
+  const allEntries = { ...inputs, ...output, ...userParams }
   const images: [string, string][] = []
   const longText: [string, string][] = []
   const badges: [string, string][] = []
@@ -92,31 +86,24 @@ function HistoricalRunView({ record, hasEffect }: {
 
   const hasAnyParams = images.length > 0 || longText.length > 0 || badges.length > 0
 
-  const handleReuse = () => {
-    setState((s) => {
-      mutateSetRestoredParams(s, {
-        modelId: record.model_id ?? '',
-        inputs: params.inputs,
-        output: (params.output ?? {}) as Record<string, string | number>,
-        userParams: params.user_params,
-      })
-      mutateSetRightTab(s, 'form')
-    }, 'run/reuse')
-  }
-
   const handleDownload = () => {
     if (!record.video_url) return
     const a = document.createElement('a')
     a.href = record.video_url
-    a.download = `${record.effect_name.replace(/\s+/g, '-').toLowerCase()}.mp4`
+    const baseName = record.effect_name ?? record.kind ?? 'run'
+    a.download = `${baseName.replace(/\s+/g, '-').toLowerCase()}.mp4`
     a.click()
   }
 
   const handleClose = () => {
-    const selectedId = useStore.getState().effects.selectedId
+    const state = useStore.getState()
+    const selectedId = state.effects.selectedId
+    const isPlayground = state.playground.isOpen
     setState((s) => { mutateClearViewingJob(s) }, 'run/closeHistorical')
     if (selectedId) {
       navigate(`/effects/${selectedId}`)
+    } else if (isPlayground) {
+      navigate('/playground')
     }
   }
 
@@ -135,6 +122,12 @@ function HistoricalRunView({ record, hasEffect }: {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {record.kind === 'playground' && record.status === 'completed' && (
+            <Button onClick={() => createEffectFromRun(record)} size="sm" variant="outline">
+              <Save size={14} />
+              Save as effect
+            </Button>
+          )}
           {record.video_url && (
             <Button onClick={handleDownload} size="sm">
               <Download size={14} />
@@ -171,16 +164,29 @@ function HistoricalRunView({ record, hasEffect }: {
       {/* Parameters — compact layout */}
       {hasAnyParams && (
         <div className="shrink-0 border-t px-6 py-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Parameters
             </h3>
-            {hasEffect && (
-              <Button variant="outline" size="sm" onClick={handleReuse} className="h-7 text-xs">
-                <RotateCcw size={12} />
-                Reuse
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {record.kind === 'effect' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openInPlayground(runToPlaygroundParams(record))}
+                  className="h-7 text-xs"
+                >
+                  <FlaskConical size={12} />
+                  Open in playground
+                </Button>
+              )}
+              {canReuse && (
+                <Button variant="outline" size="sm" onClick={() => applyRunParams(record)} className="h-7 text-xs">
+                  <RotateCcw size={12} />
+                  Apply to form
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -311,6 +317,11 @@ function ResultView({
 }: {
   job: { effectName: string; videoUrl: string | null }
 }) {
+  // For playground runs, viewingRunRecord was set by the post-Generate
+  // restoreFromUrl call — it has the full inputs we need to build an effect.
+  const viewingRunRecord = useStore(selectViewingRunRecord)
+  const canSaveAsEffect = viewingRunRecord?.kind === 'playground'
+
   const handleDownload = () => {
     if (!job.videoUrl) return
     const a = document.createElement('a')
@@ -333,10 +344,21 @@ function ResultView({
         <span className="text-sm font-semibold text-foreground">
           {job.effectName}
         </span>
+        {canSaveAsEffect && viewingRunRecord && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            onClick={() => createEffectFromRun(viewingRunRecord)}
+          >
+            <Save size={14} />
+            Save as effect
+          </Button>
+        )}
         {job.videoUrl && (
           <Button
             onClick={handleDownload}
-            className="ml-auto shadow-[0_2px_8px_rgba(74,144,226,0.3)]"
+            className={cn('shadow-[0_2px_8px_rgba(74,144,226,0.3)]', !canSaveAsEffect && 'ml-auto')}
             size="sm"
           >
             <Download size={14} />

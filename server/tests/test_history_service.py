@@ -13,8 +13,9 @@ from services.history_service import HistoryService, RunRecord
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
     id                  TEXT PRIMARY KEY,
-    effect_id           TEXT NOT NULL,
-    effect_name         TEXT NOT NULL,
+    kind                TEXT NOT NULL DEFAULT 'effect',
+    effect_id           TEXT,
+    effect_name         TEXT,
     model_id            TEXT NOT NULL,
     status              TEXT NOT NULL,
     progress            INTEGER DEFAULT 0,
@@ -363,7 +364,7 @@ class TestRunRecordToDict:
         assert record is not None
         d = record.to_dict()
         expected_keys = {
-            "id", "effect_id", "effect_name", "model_id", "status",
+            "id", "kind", "effect_id", "effect_name", "model_id", "status",
             "progress", "progress_msg", "video_url", "inputs",
             "error", "created_at", "updated_at", "duration_ms",
         }

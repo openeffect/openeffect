@@ -143,9 +143,14 @@ class TestStartRun:
 
         record = await history.get_by_id(job_id)
         data = json.loads(record.inputs)
+        # Raw user inputs are stored field-keyed for the "Apply to form" flow
         assert data["inputs"]["prompt"] == "city night"
         assert data["output"]["duration"] == 5
         assert data["user_params"]["cfg_scale"] == 3.5
+        # model_inputs holds the normalized, resolved shape for "Open in playground"
+        assert "model_inputs" in data
+        assert data["model_inputs"]["prompt"] == "Test city night"  # template "Test {prompt}" resolved
+        assert "negative_prompt" in data["model_inputs"]
 
     async def test_rejects_unknown_effect(self, run_service):
         run_service._effect_loader.get_by_db_id.return_value = None

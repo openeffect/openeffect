@@ -1,4 +1,4 @@
-import { RefreshCw, History, Package, Settings, Loader2, Plus } from 'lucide-react'
+import { RefreshCw, History, Package, Settings, Loader2, Plus, FlaskConical } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/store'
 import { selectActiveJobCount, selectRestoringFromUrl } from '@/store/selectors/runSelectors'
@@ -6,6 +6,7 @@ import { selectIsForking } from '@/store/selectors/editorSelectors'
 import { selectUpdateAvailable } from '@/store/selectors/configSelectors'
 import { openHistory } from '@/store/actions/historyActions'
 import { openBlankEditor } from '@/store/actions/editorActions'
+import { openPlayground } from '@/store/actions/playgroundActions'
 import { goHome } from '@/store/actions/appActions'
 import { HistoryPanel } from '@/features/history/HistoryPanel'
 import { Button } from '@/components/ui/Button'
@@ -68,6 +69,11 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-1.5">
+        {/* Group 1: daily-use (do stuff + review) */}
+        <Button variant="ghost" size="icon" onClick={() => openPlayground()} title="Playground" className="bg-muted text-secondary-foreground">
+          <FlaskConical size={16} />
+        </Button>
+
         {/* History button + popup */}
         <div className="relative">
           <Button
@@ -99,7 +105,10 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
           <HistoryPanel />
         </div>
 
-        <Button variant="ghost" size="icon" onClick={openBlankEditor} title="Create Effect" className="bg-muted text-secondary-foreground">
+        <div className="mx-1.5 h-5 w-px bg-border" aria-hidden />
+
+        {/* Group 2: author + manage library */}
+        <Button variant="ghost" size="icon" onClick={() => openBlankEditor()} title="Create Effect" className="bg-muted text-secondary-foreground">
           <Plus size={16} />
         </Button>
 
@@ -107,6 +116,9 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
           <Package size={16} />
         </Button>
 
+        <div className="mx-1.5 h-5 w-px bg-border" aria-hidden />
+
+        {/* Group 3: app config */}
         <Button variant="ghost" size="icon" onClick={onSettingsOpen} title="Settings" className="bg-muted text-secondary-foreground">
           <Settings size={16} />
         </Button>

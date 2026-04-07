@@ -5,6 +5,7 @@ import { EffectGallery } from '@/features/effects/EffectGallery'
 import { EffectPanel } from '@/features/effects/EffectPanel'
 import { EffectEditor } from '@/features/editor/EffectEditor'
 import { RunView } from '@/features/run/RunView'
+import { PlaygroundPanel } from '@/features/playground/PlaygroundPanel'
 import { SettingsDialog } from '@/features/settings/SettingsDialog'
 import { EffectsManagerDialog } from '@/features/settings/EffectsManagerDialog'
 import { OnboardingDialog } from '@/features/settings/OnboardingDialog'
@@ -13,6 +14,7 @@ import { selectSelectedId } from '@/store/selectors/effectsSelectors'
 import { selectViewingJobId, selectJobs, selectViewingRunRecord } from '@/store/selectors/runSelectors'
 import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
 import { selectShowOnboarding } from '@/store/selectors/configSelectors'
+import { selectPlaygroundIsOpen } from '@/store/selectors/playgroundSelectors'
 import { useSse } from '@/hooks/useSse'
 
 const PANEL_WIDTH_PERCENT = 35
@@ -34,14 +36,16 @@ export function Layout() {
   const selectedId = useStore(selectSelectedId)
   const showOnboarding = useStore(selectShowOnboarding)
   const isEditorOpen = useStore(selectEditorIsOpen)
+  const isPlaygroundOpen = useStore(selectPlaygroundIsOpen)
 
   useSse(viewingJobId)
 
-  const rightOpen = !!selectedId || isEditorOpen
+  const rightOpen = !!selectedId || isEditorOpen || isPlaygroundOpen
   const activeJob = viewingJobId ? activeJobs.get(viewingJobId) : null
   const showRun = !!(viewingRunRecord || activeJob)
 
-  // Left panel priority: run > editor > gallery (gallery stays visible when effect is selected)
+  // Left panel priority: run > editor > gallery. Playground keeps the gallery
+  // visible behind its right-side panel, same as opening an effect.
   const leftPanelKey = showRun ? 'run' : isEditorOpen ? 'editor' : 'gallery'
 
   return (
@@ -97,7 +101,7 @@ export function Layout() {
             </AnimatePresence>
           </motion.div>
 
-          {/* Right: Effect settings panel */}
+          {/* Right: Effect or Playground settings panel */}
           <AnimatePresence>
             {rightOpen && (
               <motion.div
@@ -107,7 +111,7 @@ export function Layout() {
                 className="absolute inset-y-0 right-0 overflow-y-auto border-l bg-card shadow-[-4px_0_24px_rgba(0,0,0,0.1)]"
                 style={{ width: `${PANEL_WIDTH_PERCENT}%` }}
               >
-                <EffectPanel />
+                {isPlaygroundOpen ? <PlaygroundPanel /> : <EffectPanel />}
               </motion.div>
             )}
           </AnimatePresence>

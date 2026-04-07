@@ -3,6 +3,7 @@ import { mutateClearViewingJob, mutateSetViewingRunRecord } from '../mutations/r
 import { mutateSelectEffect } from '../mutations/effectsMutations'
 import { api } from '@/utils/api'
 import { navigate } from '@/utils/router'
+import type { RunRecord } from '@/types/api'
 
 /** Look up the DB UUID for an effect by its namespace/id. Falls back to the fullId itself (for orphaned effects). */
 function effectDbId(fullId: string): string {
@@ -73,8 +74,17 @@ export function closeHistory(): void {
   stopPolling()
 }
 
-export function openHistoryItem(item: { id: string; effect_id: string }): void {
+export function openHistoryItem(item: Pick<RunRecord, 'id' | 'effect_id' | 'kind'>): void {
   closeHistory()
+  if (item.kind === 'playground') {
+    // Playground runs land on /playground; the run gets restored via runId query param.
+    navigate('/playground', { run: item.id })
+    return
+  }
+  if (!item.effect_id) {
+    navigate('/')
+    return
+  }
   navigate(`/effects/${effectDbId(item.effect_id)}`, { run: item.id })
 }
 
@@ -116,6 +126,26 @@ export async function loadEffectHistory(effectId: string, offset = 0): Promise<v
     }, 'history/effectLoad')
   } catch {
     setState((s) => { s.history.effectStatus = 'failed' }, 'history/effectLoadFailed')
+  }
+}
+
+export async function loadPlaygroundHistory(offset = 0): Promise<void> {
+  setState((s) => { s.history.playgroundStatus = 'loading' }, 'history/playgroundLoadStart')
+
+  try {
+    const data = await api.getRuns(20, offset, undefined, 'playground')
+    setState((s) => {
+      if (offset === 0) {
+        s.history.playgroundItems = data.items
+        s.history.playgroundTotal = data.total
+      } else {
+        s.history.playgroundItems = [...s.history.playgroundItems, ...data.items]
+      }
+      s.history.playgroundStatus = 'succeeded'
+      s.history.playgroundLoaded = true
+    }, 'history/playgroundLoad')
+  } catch {
+    setState((s) => { s.history.playgroundStatus = 'failed' }, 'history/playgroundLoadFailed')
   }
 }
 

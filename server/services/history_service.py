@@ -11,10 +11,11 @@ from config.settings import get_settings
 @dataclass
 class RunRecord:
     id: str
-    effect_id: str
-    effect_name: str
     model_id: str
     status: str
+    kind: str = "effect"
+    effect_id: str | None = None
+    effect_name: str | None = None
     progress: int = 0
     progress_msg: str | None = None
     video_url: str | None = None
@@ -37,6 +38,7 @@ class RunRecord:
 
         return {
             "id": self.id,
+            "kind": self.kind,
             "effect_id": self.effect_id,
             "effect_name": self.effect_name,
             "model_id": self.model_id,
@@ -73,17 +75,17 @@ class HistoryService:
             await self._db.close()
             self._db = None
 
-    async def create_processing(self, job: Any, inputs_json: str | None = None) -> RunRecord:
+    async def create_processing(self, job: Any, inputs_json: str | None = None, kind: str = "effect") -> RunRecord:
         now = datetime.now(timezone.utc).isoformat()
         db = await self._get_db()
         await db.execute(
-            """INSERT INTO runs (id, effect_id, effect_name, model_id, status, progress, progress_msg, inputs, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?)""",
-            (job.job_id, job.effect_id, job.effect_name, job.model_id, inputs_json, now, now),
+            """INSERT INTO runs (id, kind, effect_id, effect_name, model_id, status, progress, progress_msg, inputs, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?)""",
+            (job.job_id, kind, job.effect_id, job.effect_name, job.model_id, inputs_json, now, now),
         )
         await db.commit()
         return RunRecord(
-            id=job.job_id, effect_id=job.effect_id, effect_name=job.effect_name,
+            id=job.job_id, kind=kind, effect_id=job.effect_id, effect_name=job.effect_name,
             model_id=job.model_id, status="processing", inputs=inputs_json,
             created_at=now, updated_at=now,
         )
@@ -132,20 +134,30 @@ class HistoryService:
         )
         await db.commit()
 
-    async def get_all(self, limit: int = 50, offset: int = 0, effect_id: str | None = None) -> list[RunRecord]:
+    async def get_all(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        effect_id: str | None = None,
+        kind: str | None = None,
+    ) -> list[RunRecord]:
         limit = max(1, min(limit, 1000))
         offset = max(0, offset)
         db = await self._get_db()
+        clauses: list[str] = []
+        params: list[Any] = []
         if effect_id:
-            cursor = await db.execute(
-                "SELECT * FROM runs WHERE effect_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (effect_id, limit, offset),
-            )
-        else:
-            cursor = await db.execute(
-                "SELECT * FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
+            clauses.append("effect_id=?")
+            params.append(effect_id)
+        if kind:
+            clauses.append("kind=?")
+            params.append(kind)
+        where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
+        params.extend([limit, offset])
+        cursor = await db.execute(
+            f"SELECT * FROM runs {where}ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            tuple(params),
+        )
         rows = await cursor.fetchall()
         return [RunRecord(**dict(row)) for row in rows]
 
@@ -157,12 +169,18 @@ class HistoryService:
             return RunRecord(**dict(row))
         return None
 
-    async def count(self, effect_id: str | None = None) -> int:
+    async def count(self, effect_id: str | None = None, kind: str | None = None) -> int:
         db = await self._get_db()
+        clauses: list[str] = []
+        params: list[Any] = []
         if effect_id:
-            cursor = await db.execute("SELECT COUNT(*) FROM runs WHERE effect_id=?", (effect_id,))
-        else:
-            cursor = await db.execute("SELECT COUNT(*) FROM runs")
+            clauses.append("effect_id=?")
+            params.append(effect_id)
+        if kind:
+            clauses.append("kind=?")
+            params.append(kind)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        cursor = await db.execute(f"SELECT COUNT(*) FROM runs {where}", tuple(params))
         row = await cursor.fetchone()
         return row[0] if row else 0
 

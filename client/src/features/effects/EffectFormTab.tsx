@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import { ModelSelector } from './ModelSelector'
 import { AdvancedSettings } from './AdvancedSettings'
 import { GenerateButton } from './GenerateButton'
+import { RestoreFormBanner } from '@/components/RestoreFormBanner'
 import { Button } from '@/components/ui/Button'
 import { Label } from '@/components/ui/Label'
 import { Input } from '@/components/ui/Input'
@@ -210,6 +211,7 @@ export function EffectFormTab() {
 
   return (
     <>
+      <RestoreFormBanner kind="effect" />
       {/* Form body */}
       <div className="flex-1 space-y-6 overflow-y-auto p-5">
         <ModelSelector

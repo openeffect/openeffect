@@ -9,6 +9,7 @@ export const selectViewingRunRecord = (s: AppState) => s.run.viewingRunRecord
 export const selectLeftPanel = (s: AppState) => s.run.leftPanel
 export const selectRestoredParams = (s: AppState) => s.run.restoredParams
 export const selectRestoringFromUrl = (s: AppState) => s.run.restoringFromUrl
+export const selectLastAppliedRunId = (s: AppState) => s.run.lastAppliedRunId
 
 // ─── Derived selectors ───────────────────────────────────────────────────────
 

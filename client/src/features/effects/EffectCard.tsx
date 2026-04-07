@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Star } from 'lucide-react'
 import type { EffectManifest } from '@/types/api'
 import { useStore } from '@/store'
 import { selectSelectedId } from '@/store/selectors/effectsSelectors'
-import { selectEffect } from '@/store/actions/effectsActions'
+import { selectEffect, toggleFavorite } from '@/store/actions/effectsActions'
 import { formatEffectType, isVideoUrl } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/cn'
@@ -80,6 +80,18 @@ export function EffectCard({ effect }: EffectCardProps) {
             {effect.namespace}
           </span>
         )}
+        {/* Favorite star */}
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleFavorite(effect) }}
+          className={cn(
+            'absolute bottom-2 right-2 rounded-full p-1 transition-all',
+            effect.is_favorite
+              ? 'text-yellow-400 hover:text-yellow-300'
+              : 'text-white/50 opacity-0 group-hover:opacity-100 hover:text-white',
+          )}
+        >
+          <Star size={16} fill={effect.is_favorite ? 'currentColor' : 'none'} />
+        </button>
       </div>
       <div className="p-3">
         <h3 className="text-sm font-semibold leading-tight text-foreground">

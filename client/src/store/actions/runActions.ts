@@ -1,8 +1,15 @@
 import { setState, getState } from '../index'
-import { mutateClearViewingJob, mutateSetViewingRunRecord, mutateSetRestoredParams } from '../mutations/runMutations'
+import {
+  mutateClearViewingJob,
+  mutateSetViewingRunRecord,
+  mutateSetRestoredParams,
+  mutateSetLastAppliedRunId,
+} from '../mutations/runMutations'
+import { mutateSetRightTab } from '../mutations/effectsMutations'
 import { api } from '@/utils/api'
 import { navigate } from '@/utils/router'
-import type { EffectManifest, RunRequest } from '@/types/api'
+import { buildRestoredParamsFromRecord } from '@/utils/runRecord'
+import type { EffectManifest, RunRequest, RunRecord } from '@/types/api'
 
 // ─── Input preparation (extracted from EffectPanel) ──────────────────────────
 
@@ -76,6 +83,9 @@ export async function startRun(
     })
     s.run.viewingJobId = response.job_id
     s.run.leftPanel = 'progress'
+    // Mark this as the last-applied run so the Restore banner doesn't pop up
+    // for the run we just submitted (the form already matches it).
+    mutateSetLastAppliedRunId(s, response.job_id)
   }, 'run/start')
 
   navigate(`/effects/${manifest.db_id}`, { run: response.job_id })
@@ -107,9 +117,12 @@ export function completeJob(jobId: string, videoUrl: string): void {
   }, 'run/complete')
 
   // Reload per-effect history so the new run appears at the top
-  const effectId = getState().history.effectId
+  const { effectId, playgroundLoaded } = getState().history
   if (effectId) {
     import('./historyActions').then(({ loadEffectHistory }) => loadEffectHistory(effectId))
+  }
+  if (playgroundLoaded) {
+    import('./historyActions').then(({ loadPlaygroundHistory }) => loadPlaygroundHistory())
   }
 }
 
@@ -146,7 +159,15 @@ export function closeJob(): void {
   }, 'run/closeJob')
 }
 
-export async function restoreFromUrl(id: string): Promise<string | null> {
+/**
+ * Fetch a run record by id and set it as the viewing record so the result
+ * shows on the left. Pass `autoApply=true` when this is part of a "fresh
+ * open" navigation (the right panel was closed before, e.g. URL load or
+ * clicking a run from the global history popup while on the gallery) — the
+ * run's params will be loaded into the form too, since there's nothing to
+ * override.
+ */
+export async function restoreFromUrl(id: string, autoApply = false): Promise<string | null> {
   setState((s) => {
     s.run.restoringFromUrl = true
   }, 'run/restoreStart')
@@ -158,6 +179,10 @@ export async function restoreFromUrl(id: string): Promise<string | null> {
       mutateSetViewingRunRecord(s, record)
       s.run.restoringFromUrl = false
     }, 'run/restore')
+
+    if (autoApply) {
+      applyRunParams(record)
+    }
 
     return record.effect_id ?? null
   } catch (e) {
@@ -175,4 +200,20 @@ export function clearRestoredParams(): void {
   setState((s) => {
     mutateSetRestoredParams(s, null)
   }, 'run/clearRestoredParams')
+}
+
+/**
+ * Apply a run's params to the form: dispatches restoredParams (which the
+ * forms consume via useEffect), switches the right tab to Form, and marks
+ * this run as the last-applied so the Restore banner hides itself.
+ *
+ * Used by both the Reuse button (left, in HistoricalRunView's parameters
+ * section) and the Apply-to-form banner (right, above the form body).
+ */
+export function applyRunParams(record: RunRecord): void {
+  setState((s) => {
+    mutateSetRestoredParams(s, buildRestoredParamsFromRecord(record))
+    mutateSetRightTab(s, 'form')
+    mutateSetLastAppliedRunId(s, record.id)
+  }, 'run/applyParams')
 }

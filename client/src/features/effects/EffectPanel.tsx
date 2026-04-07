@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X, MoreVertical, GitFork, Download, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { X, MoreVertical, GitFork, Download, Pencil, Trash2, AlertTriangle, FlaskConical } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectSelectedEffect, selectSelectedId, selectRightTab } from '@/store/selectors/effectsSelectors'
+import { selectAvailableModels } from '@/store/selectors/configSelectors'
 import { formatEffectType } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
 import {
@@ -19,6 +20,8 @@ import {
   editEffect,
 } from '@/store/actions/editorActions'
 import { deleteEffect } from '@/store/actions/effectsActions'
+import { openInPlayground } from '@/store/actions/playgroundActions'
+import { effectToPlaygroundParams } from '@/utils/playgroundSeed'
 import { setState } from '@/store'
 import { mutateSetRightTab } from '@/store/mutations/effectsMutations'
 import { api } from '@/utils/api'
@@ -51,7 +54,12 @@ export function EffectPanel() {
   if (!manifest && !isOrphaned) return null
 
   const showFormTab = !!manifest && !isOrphaned
-  const showHistoryTab = !!effectDbId
+  // History tab is always rendered; just disabled when there's no effectDbId
+  // (i.e. brand-new unsaved effect in the editor).
+  const isHistoryEnabled = !!effectDbId
+  // Which tab content is visible. The form is always mounted (just hidden)
+  // so its useState survives tab switches; only its visibility flips.
+  const showFormView = (rightTab === 'form' && showFormTab) || !isHistoryEnabled
 
   return (
     <div className="flex h-full flex-col">
@@ -102,7 +110,7 @@ export function EffectPanel() {
           <button
             className={cn(
               'flex-1 py-2.5 text-xs font-medium transition-colors',
-              rightTab === 'form' || !showHistoryTab
+              rightTab === 'form' || !isHistoryEnabled
                 ? 'border-b-2 border-primary text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
@@ -111,29 +119,38 @@ export function EffectPanel() {
             Form
           </button>
         )}
-        {showHistoryTab && (
-          <button
-            className={cn(
-              'flex-1 py-2.5 text-xs font-medium transition-colors',
-              rightTab === 'history' || !showFormTab
-                ? 'border-b-2 border-primary text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => setState((s) => { mutateSetRightTab(s, 'history') }, 'effects/setTab')}
-          >
-            History
-          </button>
-        )}
+        <button
+          disabled={!isHistoryEnabled}
+          className={cn(
+            'flex-1 py-2.5 text-xs font-medium transition-colors',
+            rightTab === 'history' && isHistoryEnabled
+              ? 'border-b-2 border-primary text-foreground'
+              : 'text-muted-foreground',
+            isHistoryEnabled ? 'hover:text-foreground' : 'cursor-not-allowed opacity-40',
+          )}
+          onClick={() => {
+            if (!isHistoryEnabled) return
+            setState((s) => { mutateSetRightTab(s, 'history') }, 'effects/setTab')
+          }}
+        >
+          History
+        </button>
       </div>
 
-      {/* Tab content */}
-      {(rightTab === 'form' && showFormTab) || !showHistoryTab ? (
-        <EffectFormTab key={`${selectedId}-${saveVersion}`} />
-      ) : effectDbId ? (
+      {/* Tab content — form stays mounted across tab switches so its useState
+          (form values, advanced params, etc.) is preserved. The key still
+          forces a remount when the selected effect or saveVersion changes,
+          so switching effects or saving still gives a fresh form. */}
+      {showFormTab && (
+        <div className={cn('flex flex-1 flex-col overflow-hidden', !showFormView && 'hidden')}>
+          <EffectFormTab key={`${selectedId}-${saveVersion}`} />
+        </div>
+      )}
+      {!showFormView && effectDbId && (
         <div className="flex-1 overflow-y-auto p-3">
           <EffectHistoryTab effectId={effectDbId} />
         </div>
-      ) : null}
+      )}
     </div>
   )
 }
@@ -141,6 +158,7 @@ export function EffectPanel() {
 /* ─── Three-dot menu for Fork / Edit / Export ─── */
 function EffectMenu({ effect, isInstalled }: { effect: import('@/types/api').EffectManifest; isInstalled: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const availableModels = useStore(selectAvailableModels)
   const isLocal = effect.source === 'local'
   const canDelete = isInstalled && effect.source !== 'official'
 
@@ -156,6 +174,10 @@ function EffectMenu({ effect, isInstalled }: { effect: import('@/types/api').Eff
     window.open(api.exportEffect(effect.namespace, effect.id), '_blank')
   }
 
+  const handleTryInPlayground = () => {
+    openInPlayground(effectToPlaygroundParams(effect, availableModels))
+  }
+
   return (
     <DropdownMenu onOpenChange={(open) => { if (!open) setConfirmDelete(false) }}>
       <DropdownMenuTrigger asChild>
@@ -164,6 +186,10 @@ function EffectMenu({ effect, isInstalled }: { effect: import('@/types/api').Eff
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={handleTryInPlayground}>
+          <FlaskConical size={14} />
+          Try in playground
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleFork}>
           <GitFork size={14} />
           Fork

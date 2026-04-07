@@ -18,6 +18,7 @@ class LoadedEffect:
     full_id: str           # namespace/id
     assets_dir: Path       # UUID folder path
     source: str            # "official", "url", "archive", "local"
+    is_favorite: bool = False
 
 
 class EffectLoaderService:
@@ -63,6 +64,7 @@ class EffectLoaderService:
                     full_id=full_id,
                     assets_dir=assets_dir,
                     source=row["source"],
+                    is_favorite=bool(row.get("is_favorite", 0)),
                 )
                 new_cache[full_id] = loaded
                 new_uuid_cache[db_id] = loaded

@@ -53,6 +53,10 @@ export interface RunSlice {
   leftPanel: LeftPanel
   restoredParams: RestoredParams | null
   restoringFromUrl: boolean
+  // Last run id whose params were applied to a form (via Generate or Reuse).
+  // The RestoreFormBanner uses this to hide itself for the run that's already
+  // loaded in the form, so it only nags about runs you haven't applied yet.
+  lastAppliedRunId: string | null
 }
 
 export interface HistorySlice {
@@ -68,6 +72,12 @@ export interface HistorySlice {
   effectTotal: number
   effectStatus: LoadStatus
   effectId: string | null
+
+  // Playground history (right panel tab)
+  playgroundItems: RunRecord[]
+  playgroundTotal: number
+  playgroundStatus: LoadStatus
+  playgroundLoaded: boolean
 }
 
 export interface ConfigSlice {
@@ -92,6 +102,10 @@ export interface EditorSlice {
   saveVersion: number
 }
 
+export interface PlaygroundSlice {
+  isOpen: boolean
+}
+
 // ─── Root state ──────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -100,4 +114,5 @@ export interface AppState {
   history: HistorySlice
   config: ConfigSlice
   editor: EditorSlice
+  playground: PlaygroundSlice
 }

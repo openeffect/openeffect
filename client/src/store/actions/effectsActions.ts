@@ -3,7 +3,8 @@ import { mutateSelectEffect } from '../mutations/effectsMutations'
 import { mutateClearViewingJob } from '../mutations/runMutations'
 import { mutateCloseEditor } from '../mutations/editorMutations'
 import { restoreFromUrl } from './runActions'
-import { openEditor } from './editorActions'
+import { openEditor, openBlankEditor } from './editorActions'
+import { openPlayground } from './playgroundActions'
 import { api } from '@/utils/api'
 import { parseRoute, navigate, initRouteListener } from '@/utils/router'
 import type { EffectManifest } from '@/types/api'
@@ -43,12 +44,21 @@ export async function loadEffects(): Promise<void> {
         selectedId = route.effectId
       }
       if (route.runId) {
-        restoreFromUrl(route.runId).then((effectId) => {
+        // Initial page load — right panel was never open before, so auto-apply
+        // the run's params to the form (no risk of overriding user data).
+        restoreFromUrl(route.runId, true).then((effectId) => {
           if (effectId) selectEffect(effectId, true)
         })
       }
     } else if (route.page === 'edit') {
       restoreEditor(route.effectId, effects)
+    } else if (route.page === 'newEffect') {
+      openBlankEditor(true)
+    } else if (route.page === 'playground') {
+      openPlayground(true)
+      if (route.runId) {
+        restoreFromUrl(route.runId, true)
+      }
     }
 
     setState((s) => {
@@ -59,12 +69,21 @@ export async function loadEffects(): Promise<void> {
 
     initRouteListener(
       (dbId, runId) => {
+        // Capture "was the right side panel open" BEFORE mutating state, so
+        // we can decide whether to auto-apply the run's params to the form.
+        // Right panel is "open" if any of: effect selected, editor open, or
+        // playground open. If it wasn't open, treat this as a fresh open and
+        // auto-apply (no form data to override).
+        const before = getState()
+        const wasRightOpen =
+          !!before.effects.selectedId || before.editor.isOpen || before.playground.isOpen
         setState((s) => {
           mutateCloseEditor(s)
+          s.playground.isOpen = false
           mutateSelectEffect(s, dbId)
         }, 'router/effect')
         if (runId) {
-          restoreFromUrl(runId)
+          restoreFromUrl(runId, !wasRightOpen)
         }
       },
       (dbId) => restoreEditor(dbId),
@@ -72,8 +91,27 @@ export async function loadEffects(): Promise<void> {
         setState((s) => {
           mutateClearViewingJob(s)
           mutateCloseEditor(s)
+          s.playground.isOpen = false
           mutateSelectEffect(s, null)
         }, 'router/gallery')
+      },
+      (runId) => {
+        // If we're transitioning INTO playground from elsewhere, do a clean open
+        // (clears effect/editor/run). If we're already on playground, this is just
+        // a URL update from Generate or back/forward — leave the active job alone.
+        const before = getState()
+        const wasRightOpen =
+          !!before.effects.selectedId || before.editor.isOpen || before.playground.isOpen
+        if (!before.playground.isOpen) {
+          openPlayground(true)
+        }
+        if (runId) restoreFromUrl(runId, !wasRightOpen)
+      },
+      () => {
+        // /effects/new — open the blank editor without re-pushing to history
+        if (!getState().editor.isOpen) {
+          openBlankEditor(true)
+        }
       },
     )
   } catch (e) {
@@ -109,6 +147,25 @@ export function setActiveType(type: string): void {
     s.effects.activeType = type
     s.effects.activeCategory = 'all'
   }, 'effects/setActiveType')
+}
+
+export async function toggleFavorite(effect: EffectManifest): Promise<void> {
+  const newValue = !effect.is_favorite
+  // Optimistic update
+  setState((s) => {
+    const item = s.effects.items.find((e) => e.db_id === effect.db_id)
+    if (item) item.is_favorite = newValue
+  }, 'effects/toggleFavorite')
+
+  try {
+    await api.toggleFavorite(effect.namespace, effect.id, newValue)
+  } catch {
+    // Revert on failure
+    setState((s) => {
+      const item = s.effects.items.find((e) => e.db_id === effect.db_id)
+      if (item) item.is_favorite = !newValue
+    }, 'effects/toggleFavoriteRevert')
+  }
 }
 
 export function setActiveCategory(category: string): void {

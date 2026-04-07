@@ -5,7 +5,8 @@ import { mutateClearViewingJob } from '../mutations/runMutations'
 import { api } from '@/utils/api'
 import { navigate, replaceRoute } from '@/utils/router'
 import { manifestToYaml } from '@/utils/yaml'
-import type { EffectManifest } from '@/types/api'
+import { playgroundRunToManifest } from '@/utils/playgroundSeed'
+import type { EffectManifest, RunRecord } from '@/types/api'
 import type { AssetFile } from '../types'
 import { loadEffects, selectEffect } from './effectsActions'
 
@@ -63,6 +64,7 @@ generation:
 const BLANK_MANIFEST: EffectManifest = {
   db_id: '',
   compatible_models: [],
+  is_favorite: false,
   namespace: 'my',
   id: 'new-effect',
   name: 'New Effect',
@@ -125,9 +127,11 @@ export function openEditor(
   navigate(`/effects/${effectId}/edit`)
 }
 
-export function openBlankEditor(): void {
+export function openBlankEditor(skipNav?: boolean): void {
   setState((s) => {
     mutateClearViewingJob(s)
+    mutateSelectEffect(s, null)
+    s.playground.isOpen = false
     s.effects.rightTab = 'form'
     s.editor.yamlContent = BLANK_TEMPLATE
     s.editor.lastSavedYaml = BLANK_TEMPLATE
@@ -136,6 +140,32 @@ export function openBlankEditor(): void {
     s.editor.isOpen = true
     s.editor.saveError = null
   }, 'editor/openBlank')
+  if (!skipNav) {
+    navigate('/effects/new')
+  }
+}
+
+/**
+ * Open the editor with a new (unsaved) effect seeded from a successful
+ * playground run. The run's prompt, image roles, model, and param defaults
+ * become the manifest; the user can tweak and save.
+ */
+export function createEffectFromRun(record: RunRecord): void {
+  const manifest = playgroundRunToManifest(record)
+  const yaml = manifestToYaml(manifest as unknown as Record<string, unknown>)
+  setState((s) => {
+    mutateClearViewingJob(s)
+    mutateSelectEffect(s, null)
+    s.playground.isOpen = false
+    s.effects.rightTab = 'form'
+    s.editor.yamlContent = yaml
+    s.editor.lastSavedYaml = yaml
+    s.editor.savedManifest = manifest
+    s.editor.editingEffectId = null
+    s.editor.isOpen = true
+    s.editor.saveError = null
+  }, 'editor/createFromRun')
+  navigate('/effects/new')
 }
 
 export function closeEditor(): void {

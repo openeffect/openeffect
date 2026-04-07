@@ -18,12 +18,19 @@ from effects.prompt_builder import PromptBuilder
 from config.config_service import ConfigService
 from providers.factory import ModelProviderFactory
 from providers.base import ProviderInput
+from providers.model_params import KNOWN_MODEL_PARAMS
 
 logger = logging.getLogger(__name__)
 
 
 class RunJob:
-    def __init__(self, job_id: str, effect_id: str, effect_name: str, model_id: str):
+    def __init__(
+        self,
+        job_id: str,
+        effect_id: str | None,
+        effect_name: str | None,
+        model_id: str,
+    ):
         self.job_id = job_id
         self.effect_id = effect_id
         self.effect_name = effect_name
@@ -96,15 +103,139 @@ class RunService:
             elif key in request.inputs:
                 saved_inputs[key] = request.inputs[key]
 
+        # Resolve everything up-front so we can persist `model_inputs` — the
+        # normalized (role-keyed, fully-resolved) shape that's stable across
+        # effect deletion. The client uses this for "Open in playground".
+        prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
+        params = PromptBuilder.build_params(manifest, request.model_id, request.user_params)
+        negative_prompt = manifest.generation.negative_prompt
+        if "negative_prompt" in params:
+            negative_prompt = str(params.pop("negative_prompt"))
+
+        image_refs_by_role: dict[str, str] = {}
+        for key, field in manifest.inputs.items():
+            if field.type != "image":
+                continue
+            role = getattr(field, "role", "start_frame")
+            if key in request.inputs:
+                image_refs_by_role[role] = request.inputs[key]  # ref_id, not file path
+
+        model_inputs = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            **image_refs_by_role,
+        }
+
         inputs_json = json.dumps({
             "inputs": saved_inputs,
+            "model_inputs": model_inputs,
             "output": dict(request.output) if request.output else {},
             "user_params": dict(request.user_params) if request.user_params else {},
         })
 
         await self._history.create_processing(job, inputs_json=inputs_json)
 
-        asyncio.create_task(self._run_job(job, request, manifest))
+        # Resolve ref_ids -> file paths for the provider (ephemeral, not stored)
+        image_paths: dict[str, str] = {}
+        for role, ref_id in image_refs_by_role.items():
+            file_path = self._storage.get_upload_path(ref_id, "2048")
+            if file_path:
+                image_paths[role] = str(file_path)
+
+        provider_input = ProviderInput(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            image_inputs=image_paths,
+            output=dict(request.output) if request.output else {},
+            parameters={**params, "_model_id": request.model_id},
+        )
+
+        asyncio.create_task(self._execute_provider(
+            job,
+            request.model_id,
+            request.provider_id,
+            provider_input,
+            needs_reverse=manifest.generation.reverse,
+        ))
+
+        return job_id
+
+    async def start_playground(self, request: Any) -> str:
+        """Start a playground run: model + raw prompt + image refs + params, no manifest."""
+        if request.model_id not in MODELS_BY_ID:
+            raise ValueError(f"Unknown model: {request.model_id}")
+
+        model = MODELS_BY_ID[request.model_id]
+        fal_cfg = model.get("fal") or {}
+        valid_roles = set((fal_cfg.get("role_params") or {}).keys())
+
+        image_inputs = dict(request.image_inputs or {})
+        for role in image_inputs.keys():
+            if role not in valid_roles:
+                raise ValueError(
+                    f"Model {request.model_id} does not support image role: {role}"
+                )
+
+        if not (request.prompt or "").strip():
+            raise ValueError("Prompt is required")
+
+        job_id = str(uuid_utils.uuid7())
+        job = RunJob(
+            job_id=job_id,
+            effect_id=None,
+            effect_name=None,
+            model_id=request.model_id,
+        )
+        self._jobs[job_id] = job
+
+        # Create the run folder
+        run_folder = RunRecord.run_folder(job_id)
+        run_folder.mkdir(parents=True, exist_ok=True)
+
+        # Increment ref count for each image input so the upload isn't garbage collected
+        for ref_id in image_inputs.values():
+            await self._storage.increment_ref(ref_id)
+
+        # Filter user_params + pull negative_prompt override
+        known = KNOWN_MODEL_PARAMS.get(request.model_id, set())
+        params = {k: v for k, v in (request.user_params or {}).items() if k in known}
+        negative_prompt = request.negative_prompt or ""
+        if "negative_prompt" in params:
+            negative_prompt = str(params.pop("negative_prompt"))
+
+        # Playground inputs are already in the normalized (role-keyed, resolved)
+        # shape — no separate `model_inputs` needed, it would just duplicate this.
+        saved_inputs: dict[str, str] = {
+            "prompt": request.prompt,
+            "negative_prompt": negative_prompt,
+            **image_inputs,
+        }
+        inputs_json = json.dumps({
+            "inputs": saved_inputs,
+            "output": dict(request.output) if request.output else {},
+            "user_params": dict(request.user_params) if request.user_params else {},
+        })
+
+        await self._history.create_processing(job, inputs_json=inputs_json, kind="playground")
+
+        # Resolve ref_ids -> file paths for the provider (ephemeral, not stored)
+        image_paths: dict[str, str] = {}
+        for role, ref_id in image_inputs.items():
+            file_path = self._storage.get_upload_path(ref_id, "2048")
+            if file_path:
+                image_paths[role] = str(file_path)
+
+        provider_input = ProviderInput(
+            prompt=request.prompt,
+            negative_prompt=negative_prompt,
+            image_inputs=image_paths,
+            output=dict(request.output) if request.output else {},
+            parameters={**params, "_model_id": request.model_id},
+        )
+
+        asyncio.create_task(self._execute_provider(
+            job, request.model_id, request.provider_id, provider_input, needs_reverse=False,
+        ))
 
         return job_id
 
@@ -132,45 +263,22 @@ class RunService:
         finally:
             self._jobs.pop(job_id, None)
 
-    async def _run_job(self, job: RunJob, request: Any, manifest: Any) -> None:
+    async def _execute_provider(
+        self,
+        job: RunJob,
+        model_id: str,
+        provider_id: str,
+        provider_input: ProviderInput,
+        needs_reverse: bool,
+    ) -> None:
+        """Run the provider, stream events, download the result, and update history.
+
+        Shared tail used by both effect runs and playground runs.
+        """
         try:
-            prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
-            params = PromptBuilder.build_params(manifest, request.model_id, request.user_params)
-
-            negative_prompt = manifest.generation.negative_prompt
-            if "negative_prompt" in params:
-                negative_prompt = str(params.pop("negative_prompt"))
-
-            # Resolve image ref_ids to paths using content-addressable store
-            image_inputs: dict[str, str] = {}
-            for key, field in manifest.inputs.items():
-                if field.type != "image":
-                    continue
-                role = getattr(field, 'role', 'start_frame')
-                if key in request.inputs:
-                    ref_id = request.inputs[key]
-                    file_path = self._storage.get_upload_path(ref_id, '2048')
-                    if file_path:
-                        image_inputs[role] = str(file_path)
-                elif field.default and loaded.assets_dir:
-                    # Fall back to default asset file
-                    asset_path = loaded.assets_dir / "assets" / str(field.default)
-                    if asset_path.exists():
-                        image_inputs[role] = str(asset_path)
-
-            needs_reverse = manifest.generation.reverse
-
             api_key = self._config.get_api_key()
             models_dir = self._model_service._models_dir if hasattr(self._model_service, '_models_dir') else None
-            provider = ModelProviderFactory.create(request.model_id, request.provider_id, api_key=api_key, models_dir=models_dir)
-
-            provider_input = ProviderInput(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                image_inputs=image_inputs,
-                output=dict(request.output) if request.output else {},
-                parameters={**params, "_model_id": request.model_id},
-            )
+            provider = ModelProviderFactory.create(model_id, provider_id, api_key=api_key, models_dir=models_dir)
 
             async for event in provider.generate(provider_input):
                 if event.type == "submitted":
@@ -253,15 +361,18 @@ class RunService:
 
         except Exception as e:
             logger.exception(f"Job {job.job_id} failed")
-            job.status = "failed"
-            job.error = str(e)
-            await self._history.fail(job.job_id, str(e))
-            await job.events.put({
-                "event": "failed",
-                "data": {"job_id": job.job_id, "error": str(e), "code": "INTERNAL_ERROR"},
-            })
+            await self._fail_job(job, str(e))
         finally:
             self._schedule_eviction(job.job_id)
+
+    async def _fail_job(self, job: RunJob, error_msg: str) -> None:
+        job.status = "failed"
+        job.error = error_msg
+        await self._history.fail(job.job_id, error_msg)
+        await job.events.put({
+            "event": "failed",
+            "data": {"job_id": job.job_id, "error": error_msg, "code": "INTERNAL_ERROR"},
+        })
 
     def _schedule_eviction(self, job_id: str, delay: float = 60.0) -> None:
         """Evict a finished job from memory after a delay if no stream consumer connected."""

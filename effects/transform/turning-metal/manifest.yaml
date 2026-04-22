@@ -1,0 +1,112 @@
+namespace: openeffect
+id: turning-metal
+name: Turning Metal
+description: >
+  The subject gradually turns into polished metal, with reflective metallic
+  surfaces spreading across the visible body while preserving identity and pose.
+
+version: "0.1.0"
+author: openeffect-team
+type: transform
+
+tags:
+  - trending
+  - cinematic
+  - metal
+  - chrome
+  - transformation
+  - futuristic
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits or medium shots where the face and body contours are clearly visible"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A stylish woman standing in a modern city at dusk"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous shot of the same subject from the input image.
+    The subject gradually turns into smooth polished metal.
+    Reflective metallic material spreads across the visible skin, clothing,
+    and body contours while preserving the same identity, face, hairstyle silhouette,
+    pose, and background.
+    The subject remains planted in the same scene.
+    Only subtle natural micro-motion is allowed.
+    The transformation should feel elegant, cinematic, and material-based,
+    not like body horror and not like the subject is being replaced.
+    No cut, no scene replacement, no duplicate subject.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, body horror, melted face, cracked face, broken limbs,
+    bulky armor, robot replacement, random wires, rust, corrosion, liquid metal drips,
+    heavy jitter, blur, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium shot or medium close-up of the same subject from the input image.
+        In one continuous shot, the visible body gradually turns into smooth polished metal.
+        Reflective metallic material spreads cleanly across the face, neck, clothing,
+        and visible body contours, while the same identity, facial structure,
+        expression, pose, and hairstyle silhouette remain recognizable.
+        The transformation should feel sleek, premium, and material-focused,
+        not bulky, not robotic, and not like the human form disappears.
+        Only slight blink, breathing, or micro-expression is allowed.
+        Clean continuity, no cut, no scene replacement.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.58
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        The same subject gradually becomes smooth polished metal.
+        Reflective metallic material spreads across the face, neck, clothing,
+        and visible body shape while keeping the same identity, face,
+        outfit silhouette, pose, and scene.
+        The subject stays planted with only subtle natural micro-motion.
+        The effect should feel cinematic and readable,
+        not like a robot replacement and not like the subject is melting.
+        No cut, no scene replacement, no duplicate subject.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

@@ -1,0 +1,119 @@
+namespace: openeffect
+id: cyborg-transformation
+name: Cyborg Transformation
+description: >
+  The subject rapidly transforms into a sleek cinematic cyborg,
+  with metallic panels and glowing tech details spreading quickly
+  across the visible body while preserving identity and pose.
+
+version: "0.1.0"
+author: openeffect-team
+type: transform
+
+tags:
+  - trending
+  - cinematic
+  - cyborg
+  - sci-fi
+  - transformation
+  - futuristic
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with medium-to-full body shots where the visible body can transform quickly"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A serious woman standing in a futuristic neon city at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous shot of the same subject from the input image.
+    A rapid cyborg transformation begins immediately and spreads quickly
+    across the visible body.
+    Sleek metallic panels, refined robotic seams, and subtle glowing tech lines
+    appear fast across the face, neck, torso, arms, and visible clothing.
+    Preserve the same identity, facial structure, hairstyle silhouette, pose,
+    and background.
+    The subject remains planted in the same scene.
+    Only subtle natural micro-motion is allowed.
+    The transformation should feel elegant, futuristic, and controlled,
+    not grotesque or destructive.
+    No cut, no scene replacement, no duplicate subject.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, melted face, broken jaw, exposed gore, torn flesh,
+    body horror, asymmetrical eyes, missing face parts, broken helmet,
+    random wires everywhere, bulky mech armor, full robot replacement,
+    heavy jitter, blur, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium shot or full-body shot of the same subject from the input image.
+        In one continuous shot, a rapid premium cyborg transformation starts immediately.
+        Smooth metallic plates, fine mechanical seams, and subtle glowing interface lines
+        spread quickly across the visible body.
+        The transformation is already clearly visible in the first second
+        and becomes mostly complete by the middle of the shot.
+        Preserve the same subject, same face, same expression, same pose,
+        and same overall hairstyle silhouette.
+        The effect should feel sleek, cinematic, and believable,
+        not grotesque, not bulky, and not like the human face disappears.
+        Only slight blink, breathing, or micro-expression is allowed.
+        Clean continuity, no cut, no scene replacement.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.62
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        The same subject gradually gains sleek cyborg features:
+        metallic facial panels, subtle robotic seams, and soft glowing tech accents
+        on the face, neck, and clothing.
+        Keep the same identity, face, outfit silhouette, pose, and scene.
+        The subject stays planted with only subtle natural micro-motion.
+        The effect should feel futuristic and stylish,
+        not like body horror and not like a full robot replacement.
+        No cut, no scene replacement, no duplicate subject.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

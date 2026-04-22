@@ -1,0 +1,104 @@
+namespace: openeffect
+id: crash-zoom-in
+name: Crash Zoom In
+description: >
+  A fast, aggressive cinematic zoom pushes straight into your subject,
+  creating tension, impact, and dramatic focus.
+
+version: "0.1.0"
+author: openeffect-team
+type: camera-move
+
+tags:
+  - trending
+  - cinematic
+  - viral
+  - zoom
+  - dramatic
+  - impact
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits, close-ups, and strong subject framing"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A serious person sitting on urban steps at dusk"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    Single continuous crash zoom from the input image.
+    The camera rapidly pushes straight toward the same subject with strong speed and impact.
+    Preserve the same identity, face, hairstyle, clothing, pose, and environment.
+    The subject stays planted in the scene.
+    Only subtle natural micro-motion is allowed.
+    Background depth and parallax increase naturally during the push-in.
+    No cut, no scene replacement, no duplicate subject, no walking motion.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, strong body translation, walking motion, extreme fisheye,
+    heavy jitter, flicker, blur, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium close-up of the same subject from the input image.
+        Fast crash zoom straight into the face in one unbroken shot.
+        The subject remains planted and recognizable throughout the motion.
+        No walking, no body translation, only slight blink, breathing,
+        or subtle hair movement.
+        Strong forward camera momentum, realistic depth, clean continuity,
+        no cut.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.55
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        The camera performs a rapid forward push straight toward the subject.
+        Keep the same identity, face, outfit, pose, and scene.
+        The subject stays planted; no walking or body translation.
+        Allow only subtle natural micro-motion while the face grows larger in frame
+        and the background shows increasing parallax.
+        Strong cinematic impact, realistic depth, no scene replacement, no cut.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

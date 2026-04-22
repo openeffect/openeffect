@@ -1,0 +1,69 @@
+[project]
+name = "openeffect"
+version = "0.1.0"
+description = "Open magic for your media — AI video effects tool"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "fastapi[standard]>=0.136.0",
+    "uvicorn[standard]>=0.45.0",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "aiosqlite>=0.20.0",
+    "pyyaml>=6.0.0",
+    "fal-client>=0.5.0",
+    "python-multipart>=0.0.26",
+    "aiofiles>=24.0.0",
+    "httpx>=0.27.0",
+    "uuid-utils>=0.9.0",
+    "Pillow>=12.2.0",
+    "keyring>=25.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.15.11",
+    "mypy>=1.20.2",
+    "types-PyYAML>=6.0.0",
+]
+
+[project.scripts]
+openeffect = "run:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "run.py",
+    "server/",
+    "client/dist/",
+    "effects/",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["server"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "N"]
+
+[tool.ruff.lint.per-file-ignores]
+# Registry-style tabular data in model_service.py is more readable unwrapped;
+# wrapping each dict across 4+ lines makes the provider/variant/param layout
+# much harder to scan.
+"server/services/model_service.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["server/tests"]

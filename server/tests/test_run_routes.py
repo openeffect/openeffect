@@ -1,0 +1,300 @@
+"""HTTP-level tests for /api/run, /api/playground/run, /api/run/:id/stream.
+
+A stub `ModelProviderFactory.create` returns a `FakeProvider` whose event
+stream is set per-test, so we can exercise the route shape + SSE framing
+without touching fal.ai.
+"""
+import asyncio
+import json
+import time
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from db.database import Database, init_db
+from effects.validator import EffectManifest, GenerationConfig, InputFieldSchema
+from providers.base import ProviderEvent
+from routes import register_routes
+from services.effect_loader import EffectLoaderService, LoadedEffect
+from services.history_service import HistoryService, RunRecord
+from services.install_service import InstallService
+from services.model_service import ModelService
+from services.run_service import RunService
+from services.storage_service import StorageService
+
+
+class FakeProvider:
+    """Canned provider used by these tests. Put events on the class attr
+    `next_events`; instances yield them verbatim from `generate()`."""
+    next_events: list[ProviderEvent] = []
+
+    def __init__(self, *_, **__):
+        pass
+
+    async def generate(self, _input):
+        for e in FakeProvider.next_events:
+            yield e
+
+
+def _make_manifest() -> EffectManifest:
+    return EffectManifest(
+        id="hdr",
+        namespace="openeffect",
+        name="HDR",
+        description="Test",
+        type="animation",
+        inputs={
+            # EffectManifest's validator requires a start_frame image input
+            "image": InputFieldSchema(
+                type="image", role="start_frame", required=True, label="Photo",
+            ),
+            "prompt": InputFieldSchema(
+                type="text", role="prompt_input", required=True,
+                label="Prompt", multiline=False,
+            ),
+        },
+        generation=GenerationConfig(prompt="Make {prompt}"),
+    )
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    """Build a test app with a preloaded effect (no install round-trip) and
+    FakeProvider wired in for anything the route triggers."""
+    db_path = tmp_path / "test.db"
+    uploads_dir = tmp_path / "uploads"
+    uploads_dir.mkdir()
+    effects_dir = tmp_path / "effects"
+    effects_dir.mkdir()
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+
+    # Run results land under `{settings.user_data_dir}/runs/{job_id}`. Point
+    # the helper at tmp_path so the test can't litter the real data volume.
+    monkeypatch.setattr(RunRecord, "run_folder", staticmethod(lambda job_id: runs_dir / job_id))
+
+    asyncio.run(init_db(db_path))
+    database = Database(db_path)
+
+    manifest = _make_manifest()
+    loaded = LoadedEffect(
+        manifest=manifest,
+        db_id="test-uuid-001",
+        full_id="openeffect/hdr",
+        assets_dir=effects_dir / "test-uuid-001",
+        source="official",
+    )
+
+    def _by_db_id(db_id):
+        return loaded if db_id == "test-uuid-001" else None
+
+    def _by_full(effect_id):
+        return loaded if effect_id in ("test-uuid-001", "openeffect/hdr") else None
+
+    effect_loader = MagicMock(spec=EffectLoaderService)
+    effect_loader.get_by_db_id.side_effect = _by_db_id
+    effect_loader.get_loaded.side_effect = _by_full
+
+    # config_service is used via `await config.get_api_key()` now — AsyncMock
+    # so the coroutine form works.
+    config_service = MagicMock()
+    config_service.get_api_key = AsyncMock(return_value="test-key")
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        await database.connect()
+
+        install_service = InstallService(database, effects_dir)
+        storage_service = StorageService(uploads_dir, database)
+        history_service = HistoryService(database)
+        model_service = ModelService(models_dir)
+
+        app.state.settings = MagicMock(update_version="", user_data_dir=tmp_path)
+        app.state.database = database
+        app.state.config_service = config_service
+        app.state.install_service = install_service
+        app.state.effect_loader = effect_loader
+        app.state.storage_service = storage_service
+        app.state.history_service = history_service
+        app.state.model_service = model_service
+        app.state.run_service = RunService(
+            effect_loader=effect_loader,
+            config_service=config_service,
+            history_service=history_service,
+            storage_service=storage_service,
+            model_service=model_service,
+        )
+        yield
+        await database.close()
+
+    app = FastAPI(lifespan=_lifespan)
+    register_routes(app)
+
+    # Any ModelProviderFactory.create call — on either the effect or
+    # playground path — returns a FakeProvider.
+    with patch(
+        "services.run_service.ModelProviderFactory.create",
+        side_effect=lambda *a, **kw: FakeProvider(),
+    ):
+        with TestClient(app) as c:
+            yield c
+
+
+def _wait_for_record(client, job_id: str, statuses=("completed", "failed"), timeout=2.0):
+    """Poll the DB-backed `/api/runs/{id}` until the record settles into one
+    of `statuses` or we give up. Background tasks may finish before or after
+    the POST returns, so tests that care about final state poll here."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        resp = client.get(f"/api/runs/{job_id}")
+        if resp.status_code == 200 and resp.json()["status"] in statuses:
+            return resp.json()
+        time.sleep(0.05)
+    return None
+
+
+# ─── POST /api/run ───────────────────────────────────────────────────────────
+
+
+class TestStartRun:
+    def test_happy_path_returns_job_id_and_record(self, client):
+        FakeProvider.next_events = [
+            ProviderEvent(type="progress", progress=50, message="Generating..."),
+            ProviderEvent(type="completed", video_url=""),
+        ]
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.2",
+            "provider_id": "fal",
+            "inputs": {"prompt": "a cat"},
+            "output": {},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["job_id"], str) and data["job_id"]
+        # Record is created synchronously in `start()`, so even if the
+        # background task hasn't run yet, the record exists at processing.
+        assert data["record"]["status"] in ("processing", "completed")
+        assert data["record"]["model_id"] == "wan-2.2"
+        assert data["record"]["effect_name"] == "HDR"
+
+    def test_unknown_effect_returns_422(self, client):
+        resp = client.post("/api/run", json={
+            "effect_id": "does-not-exist",
+            "model_id": "wan-2.2",
+            "provider_id": "fal",
+            "inputs": {},
+            "output": {},
+        })
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["detail"]["code"] == "INVALID_REQUEST"
+        assert "Effect not found" in body["detail"]["error"]
+
+    def test_incompatible_model_returns_422(self, client):
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "not-a-real-model",
+            "provider_id": "fal",
+            "inputs": {},
+            "output": {},
+        })
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
+
+
+# ─── POST /api/playground/run ────────────────────────────────────────────────
+
+
+class TestStartPlaygroundRun:
+    def test_happy_path(self, client):
+        FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
+        resp = client.post("/api/playground/run", json={
+            "model_id": "wan-2.2",
+            "provider_id": "fal",
+            "prompt": "make it pop",
+            "output": {},
+            "user_params": {},
+            "image_inputs": {},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["job_id"]
+        assert data["record"]["kind"] == "playground"
+
+    def test_empty_prompt_returns_422(self, client):
+        resp = client.post("/api/playground/run", json={
+            "model_id": "wan-2.2",
+            "provider_id": "fal",
+            "prompt": "",
+            "output": {},
+            "user_params": {},
+            "image_inputs": {},
+        })
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["detail"]["code"] == "INVALID_REQUEST"
+        assert "Prompt is required" in body["detail"]["error"]
+
+    def test_unknown_model_returns_422(self, client):
+        resp = client.post("/api/playground/run", json={
+            "model_id": "bogus-model",
+            "provider_id": "fal",
+            "prompt": "hi",
+            "output": {},
+            "user_params": {},
+            "image_inputs": {},
+        })
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
+
+
+# ─── GET /api/run/{job_id}/stream ────────────────────────────────────────────
+
+
+class TestStreamRun:
+    def test_stream_replays_completed_job_from_db(self, client):
+        """Once the background task has written `completed` to the DB, the
+        stream endpoint replays that single event even if the in-memory job
+        is already evicted — the client-resume path relies on this."""
+        FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.2",
+            "provider_id": "fal",
+            "inputs": {"prompt": "a cat"},
+            "output": {},
+        })
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        final = _wait_for_record(client, job_id)
+        assert final is not None and final["status"] == "completed"
+
+        stream_resp = client.get(f"/api/run/{job_id}/stream")
+        assert stream_resp.status_code == 200
+        assert stream_resp.headers["content-type"].startswith("text/event-stream")
+
+        body = stream_resp.text
+        # SSE framing is `event: <name>\ndata: <json>\n\n`
+        assert "event: completed" in body
+        data_line = next(
+            line for line in body.splitlines() if line.startswith("data:")
+        )
+        payload = json.loads(data_line[len("data:"):].strip())
+        assert payload["job_id"] == job_id
+
+    def test_stream_unknown_job_returns_failed_event(self, client):
+        stream_resp = client.get("/api/run/does-not-exist/stream")
+        assert stream_resp.status_code == 200
+
+        body = stream_resp.text
+        assert "event: failed" in body
+        data_line = next(line for line in body.splitlines() if line.startswith("data:"))
+        payload = json.loads(data_line[len("data:"):].strip())
+        assert payload["code"] == "JOB_NOT_FOUND"

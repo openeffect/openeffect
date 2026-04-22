@@ -1,0 +1,106 @@
+namespace: openeffect
+id: wind-to-face
+name: Wind To Face
+description: >
+  A gust of wind hits the subject from the front, pushing hair, fabric,
+  and subtle facial details in a dramatic cinematic way while preserving identity.
+
+version: "0.1.0"
+author: openeffect-team
+type: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - wind
+  - dramatic
+  - fashion
+  - motion
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits or medium shots where hair, clothing, or fabric can react to wind"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A stylish woman standing outside at dusk"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous shot of the same subject from the input image.
+    A frontal gust of wind blows toward the subject, pushing hair, loose fabric,
+    and subtle clothing details backward in a natural cinematic way.
+    Preserve the same identity, face, hairstyle, clothing, pose, and background.
+    The subject remains planted in the same scene.
+    Only subtle natural micro-motion is allowed.
+    No cut, no scene replacement, no duplicate subject.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, strong body translation, walking motion, storm chaos,
+    flying debris, dust explosion, hair covering entire face, extreme blur,
+    heavy jitter, flicker, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium close-up or medium shot of the same subject from the input image.
+        A strong gust of wind blows directly toward the subject in one continuous shot,
+        pushing hair and loose fabric backward with natural force.
+        The same subject remains planted and recognizable throughout.
+        Only subtle blink, breathing, or slight head resistance is allowed.
+        Cinematic fashion-editorial energy, realistic motion, clean continuity,
+        no cut, no scene replacement.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.56
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        A frontal gust of wind hits the same subject and pushes hair,
+        loose fabric, and small clothing details backward naturally.
+        Keep the same identity, face, outfit, pose, and scene.
+        The subject stays planted with only subtle natural micro-motion.
+        The motion should feel like wind pressure on the subject,
+        not like the subject moving through the scene.
+        No cut, no scene replacement, no duplicate subject.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

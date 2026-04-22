@@ -1,0 +1,649 @@
+import io
+import logging
+import re
+import shutil
+import tempfile
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import httpx
+import uuid_utils
+import yaml
+from pydantic import ValidationError
+
+from core.limits import MAX_IMAGE_SIZE, MAX_TOTAL_SIZE, MAX_VIDEO_SIZE
+from db.database import Database
+from effects.validator import EffectManifest
+
+logger = logging.getLogger(__name__)
+
+# Security limits
+MAX_MANIFEST_SIZE = 100 * 1024       # 100 KB
+MAX_ZIP_FILES = 100
+ALLOWED_ASSET_EXTENSIONS = {".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp"}
+RESERVED_NAMESPACES = {"openeffect", "system", "admin"}
+
+
+def _validate_asset_filename(filename: str) -> None:
+    """Reject path traversal and non-whitelisted extensions."""
+    p = Path(filename)
+    if ".." in p.parts or p.is_absolute():
+        raise ValueError(f"Invalid asset path: {filename}")
+    ext = p.suffix.lower()
+    if ext not in ALLOWED_ASSET_EXTENSIONS:
+        raise ValueError(f"Disallowed file extension: {ext}")
+
+
+def _max_size_for_ext(ext: str) -> int:
+    if ext in (".mp4", ".webm"):
+        return MAX_VIDEO_SIZE
+    return MAX_IMAGE_SIZE
+
+
+class InstallConflictError(Exception):
+    """Raised when one or more incoming manifests already exist in the DB at a
+    different version. `conflicts` is a list of dicts with keys
+    `namespace`, `id`, `name`, `existing_version`, `incoming_version`,
+    `existing_source` — the route layer forwards this to the client as 409."""
+    def __init__(self, conflicts: list[dict]):
+        super().__init__(f"{len(conflicts)} effect(s) already installed")
+        self.conflicts = conflicts
+
+
+class InstallService:
+    def __init__(self, db: Database, effects_dir: Path):
+        self._db = db
+        self._effects_dir = effects_dir
+        self._effects_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def effects_dir(self) -> Path:
+        """Where installed effect packages live on disk."""
+        return self._effects_dir
+
+    # ─── Install from URL ───
+
+    async def install_from_url(self, url: str, overwrite: bool = False) -> list[str]:
+        """Fetch manifest(s) from URL, download assets, install.
+
+        Pre-fetches every sub-manifest so we can detect conflicts before touching
+        disk or DB. When `overwrite` is False and any incoming effect already
+        exists at a different version, raise `InstallConflictError`."""
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+
+            if len(resp.content) > MAX_MANIFEST_SIZE:
+                raise ValueError("Manifest too large")
+
+            data = yaml.safe_load(resp.text)
+            if not isinstance(data, dict):
+                raise ValueError("Invalid YAML content")
+
+            base_url = url.rsplit("/", 1)[0] + "/"
+
+            if "effects" in data:
+                pending = await self._fetch_index_manifests(client, base_url, data)
+            elif "id" in data:
+                manifest = EffectManifest(**data)
+                pending = [(data, base_url, manifest)]
+            else:
+                raise ValueError("URL is neither a manifest nor an index")
+
+            for _, _, manifest in pending:
+                self._validate_namespace(manifest.namespace)
+
+            if not overwrite:
+                conflicts = await self._detect_conflicts([m for _, _, m in pending])
+                if conflicts:
+                    raise InstallConflictError(conflicts)
+
+            installed = []
+            for entry_data, manifest_base, manifest in pending:
+                full_id = await self._install_single_from_url(
+                    client, manifest_base, entry_data, manifest
+                )
+                installed.append(full_id)
+            return installed
+
+    async def _fetch_index_manifests(
+        self, client: httpx.AsyncClient, base_url: str, index: dict[str, Any]
+    ) -> list[tuple[dict[str, Any], str, EffectManifest]]:
+        effects = index.get("effects", [])
+        if not isinstance(effects, list) or not effects:
+            raise ValueError("Index has no effects listed")
+
+        pending: list[tuple[dict[str, Any], str, EffectManifest]] = []
+        for entry in effects:
+            path = entry.get("path") if isinstance(entry, dict) else str(entry)
+            if not path:
+                continue
+            manifest_url = base_url + path
+            resp = await client.get(manifest_url)
+            resp.raise_for_status()
+            data = yaml.safe_load(resp.text)
+            manifest_base = manifest_url.rsplit("/", 1)[0] + "/"
+            manifest = EffectManifest(**data)
+            pending.append((data, manifest_base, manifest))
+        return pending
+
+    async def _install_single_from_url(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        data: dict[str, Any],
+        manifest: EffectManifest,
+    ) -> str:
+        """Install one manifest. Updates in place if an effect with the same
+        namespace/id already exists (conflict detection is caller's job)."""
+        existing = await self.get_effect(manifest.namespace, manifest.id)
+        if existing and existing["version"] == manifest.version:
+            return manifest.full_id
+
+        if existing:
+            old_dir = Path(existing["assets_dir"])
+            if old_dir.exists():
+                shutil.rmtree(str(old_dir), ignore_errors=True)
+            uuid = existing["id"]
+        else:
+            uuid = str(uuid_utils.uuid7())
+
+        effect_dir = self._effects_dir / uuid
+        assets_dir = effect_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        total_size = 0
+        try:
+            asset_files = self._collect_asset_filenames(manifest)
+            for filename in asset_files:
+                _validate_asset_filename(filename)
+                asset_url = base_url + "assets/" + filename
+                resp = await client.get(asset_url)
+                resp.raise_for_status()
+
+                ext = Path(filename).suffix.lower()
+                max_size = _max_size_for_ext(ext)
+                if len(resp.content) > max_size:
+                    raise ValueError(f"Asset {filename} exceeds size limit")
+
+                total_size += len(resp.content)
+                if total_size > MAX_TOTAL_SIZE:
+                    raise ValueError("Total effect size exceeds limit")
+
+                dest = assets_dir / filename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(resp.content)
+
+            (effect_dir / "manifest.yaml").write_text(
+                yaml.dump(data, default_flow_style=False)
+            )
+
+            yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
+            if existing:
+                await self._update_effect(
+                    uuid, manifest, "url", str(effect_dir), yaml_content=yaml_content
+                )
+            else:
+                await self._insert_effect(
+                    uuid=uuid,
+                    manifest=manifest,
+                    source="url",
+                    assets_dir=str(effect_dir),
+                    yaml_content=yaml_content,
+                )
+
+            return manifest.full_id
+
+        except Exception:
+            if not existing:
+                shutil.rmtree(str(effect_dir), ignore_errors=True)
+            raise
+
+    # ─── Install from archive ───
+
+    async def install_from_archive(
+        self, file_bytes: bytes, allow_official: bool = False, overwrite: bool = False
+    ) -> list[str]:
+        """Extract ZIP, validate manifests, install effects.
+
+        Used by the upload-ZIP UI flow; the boot-time bundled sync uses
+        `install_from_folder` directly against the repo's `effects/` tree.
+        Same conflict semantics as `install_from_folder`."""
+        if not zipfile.is_zipfile(io.BytesIO(file_bytes)):
+            raise ValueError("Not a valid ZIP archive")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                if len(zf.namelist()) > MAX_ZIP_FILES:
+                    raise ValueError(f"ZIP has too many files (max {MAX_ZIP_FILES})")
+
+                total_size = sum(info.file_size for info in zf.infolist())
+                if total_size > MAX_TOTAL_SIZE:
+                    raise ValueError("ZIP extracted size exceeds limit")
+
+                for info in zf.infolist():
+                    if ".." in info.filename or info.filename.startswith("/"):
+                        raise ValueError(f"Path traversal in ZIP: {info.filename}")
+
+                zf.extractall(tmp_path)
+
+            return await self.install_from_folder(tmp_path, allow_official, overwrite)
+
+    async def install_from_folder(
+        self, folder: Path, allow_official: bool = False, overwrite: bool = False
+    ) -> list[str]:
+        """Install every effect found under `folder` (either listed in an
+        `index.yaml` or discovered via `rglob("manifest.yaml")`).
+
+        When `overwrite` is False and an incoming manifest already exists at a
+        different version, raise `InstallConflictError` without touching disk
+        or DB — the route layer surfaces that to the client for confirmation.
+        Boot-time bundled sync passes `allow_official=True` which skips the
+        conflict prompt (silent update)."""
+        manifest_paths = self._find_manifests(folder)
+        if not manifest_paths:
+            raise ValueError(f"No manifest.yaml found under {folder}")
+
+        pending: list[tuple[Path, EffectManifest]] = []
+        for manifest_path in manifest_paths:
+            data = yaml.safe_load(manifest_path.read_text())
+            manifest = EffectManifest(**data)
+            pending.append((manifest_path, manifest))
+
+        if not allow_official and not overwrite:
+            conflicts = await self._detect_conflicts([m for _, m in pending])
+            if conflicts:
+                raise InstallConflictError(conflicts)
+
+        installed = []
+        for manifest_path, _ in pending:
+            full_id = await self._install_from_extracted(manifest_path, allow_official)
+            installed.append(full_id)
+
+        return installed
+
+    async def sync_bundled_folder(self, folder: Path) -> list[str]:
+        """Install the current bundled effect set and demote any previously-
+        bundled effect that's no longer in `folder` from `source='official'`
+        to `source='archive'` — so effects dropped from a future release
+        become user-deletable instead of stuck. Files stay on disk so any
+        historical runs that reference them keep working."""
+        manifest_paths = self._find_manifests(folder) if folder.exists() else []
+
+        pending_ids: set[tuple[str, str]] = set()
+        for mp in manifest_paths:
+            data = yaml.safe_load(mp.read_text())
+            m = EffectManifest(**data)
+            pending_ids.add((m.namespace, m.id))
+
+        installed: list[str] = []
+        if manifest_paths:
+            installed = await self.install_from_folder(folder, allow_official=True)
+
+        orphans = await self._db.fetchall(
+            "SELECT id, namespace, effect_id FROM effects WHERE source = 'official'"
+        )
+        for row in orphans:
+            if (row["namespace"], row["effect_id"]) in pending_ids:
+                continue
+            async with self._db.transaction() as conn:
+                await conn.execute(
+                    "UPDATE effects SET source = 'archive' WHERE id = ?",
+                    (row["id"],),
+                )
+            logger.info(
+                "Demoted dropped bundled effect %s/%s to archive",
+                row["namespace"], row["effect_id"],
+            )
+
+        return installed
+
+    def _find_manifests(self, root: Path) -> list[Path]:
+        """Find manifests: via index.yaml or by scanning for manifest.yaml files."""
+        index_path = root / "index.yaml"
+        if index_path.exists():
+            index = yaml.safe_load(index_path.read_text())
+            paths = []
+            for entry in index.get("effects", []):
+                p = entry.get("path") if isinstance(entry, dict) else str(entry)
+                if not p:
+                    continue
+                full = root / p
+                if full.exists():
+                    paths.append(full)
+            return paths
+
+        return sorted(root.rglob("manifest.yaml"))
+
+    async def _install_from_extracted(
+        self, manifest_path: Path, allow_official: bool
+    ) -> str:
+        yaml_content = manifest_path.read_text()
+        data = yaml.safe_load(yaml_content)
+        manifest = EffectManifest(**data)
+
+        if not allow_official:
+            self._validate_namespace(manifest.namespace)
+
+        existing = await self.get_effect(manifest.namespace, manifest.id)
+        if existing and existing["version"] == manifest.version:
+            return manifest.full_id
+
+        if existing:
+            old_dir = Path(existing["assets_dir"])
+            if old_dir.exists():
+                shutil.rmtree(str(old_dir), ignore_errors=True)
+            uuid = existing["id"]
+        else:
+            uuid = str(uuid_utils.uuid7())
+
+        effect_dir = self._effects_dir / uuid
+        assets_dir = effect_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        source_assets = manifest_path.parent / "assets"
+        if source_assets.exists():
+            for src_file in source_assets.rglob("*"):
+                if src_file.is_file():
+                    _validate_asset_filename(src_file.name)
+                    ext = src_file.suffix.lower()
+                    if src_file.stat().st_size > _max_size_for_ext(ext):
+                        raise ValueError(f"Asset {src_file.name} exceeds size limit")
+
+                    rel = src_file.relative_to(source_assets)
+                    dest = assets_dir / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src_file), str(dest))
+
+        shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
+
+        source = "official" if manifest.namespace == "openeffect" else "archive"
+
+        if existing:
+            await self._update_effect(uuid, manifest, source, str(effect_dir), yaml_content=yaml_content)
+        else:
+            await self._insert_effect(
+                uuid=uuid,
+                manifest=manifest,
+                source=source,
+                assets_dir=str(effect_dir),
+                yaml_content=yaml_content,
+            )
+
+        return manifest.full_id
+
+    # ─── Save local effect ───
+
+    async def save_local_effect(
+        self,
+        manifest: EffectManifest,
+        yaml_content: str,
+        existing_effect_id: str | None = None,
+        fork_from: str | None = None,
+    ) -> str:
+        """Save or update a locally created/forked effect. fork_from = namespace/id to copy assets from."""
+        if existing_effect_id:
+            existing: dict[str, Any] | None = None
+            if "/" in existing_effect_id:
+                ns, eid = existing_effect_id.split("/", 1)
+                existing = await self.get_effect(ns, eid)
+            else:
+                existing = await self.get_effect_by_uuid(existing_effect_id)
+            if not existing:
+                raise ValueError(f"Effect {existing_effect_id} not found")
+            if existing["source"] not in ("local", "archive"):
+                raise ValueError("Cannot edit non-local effects")
+
+            uuid = existing["id"]
+            effect_dir = Path(existing["assets_dir"])
+            effect_dir.mkdir(parents=True, exist_ok=True)
+
+            (effect_dir / "manifest.yaml").write_text(yaml_content)
+
+            await self._update_effect(uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content)
+        else:
+            base_id = manifest.id
+            suffix = 1
+            while await self.get_effect(manifest.namespace, manifest.id):
+                suffix += 1
+                new_id = f"{base_id}-{suffix}"
+                data = manifest.model_dump()
+                data["id"] = new_id
+                manifest = EffectManifest(**data)
+                yaml_content = re.sub(r'^id:\s*.+$', f'id: {new_id}', yaml_content, count=1, flags=re.MULTILINE)
+
+            uuid = str(uuid_utils.uuid7())
+            effect_dir = self._effects_dir / uuid
+            assets_dir = effect_dir / "assets"
+            assets_dir.mkdir(parents=True)
+
+            if fork_from:
+                parts = fork_from.split("/", 1)
+                if len(parts) == 2:
+                    source = await self.get_effect(parts[0], parts[1])
+                    if source:
+                        source_assets = Path(source["assets_dir"]) / "assets"
+                        if source_assets.exists():
+                            for src_file in source_assets.iterdir():
+                                if src_file.is_file():
+                                    shutil.copy2(str(src_file), str(assets_dir / src_file.name))
+
+            (effect_dir / "manifest.yaml").write_text(yaml_content)
+
+            await self._insert_effect(
+                uuid=uuid,
+                manifest=manifest,
+                source="local",
+                assets_dir=str(effect_dir),
+                yaml_content=yaml_content,
+            )
+
+        return manifest.full_id
+
+    async def save_yaml(
+        self,
+        yaml_content: str,
+        existing_effect_id: str | None = None,
+        fork_from: str | None = None,
+    ) -> str:
+        """Parse + validate manifest YAML and persist via `save_local_effect`.
+        All failure modes surface as `ValueError` so the route layer can map
+        them to HTTP 400 without seeing implementation details."""
+        try:
+            data = yaml.safe_load(yaml_content)
+        except yaml.YAMLError as e:
+            mark = getattr(e, "problem_mark", None)
+            loc = f" (line {mark.line + 1})" if mark else ""
+            raise ValueError(f"Invalid YAML syntax{loc}: {getattr(e, 'problem', str(e))}")
+
+        if not isinstance(data, dict):
+            raise ValueError("YAML must be a mapping (key: value pairs)")
+
+        try:
+            manifest = EffectManifest(**data)
+        except ValidationError as e:
+            errors = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
+            raise ValueError("; ".join(errors))
+
+        return await self.save_local_effect(
+            manifest, yaml_content, existing_effect_id, fork_from=fork_from
+        )
+
+    # ─── Uninstall ───
+
+    async def uninstall(self, namespace: str, effect_id: str) -> None:
+        row = await self._db.fetchone(
+            "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND effect_id=?",
+            (namespace, effect_id),
+        )
+        if not row:
+            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+
+        if row["source"] == "official":
+            raise ValueError("Cannot uninstall official effects")
+
+        assets_dir = Path(row["assets_dir"])
+        if assets_dir.exists():
+            shutil.rmtree(str(assets_dir), ignore_errors=True)
+
+        async with self._db.transaction() as conn:
+            await conn.execute("DELETE FROM effects WHERE id=?", (row["id"],))
+
+    # ─── Editable / favorite toggles ───
+
+    async def set_editable(self, namespace: str, effect_id: str, editable: bool) -> None:
+        """Flip an archive-installed effect into local edit mode (or back)."""
+        existing = await self.get_effect(namespace, effect_id)
+        if not existing:
+            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+        if existing["source"] == "official":
+            raise ValueError("Cannot modify official effects")
+
+        new_source = "local" if editable else "archive"
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE effects SET source=? WHERE namespace=? AND effect_id=?",
+                (new_source, namespace, effect_id),
+            )
+
+    async def set_favorite(self, namespace: str, effect_id: str, favorite: bool) -> None:
+        existing = await self.get_effect(namespace, effect_id)
+        if not existing:
+            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE effects SET is_favorite=? WHERE namespace=? AND effect_id=?",
+                (1 if favorite else 0, namespace, effect_id),
+            )
+
+    # ─── Update check ───
+
+    async def check_for_update(
+        self, namespace: str, effect_id: str
+    ) -> dict[str, Any]:
+        row = await self._db.fetchone(
+            "SELECT source_url, version FROM effects WHERE namespace=? AND effect_id=?",
+            (namespace, effect_id),
+        )
+        if not row or not row["source_url"]:
+            return {"available": False}
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+            resp = await client.get(row["source_url"])
+            resp.raise_for_status()
+            remote = yaml.safe_load(resp.text)
+            remote_version = remote.get("version", "0.0.0")
+
+        return {
+            "available": remote_version != row["version"],
+            "current_version": row["version"],
+            "remote_version": remote_version,
+        }
+
+    # ─── Helpers ───
+
+    def _validate_namespace(self, namespace: str) -> None:
+        if namespace.lower() in RESERVED_NAMESPACES:
+            raise ValueError(f"Namespace '{namespace}' is reserved")
+
+    async def _detect_conflicts(self, manifests: list[EffectManifest]) -> list[dict]:
+        """For each incoming manifest, check if an effect with the same
+        (namespace, id) is already installed at a DIFFERENT version. Same-version
+        installs are silent no-ops and aren't reported as conflicts."""
+        conflicts: list[dict] = []
+        for manifest in manifests:
+            existing = await self.get_effect(manifest.namespace, manifest.id)
+            if not existing:
+                continue
+            if existing["version"] == manifest.version:
+                continue
+            conflicts.append({
+                "namespace": manifest.namespace,
+                "id": manifest.id,
+                "name": manifest.name,
+                "existing_version": existing["version"],
+                "incoming_version": manifest.version,
+                "existing_source": existing["source"],
+            })
+        return conflicts
+
+    async def get_effect(self, namespace: str, effect_id: str) -> dict | None:
+        row = await self._db.fetchone(
+            "SELECT * FROM effects WHERE namespace=? AND effect_id=?",
+            (namespace, effect_id),
+        )
+        return dict(row) if row else None
+
+    async def get_effect_by_uuid(self, uuid: str) -> dict | None:
+        row = await self._db.fetchone("SELECT * FROM effects WHERE id=?", (uuid,))
+        return dict(row) if row else None
+
+    def _collect_asset_filenames(self, manifest: EffectManifest) -> list[str]:
+        files = []
+        if manifest.assets.preview:
+            files.append(manifest.assets.preview)
+        for filename in manifest.assets.inputs.values():
+            files.append(filename)
+        return files
+
+    async def _insert_effect(
+        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        if yaml_content is None:
+            yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                """INSERT INTO effects (
+                       id, namespace, effect_id, source, source_url,
+                       manifest_yaml, assets_dir, version, installed_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    uuid,
+                    manifest.namespace,
+                    manifest.id,
+                    source,
+                    manifest.url,
+                    yaml_content,
+                    assets_dir,
+                    manifest.version,
+                    now,
+                    now,
+                ),
+            )
+
+    async def _update_effect(
+        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        if yaml_content is None:
+            yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                """UPDATE effects SET namespace=?, effect_id=?, source=?, source_url=?,
+                   manifest_yaml=?, assets_dir=?, version=?, updated_at=?
+                   WHERE id=?""",
+                (
+                    manifest.namespace,
+                    manifest.id,
+                    source,
+                    manifest.url,
+                    yaml_content,
+                    assets_dir,
+                    manifest.version,
+                    now,
+                    uuid,
+                ),
+            )
+
+    async def effect_count(self) -> int:
+        row = await self._db.fetchone("SELECT COUNT(*) FROM effects")
+        return row[0] if row else 0
+
+    async def get_all_effects(self) -> list[dict[str, Any]]:
+        rows = await self._db.fetchall("SELECT * FROM effects ORDER BY installed_at DESC")
+        return [dict(row) for row in rows]

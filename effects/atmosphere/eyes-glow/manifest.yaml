@@ -1,0 +1,112 @@
+namespace: openeffect
+id: eyes-glow
+name: Eyes Glow
+description: >
+  A subtle luminous spark appears in the subject's eyes,
+  creating a cinematic mystical look while preserving realism and identity.
+
+version: "0.1.0"
+author: openeffect-team
+type: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - eyes
+  - glow
+  - mystical
+  - subtle
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits or close-ups where the eyes are clearly visible"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A calm woman standing in soft evening city lights"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous shot of the same subject from the input image.
+    A subtle luminous spark gradually appears in the eyes,
+    creating a soft cinematic eye shimmer.
+    Preserve the same identity, face, hairstyle, clothing, pose, and background.
+    The glow stays localized inside the irises and pupils,
+    with only a faint natural reflection nearby.
+    The subject remains planted in the same scene.
+    Only subtle natural micro-motion is allowed.
+    No cut, no scene replacement, no duplicate subject.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, full face glow, entire body glow, random neon streaks,
+    laser beams, energy explosion, fire from eyes, destructive energy,
+    weapon-like glow, heavy bloom, extreme overexposure, scary horror eyes,
+    smoke, blur, heavy jitter, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Close-up or medium close-up of the same subject from the input image.
+        A soft cinematic spark slowly appears in the eyes in one continuous shot.
+        The eyes gain a gentle luminous shimmer inside the irises and pupils,
+        with very light reflection around the eyelids only.
+        The glow should feel elegant, calm, and slightly magical,
+        not scary, not aggressive, and not like light is being emitted outward.
+        The same subject remains planted and recognizable throughout.
+        Only slight blink, breathing, or micro-expression is allowed.
+        Clean continuity, no cut, no scene replacement, no laser beams.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.52
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        The same subject's eyes develop a soft internal shimmer,
+        like a gentle luminous spark inside the irises.
+        Keep the same identity, face, outfit, pose, and scene.
+        The effect should stay subtle and localized to the eyes only,
+        with faint natural reflection nearby.
+        It should not feel like heat vision, beams, fire, or destructive power.
+        The subject stays planted with only subtle natural micro-motion.
+        No cut, no scene replacement, no duplicate subject.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 26
+        guidance_scale: 3.2
+        guidance_scale_2: 3.2
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

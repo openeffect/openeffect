@@ -1,0 +1,109 @@
+namespace: openeffect
+id: paparazzi-flash
+name: Paparazzi Flash
+description: >
+  Rapid camera flash bursts illuminate the subject like a paparazzi moment,
+  creating a stylish celebrity-style photo-call effect without changing the scene.
+
+version: "0.1.0"
+author: openeffect-team
+type: atmosphere
+
+tags:
+  - trending
+  - cinematic
+  - flash
+  - celebrity
+  - paparazzi
+  - dramatic
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with portraits or fashion-style photos where the subject is clearly visible"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A stylish woman standing outside a luxury hotel at night"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous shot of the same subject from the input image.
+    Brief photographic camera flashes fire intermittently from off-camera,
+    creating short clean white flash reflections on the face, clothing,
+    and surrounding scene.
+    Preserve the same identity, face, hairstyle, clothing, pose, and background.
+    The subject remains planted in the same scene.
+    Only subtle natural micro-motion is allowed.
+    No cut, no scene replacement, no duplicate subject.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, strong body translation, heavy jitter, blur,
+    overexposure, washed out face, washed out clothing, full-frame bleaching,
+    extreme glow bloom, fireworks, sparks, pyrotechnics, embers,
+    exploding lights, visible flare explosion, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium close-up or medium shot of the same subject from the input image.
+        Brief paparazzi camera flashes pop from off-camera in one continuous shot,
+        producing short clean photographic light hits across the face, outfit,
+        and background.
+        No visible fireworks, no sparks, no pyrotechnic light effects.
+        The same subject remains planted and recognizable throughout.
+        Only subtle blink, breathing, or slight hair movement is allowed.
+        Stylish celebrity photo-call energy, clean continuity, no cut,
+        no scene replacement.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.54
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        Sudden paparazzi flash bursts repeatedly illuminate the same subject
+        with crisp bright white strobe-like light.
+        Keep the same identity, face, outfit, pose, and scene.
+        The subject stays planted with only subtle natural micro-motion.
+        Stylish celebrity photo-call atmosphere, no cut, no scene replacement,
+        no duplicate subject.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

@@ -1,0 +1,13 @@
+client/node_modules/
+client/.vite/
+client/dist/
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+.git/
+.gitignore
+*.md
+install.sh
+install.ps1
+Makefile

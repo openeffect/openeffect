@@ -1,0 +1,102 @@
+namespace: openeffect
+id: orbit-subject
+name: Orbit Subject
+description: >
+  A cinematic orbital camera move circles around the subject,
+  creating dynamic depth, motion, and dramatic perspective.
+
+version: "0.1.0"
+author: openeffect-team
+type: camera-move
+
+tags:
+  - trending
+  - cinematic
+  - orbit
+  - parallax
+  - dramatic
+  - depth
+
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input.jpg
+
+inputs:
+  image:
+    type: image
+    role: start_frame
+    required: true
+    label: "Your photo"
+    hint: "Works best with a clearly separated subject and visible background depth"
+
+  scene_prompt:
+    type: text
+    role: prompt_input
+    required: false
+    label: "Describe the scene"
+    placeholder: "A stylish woman sitting on city steps at dusk"
+    max_length: 500
+    multiline: false
+
+generation:
+  models:
+    - kling-v3
+    - wan-2.2
+
+  default_model: kling-v3
+
+  prompt: >
+    A single continuous orbital camera move around the same subject from the input image.
+    The camera circles smoothly around the subject while preserving the same identity,
+    face, hairstyle, clothing, pose, and environment.
+    The subject remains planted in place.
+    Only subtle natural micro-motion is allowed.
+    Background depth and parallax shift naturally during the orbit.
+    No cut, no scene replacement, no duplicate subject, no walking motion.
+    {scene_prompt}
+
+  negative_prompt: >
+    cut, scene replacement, duplicate subject, extra people, warped face,
+    deformed anatomy, strong body translation, walking motion, heavy jitter,
+    flicker, blur, extreme fisheye, text, watermark
+
+  model_overrides:
+    kling-v3:
+      prompt: >
+        Medium shot of the same subject from the input image.
+        The camera performs a smooth cinematic orbit around the subject in one unbroken shot.
+        The subject remains planted and recognizable throughout the motion.
+        No walking, no body translation, only slight blink, breathing,
+        or subtle hair movement.
+        Strong natural parallax, realistic depth, clean continuity, no cut.
+        {scene_prompt}
+      model_params:
+        duration: 4
+        cfg_scale: 0.56
+        generate_audio: false
+
+    wan-2.2:
+      prompt: >
+        Continue from the input image in a single continuous shot.
+        The camera smoothly circles around the subject with natural orbital motion.
+        Keep the same identity, face, outfit, pose, and scene.
+        The subject stays planted; no walking or body translation.
+        Allow only subtle natural micro-motion while the background shifts with clear parallax.
+        Cinematic depth, realistic motion, no scene replacement, no cut.
+        {scene_prompt}
+      model_params:
+        num_frames: 49
+        frames_per_second: 16
+        resolution: 720p
+        aspect_ratio: auto
+        num_inference_steps: 27
+        guidance_scale: 3.5
+        guidance_scale_2: 3.5
+        shift: 5
+        acceleration: regular
+        enable_prompt_expansion: false
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        video_quality: medium
+        video_write_mode: balanced

@@ -172,14 +172,22 @@ export function EffectEditor() {
     }
   }
 
-  const effectName = savedManifest?.name ?? (editingEffectId ? 'Loading…' : 'New Effect')
+  // Show the canonical `namespace/id` — it's the stable handle authors
+  // reference and matches how the effect is keyed in the registry / URL,
+  // whereas the display `name` is free-form prose. `savedManifest` is
+  // always populated when this header renders (both `openEditor` and
+  // `openBlankEditor` set it synchronously before isOpen flips); the
+  // empty-string fallback is purely for the TypeScript null-check.
+  const effectTitle = savedManifest
+    ? `${savedManifest.namespace}/${savedManifest.id}`
+    : ''
 
   return (
     <div className="flex h-full flex-col bg-background">
       {/* Editor header */}
       <div className="flex shrink-0 items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-foreground">{effectName}</h2>
+          <h2 className="text-sm font-bold text-foreground">{effectTitle}</h2>
           {editingEffectId ? (
             <Badge variant="accent">Editing</Badge>
           ) : (

@@ -23,7 +23,10 @@ type: transform
 tags:
   - custom
 
-assets: {}
+assets:
+  preview: preview.mp4
+  inputs:
+    image: input-image.jpg
 
 inputs:
   image:

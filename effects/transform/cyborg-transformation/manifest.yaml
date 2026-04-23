@@ -21,7 +21,7 @@ tags:
 assets:
   preview: preview.mp4
   inputs:
-    image: input.jpg
+    image: input-image.jpg
 
 inputs:
   image:

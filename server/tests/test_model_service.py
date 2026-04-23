@@ -79,10 +79,6 @@ class TestGetCompatibleModelIds:
         assert "kling-v3" in start_only
         assert "kling-v3" in both
 
-        # Kling O3 image_to_video supports end_frame → in both
-        assert "kling-o3" in start_only
-        assert "kling-o3" in both
-
         # Pixverse V6 image_to_video has no end_frame → only in start_only
         assert "pixverse-v6" in start_only
         assert "pixverse-v6" not in both
@@ -114,7 +110,7 @@ class TestGetCompatibleModelIds:
 class TestPickVariant:
     def test_known_model_picks_image_to_video(self):
         assert pick_variant("wan-2.2", {"start_frame"}) == "image_to_video"
-        assert pick_variant("wan-2.6", {"start_frame"}) == "image_to_video"
+        assert pick_variant("kling-v3", {"start_frame"}) == "image_to_video"
 
     def test_empty_keys_still_picks_image_to_video(self):
         # Registry only has i2v — image_keys is effectively ignored today
@@ -189,26 +185,23 @@ class TestVariantImageHelpers:
 
 class TestGenerateAudio:
     def test_models_with_audio(self):
-        # Kling V3, Kling O3, PixVerse V6 all expose generate_audio
+        # Kling V3 and PixVerse V6 expose generate_audio
         assert model_has_generate_audio(MODELS_BY_ID["kling-v3"])
-        assert model_has_generate_audio(MODELS_BY_ID["kling-o3"])
         assert model_has_generate_audio(MODELS_BY_ID["pixverse-v6"])
 
     def test_models_without_audio(self):
-        # WAN 2.2, WAN 2.6, Kling 2.5 do not expose an AI-audio toggle
+        # WAN 2.2 does not expose an AI-audio toggle
         assert not model_has_generate_audio(MODELS_BY_ID["wan-2.2"])
-        assert not model_has_generate_audio(MODELS_BY_ID["wan-2.6"])
-        assert not model_has_generate_audio(MODELS_BY_ID["kling-2.5"])
 
 
 class TestRoleMappings:
-    def test_kling25_i2v_image_roles(self):
-        """Kling 2.5 i2v: wire keys `image_url` / `tail_image_url` carry the
+    def test_wan22_i2v_image_roles(self):
+        """WAN 2.2 i2v: wire keys `image_url` / `end_image_url` carry the
         `start_frame` / `end_frame` roles."""
-        params = get_provider_variant_params("kling-2.5", "image_to_video", "fal")
+        params = get_provider_variant_params("wan-2.2", "image_to_video", "fal")
         by_role = {p["role"]: p["key"] for p in params if "role" in p}
         assert by_role["start_frame"] == "image_url"
-        assert by_role["end_frame"] == "tail_image_url"
+        assert by_role["end_frame"] == "end_image_url"
 
     def test_kling_v3_i2v_image_roles(self):
         """Kling v3 i2v: wire keys `start_image_url` / `end_image_url` carry

@@ -129,70 +129,6 @@ MODELS: list[dict[str, Any]] = [
             },
         },
     },
-    # ── WAN 2.6 ───────────────────────────────────────────────────────────
-    # Hosted under the `wan/` org on fal.ai.
-    # docs: https://fal.ai/models/wan/v2.6/image-to-video
-    #
-    # Does NOT expose an AI-audio toggle. WAN 2.6 has a real `audio_url`
-    # field for user-provided audio, but we don't surface that as an input
-    # today; if needed, re-add it as a typed param with proper upload
-    # handling — not as a URL-string passthrough.
-    {
-        "id": "wan-2.6",
-        "name": "WAN 2.6",
-        "group": "WAN",
-        "description": "Longer videos up to 15s, 1080p quality",
-        "providers": {
-            "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "wan/v2.6/image-to-video",
-                        "cost": "$0.10–$0.15 per second (by resolution)",
-                        "params": [
-                            {"key": "image_url", "role": "start_frame", "type": "image", "required": True},
-                            # image_to_video has no aspect_ratio (inherited from source image)
-                            {"key": "duration", "ui": "main", "type": "select", "label": "Duration", "default": "5",
-                             "options": [{"value": "5", "label": "5s"}, {"value": "10", "label": "10s"}, {"value": "15", "label": "15s"}]},
-                            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "1080p",
-                             "options": [{"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
-                            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
-                            # Headless
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                            {"key": "enable_prompt_expansion", "ui": "none", "type": "boolean"},
-                            {"key": "multi_shots", "ui": "none", "type": "boolean"},
-                            {"key": "enable_safety_checker", "ui": "none", "type": "boolean"},
-                        ],
-                    },
-                },
-            },
-        },
-    },
-    # ── Kling 2.5 Turbo Pro ───────────────────────────────────────────────
-    {
-        "id": "kling-2.5",
-        "name": "Kling 2.5 Turbo",
-        "group": "Kling",
-        "description": "Fast and affordable",
-        "providers": {
-            "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
-                        "cost": "$0.35 for 5s, +$0.07 per extra second",
-                        "params": [
-                            {"key": "image_url",      "role": "start_frame", "type": "image", "required": True},
-                            {"key": "tail_image_url", "role": "end_frame",   "type": "image"},
-                            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
-                             "default": 5, "min": 5, "max": 10, "step": 5},
-                            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
-                             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1, "hint": "0-1 range"},
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                        ],
-                    },
-                },
-            },
-        },
-    },
     # ── Kling 3.0 V3 ──────────────────────────────────────────────────────
     {
         "id": "kling-v3",
@@ -216,35 +152,6 @@ MODELS: list[dict[str, Any]] = [
                             {"key": "negative_prompt", "ui": "none", "type": "text"},
                             {"key": "shot_type", "ui": "none", "type": "text"},
                             {"key": "elements", "ui": "none", "type": "text"},
-                        ],
-                    },
-                },
-            },
-        },
-    },
-    # ── Kling 3.0 O3 ──────────────────────────────────────────────────────
-    {
-        "id": "kling-o3",
-        "name": "Kling 3.0 O3",
-        "group": "Kling",
-        "description": "Best quality, supports AI audio",
-        "providers": {
-            "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "fal-ai/kling-video/o3/standard/image-to-video",
-                        "cost": "$0.084 per second (audio off), $0.112 with audio",
-                        "params": [
-                            {"key": "image_url",     "role": "start_frame", "type": "image", "required": True},
-                            {"key": "end_image_url", "role": "end_frame",   "type": "image"},
-                            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
-                             "default": 10, "min": 3, "max": 15, "step": 1},
-                            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
-                             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
-                            {"key": "generate_audio", "role": "generate_audio", "type": "boolean", "ui": "none"},
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                            {"key": "shot_type", "ui": "none", "type": "text"},
-                            {"key": "multi_prompt", "ui": "none", "type": "text"},
                         ],
                     },
                 },

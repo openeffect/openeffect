@@ -416,18 +416,6 @@ class TestTransformParams:
         assert wire["aspect_ratio"] == "16:9"
         assert wire["num_frames"] == 80
 
-    def test_kling25_image_to_video_keeps_duration_int(self):
-        """Kling 2.5's image_to_video variant keeps duration as an int."""
-        canonical = PromptBuilder.build_provider_io(
-            "kling-2.5",
-            "image_to_video",
-            "fal",
-            raw_params={"duration": 10},
-        )
-        wire = apply_wire("kling-2.5", "image_to_video", canonical)
-        assert wire["duration"] == 10
-        assert isinstance(wire["duration"], int)
-
     def test_variant_specific_known_set(self):
         """A param known in the i2v variant comes through; an unknown key is dropped."""
         params_i2v = PromptBuilder.build_provider_io(

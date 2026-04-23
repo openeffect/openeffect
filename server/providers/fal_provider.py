@@ -27,13 +27,6 @@ class FalProvider(BaseProvider):
             yield ProviderEvent(type="failed", error=f"No fal provider config for {model_id}")
             return
 
-        # Sanity check — the actual URL is resolved once the canonical dict
-        # is built, since callable endpoints can route off canonical values
-        # (see `resolve_endpoint` and kling's pro/standard split).
-        if provider_cfg.get("endpoint") is None:
-            yield ProviderEvent(type="failed", error=f"No endpoint for {model_id}")
-            return
-
         # Build a canonical-keyed args dict. Wire remap happens at the end.
         canonical: dict[str, Any] = {
             "prompt": input.prompt,
@@ -59,6 +52,9 @@ class FalProvider(BaseProvider):
         # populated — callable endpoints read canonical values to pick
         # their tier (e.g. kling 1080p → pro).
         endpoint = resolve_endpoint(provider_cfg, canonical)
+        if endpoint is None:
+            yield ProviderEvent(type="failed", error=f"No endpoint for {model_id}")
+            return
 
         # Rename canonicals to wire keys (and run the provider's optional
         # transform for derived/converted fields). Canonicals the provider

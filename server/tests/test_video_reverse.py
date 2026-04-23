@@ -1,14 +1,19 @@
 """Test video reversal via ffmpeg."""
 import asyncio
+import re
 import subprocess
 from pathlib import Path
+
+import imageio_ffmpeg
+
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def _create_test_video(path: Path, duration: float = 1.0) -> None:
     """Create a tiny test mp4 using ffmpeg."""
     subprocess.run(
         [
-            "ffmpeg", "-y", "-f", "lavfi", "-i",
+            FFMPEG, "-y", "-f", "lavfi", "-i",
             f"color=c=red:size=64x64:duration={duration}:rate=10",
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
             str(path),
@@ -17,6 +22,22 @@ def _create_test_video(path: Path, duration: float = 1.0) -> None:
         stderr=subprocess.DEVNULL,
         check=True,
     )
+
+
+def _probe_duration(path: Path) -> float:
+    """Read duration from ffmpeg's stderr banner — avoids needing a separate
+    ffprobe binary (imageio-ffmpeg bundles only ffmpeg)."""
+    result = subprocess.run(
+        [FFMPEG, "-i", str(path), "-f", "null", "-"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
+    if not match:
+        raise RuntimeError(f"No Duration line in ffmpeg output for {path}")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
 class TestVideoReverse:
@@ -30,7 +51,7 @@ class TestVideoReverse:
         assert input_path.stat().st_size > 0
 
         result = subprocess.run(
-            ["ffmpeg", "-y", "-i", str(input_path), "-vf", "reverse", "-af", "areverse", str(output_path)],
+            [FFMPEG, "-y", "-i", str(input_path), "-vf", "reverse", "-af", "areverse", str(output_path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -46,23 +67,14 @@ class TestVideoReverse:
         _create_test_video(input_path, duration=0.5)
 
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(input_path), "-vf", "reverse", "-af", "areverse", str(output_path)],
+            [FFMPEG, "-y", "-i", str(input_path), "-vf", "reverse", "-af", "areverse", str(output_path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
         )
 
-        # Probe both durations
-        def get_duration(path: Path) -> float:
-            result = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                capture_output=True, text=True,
-            )
-            return float(result.stdout.strip())
-
-        orig = get_duration(input_path)
-        rev = get_duration(output_path)
+        orig = _probe_duration(input_path)
+        rev = _probe_duration(output_path)
         assert abs(orig - rev) < 0.2  # within 200ms tolerance
 
     async def test_async_ffmpeg_reverse(self, tmp_path):
@@ -73,7 +85,7 @@ class TestVideoReverse:
         _create_test_video(input_path)
 
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-i", str(input_path),
+            FFMPEG, "-y", "-i", str(input_path),
             "-vf", "reverse", "-af", "areverse",
             str(output_path),
             stdout=asyncio.subprocess.DEVNULL,

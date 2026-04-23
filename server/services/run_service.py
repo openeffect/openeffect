@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import imageio_ffmpeg
 import uuid_utils
 
 from config.config_service import ConfigService
@@ -409,7 +410,7 @@ class RunService:
                             # ffmpeg has no business seeing FAL_KEY
                             child_env = {k: v for k, v in os.environ.items() if k != "FAL_KEY"}
                             proc = await asyncio.create_subprocess_exec(
-                                "ffmpeg", "-y", "-i", str(result_path),
+                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", str(result_path),
                                 "-vf", "reverse", "-af", "areverse",
                                 str(reversed_path),
                                 stdout=asyncio.subprocess.DEVNULL,

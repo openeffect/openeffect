@@ -175,6 +175,10 @@ export interface ModelInfo {
 
 export interface AppConfig {
   has_api_key: boolean
+  /** True when the server read the key from the `FAL_KEY` env var. In this
+   *  mode the key always wins over any keyring / DB value, so the UI
+   *  shows a read-only notice instead of the editable input. */
+  api_key_from_env: boolean
   theme: 'dark' | 'light' | 'auto'
   available_models: ModelInfo[]
   update_available: string | null

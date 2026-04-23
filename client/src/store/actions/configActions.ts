@@ -11,6 +11,7 @@ export async function loadConfig(): Promise<void> {
     setState((s) => {
       mutateSetConfig(s, {
         hasApiKey: config.has_api_key,
+        apiKeyFromEnv: config.api_key_from_env,
         theme,
         availableModels: config.available_models,
         updateAvailable: config.update_available,

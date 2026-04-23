@@ -36,6 +36,7 @@ class TestDefaults:
         config = await service.get_public_config()
         assert config == {
             "has_api_key": False,
+            "api_key_from_env": False,
             "theme": "dark",
             "keyring_available": True,
         }
@@ -119,6 +120,18 @@ class TestEnvPrecedence:
     ):
         monkeypatch.setenv("FAL_KEY", "sk-env-only")
         assert (await service.get_public_config())["has_api_key"] is True
+
+    async def test_api_key_from_env_flag_reflects_env(
+        self, service: ConfigService, _isolate_keyring, monkeypatch
+    ):
+        """Client uses `api_key_from_env` to swap the settings input for a
+        read-only notice — it should be True only when FAL_KEY is set."""
+        monkeypatch.setenv("FAL_KEY", "sk-env-only")
+        assert (await service.get_public_config())["api_key_from_env"] is True
+
+        monkeypatch.setenv("FAL_KEY", "")
+        await service.update({"fal_api_key": "sk-keychain"})
+        assert (await service.get_public_config())["api_key_from_env"] is False
 
     async def test_empty_env_falls_back_to_keychain(
         self, service: ConfigService, _isolate_keyring, monkeypatch

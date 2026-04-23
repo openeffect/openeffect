@@ -49,6 +49,11 @@ class ConfigService:
     async def get_public_config(self) -> dict[str, Any]:
         return {
             "has_api_key": bool(await self.get_api_key()),
+            # When FAL_KEY is set in the environment it wins over any
+            # keyring / DB value and can't be overridden from the UI.
+            # The client uses this to render a read-only settings notice
+            # instead of the editable input.
+            "api_key_from_env": bool(os.environ.get("FAL_KEY", "")),
             "theme": await self._get("theme"),
             "keyring_available": self._keyring_available,
         }

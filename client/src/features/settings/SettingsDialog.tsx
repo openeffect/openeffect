@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Cloud } from 'lucide-react'
 import { useStore } from '@/store'
-import { selectHasApiKey, selectTheme, selectAvailableModels, selectKeyringAvailable } from '@/store/selectors/configSelectors'
+import { selectHasApiKey, selectApiKeyFromEnv, selectTheme, selectAvailableModels, selectKeyringAvailable } from '@/store/selectors/configSelectors'
 import { setTheme, updateConfig } from '@/store/actions/configActions'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Input'
@@ -20,6 +20,7 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const hasApiKey = useStore(selectHasApiKey)
+  const apiKeyFromEnv = useStore(selectApiKeyFromEnv)
   const theme = useStore(selectTheme)
   const availableModels = useStore(selectAvailableModels)
   const keyringAvailable = useStore(selectKeyringAvailable)
@@ -53,7 +54,15 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 <Badge className="bg-success/10 text-success">Active</Badge>
               )}
             </div>
-            {keyringAvailable ? (
+            {apiKeyFromEnv ? (
+              // Env-provided keys always win in `ConfigService.get_api_key`,
+              // so hiding the input prevents users from "saving" a key that
+              // would be shadowed on the next read.
+              <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Key is set via the <code className="rounded bg-foreground/10 px-1 font-mono">FAL_KEY</code>{' '}
+                environment variable. To change it, update the env var and restart the app.
+              </p>
+            ) : keyringAvailable ? (
               <ApiKeyRow
                 apiKey={apiKey}
                 setApiKey={setApiKey}

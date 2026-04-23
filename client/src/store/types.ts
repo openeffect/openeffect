@@ -89,6 +89,7 @@ export interface HistorySlice {
 
 export interface ConfigSlice {
   hasApiKey: boolean
+  apiKeyFromEnv: boolean
   theme: ThemeSetting
   availableModels: ModelInfo[]
   updateAvailable: string | null

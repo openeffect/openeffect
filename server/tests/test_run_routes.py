@@ -1,11 +1,10 @@
-"""HTTP-level tests for /api/run, /api/playground/run, /api/run/:id/stream.
+"""HTTP-level tests for /api/run and /api/playground/run.
 
 A stub `ModelProviderFactory.create` returns a `FakeProvider` whose event
-stream is set per-test, so we can exercise the route shape + SSE framing
-without touching fal.ai.
+stream is set per-test, so we can exercise the route shape without touching
+fal.ai.
 """
 import asyncio
-import json
 import time
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -254,47 +253,3 @@ class TestStartPlaygroundRun:
         assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
 
 
-# ─── GET /api/run/{job_id}/stream ────────────────────────────────────────────
-
-
-class TestStreamRun:
-    def test_stream_replays_completed_job_from_db(self, client):
-        """Once the background task has written `completed` to the DB, the
-        stream endpoint replays that single event even if the in-memory job
-        is already evicted — the client-resume path relies on this."""
-        FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
-        resp = client.post("/api/run", json={
-            "effect_id": "test-uuid-001",
-            "model_id": "wan-2.2",
-            "provider_id": "fal",
-            "inputs": {"prompt": "a cat"},
-            "output": {},
-        })
-        assert resp.status_code == 200
-        job_id = resp.json()["job_id"]
-
-        final = _wait_for_record(client, job_id)
-        assert final is not None and final["status"] == "completed"
-
-        stream_resp = client.get(f"/api/run/{job_id}/stream")
-        assert stream_resp.status_code == 200
-        assert stream_resp.headers["content-type"].startswith("text/event-stream")
-
-        body = stream_resp.text
-        # SSE framing is `event: <name>\ndata: <json>\n\n`
-        assert "event: completed" in body
-        data_line = next(
-            line for line in body.splitlines() if line.startswith("data:")
-        )
-        payload = json.loads(data_line[len("data:"):].strip())
-        assert payload["job_id"] == job_id
-
-    def test_stream_unknown_job_returns_failed_event(self, client):
-        stream_resp = client.get("/api/run/does-not-exist/stream")
-        assert stream_resp.status_code == 200
-
-        body = stream_resp.text
-        assert "event: failed" in body
-        data_line = next(line for line in body.splitlines() if line.startswith("data:"))
-        payload = json.loads(data_line[len("data:"):].strip())
-        assert payload["code"] == "JOB_NOT_FOUND"

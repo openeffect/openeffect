@@ -5,6 +5,7 @@ import { mutateCloseEditor } from '../mutations/editorMutations'
 import { restoreFromUrl } from './runActions'
 import { openEditor, openBlankEditor } from './editorActions'
 import { openPlayground } from './playgroundActions'
+import { bootstrap as bootstrapSse } from '../sseManager'
 import { api } from '@/utils/api'
 import { parseRoute, navigate, replaceRoute, initRouteListener } from '@/utils/router'
 import type { EffectManifest } from '@/types/api'
@@ -68,6 +69,10 @@ export async function loadEffects(): Promise<void> {
         mutateSetFilters(s, { type: route.type, source: route.source, search: route.search })
       }
     }, 'effects/load')
+
+    // Rediscover any jobs still running on the server (survives a refresh)
+    // and start streaming their progress into the store. Fire-and-forget.
+    void bootstrapSse()
 
     initRouteListener(
       (dbId, runId, filters) => {

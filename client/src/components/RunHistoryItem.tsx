@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, AlertTriangle, Download, Trash2, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
+import { selectJobs } from '@/store/selectors/runSelectors'
 import { formatRelativeTime } from '@/utils/formatters'
 import { Progress } from '@/components/ui/Progress'
 import { cn } from '@/utils/cn'
@@ -22,8 +23,17 @@ interface RunHistoryItemProps {
 export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick, onDelete }: RunHistoryItemProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const availableModels = useStore(selectAvailableModels)
+  const jobs = useStore(selectJobs)
   const modelName = availableModels.find((m) => m.id === item.model_id)?.name ?? item.model_id
   const { badges, imageRefs } = parseRunParams(item.inputs)
+
+  // Prefer the live SSE-backed job state over the record's DB snapshot so
+  // the history row shows the same numbers as the run view (otherwise the
+  // record's progress is whatever the server last persisted, which can lag
+  // several seconds behind reality).
+  const liveJob = jobs.get(item.id)
+  const status = liveJob?.status ?? item.status
+  const progress = liveJob?.progress ?? item.progress
 
   // Prepend model as first badge
   const allBadges: [string, string][] = []
@@ -43,13 +53,13 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
         <div
           className={cn(
             'shrink-0 w-[2px] self-stretch rounded-full',
-            item.status === 'completed' && 'bg-success',
-            item.status === 'failed' && 'bg-destructive',
-            item.status === 'processing' && 'bg-primary',
+            status === 'completed' && 'bg-success',
+            status === 'failed' && 'bg-destructive',
+            status === 'processing' && 'bg-primary',
           )}
         />
         {/* Video thumbnail */}
-        {item.status === 'completed' && item.video_url && (
+        {status === 'completed' && item.video_url && (
           <div className="shrink-0 w-20 self-stretch overflow-hidden rounded-md border bg-muted">
             <video
               src={item.video_url}
@@ -108,9 +118,9 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
                 </div>
               ))}
             </div>
-            {item.status !== 'processing' && (
+            {status !== 'processing' && (
               <div className="flex items-center gap-1">
-                {item.status === 'completed' && item.video_url && (
+                {status === 'completed' && item.video_url && (
                   <a
                     href={item.video_url}
                     download
@@ -152,9 +162,9 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
           </div>
 
           {/* Processing progress */}
-          {item.status === 'processing' && (
+          {status === 'processing' && (
             <div className="mt-1.5">
-              <Progress progress={item.progress} />
+              <Progress progress={progress} />
             </div>
           )}
         </div>

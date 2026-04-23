@@ -184,40 +184,52 @@ class TestStartRun:
         storage.increment_ref.assert_called_once_with("ref-123")
 
 
-class TestStreamCompleted:
-    async def test_stream_returns_completed_for_finished_job(self, run_service, history, tmp_path):
-        """If a job is already completed in DB, stream should yield completed event."""
-        with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
-            job_id = await run_service.start(RunRequest(
-                effect_id="test-uuid-001",
-                model_id="wan-2.2",
-                provider_id="fal",
-                inputs={},
-                output={},
-            ))
+class TestBroadcast:
+    """The multiplexed /api/runs/stream endpoint fans out via _broadcast.
+    Verify every registered subscriber sees every event."""
 
-        # Manually complete it in DB
-        await history.complete(job_id, "/api/runs/test/result", 5000)
+    async def test_two_subscribers_receive_same_event(self, run_service):
+        # Register two consumers, emit one broadcast, drain one event from each.
+        queue_a = asyncio.Queue[dict]()
+        queue_b = asyncio.Queue[dict]()
+        run_service._broadcast_queues.add(queue_a)
+        run_service._broadcast_queues.add(queue_b)
 
-        # Remove from in-memory jobs so stream falls back to DB
-        run_service._jobs.pop(job_id, None)
+        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 42}})
 
-        events = []
-        async for event in run_service.stream(job_id):
-            events.append(event)
+        ev_a = await asyncio.wait_for(queue_a.get(), timeout=0.5)
+        ev_b = await asyncio.wait_for(queue_b.get(), timeout=0.5)
+        assert ev_a == ev_b == {"event": "progress", "data": {"job_id": "x", "progress": 42}}
 
-        assert len(events) == 1
-        assert events[0]["event"] == "completed"
-        assert events[0]["data"]["video_url"] == "/api/runs/test/result"
+    async def test_subscriber_added_after_event_misses_it(self, run_service):
+        """Broadcast doesn't buffer history — late subscribers see future events only."""
+        queue_a = asyncio.Queue[dict]()
+        run_service._broadcast_queues.add(queue_a)
+        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 10}})
 
-    async def test_stream_returns_failed_for_missing_job(self, run_service):
-        events = []
-        async for event in run_service.stream("nonexistent-id"):
-            events.append(event)
+        queue_b = asyncio.Queue[dict]()
+        run_service._broadcast_queues.add(queue_b)
+        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 20}})
 
-        assert len(events) == 1
-        assert events[0]["event"] == "failed"
-        assert events[0]["data"]["code"] == "JOB_NOT_FOUND"
+        # A got both, B got only the second.
+        assert (await queue_a.get())["data"]["progress"] == 10
+        assert (await queue_a.get())["data"]["progress"] == 20
+        assert (await queue_b.get())["data"]["progress"] == 20
+        assert queue_b.empty()
+
+    async def test_full_subscriber_is_skipped_not_blocking(self, run_service):
+        """A QueueFull on one subscriber must not stall the event path."""
+        slow = asyncio.Queue[dict](maxsize=1)
+        fast = asyncio.Queue[dict](maxsize=10)
+        slow.put_nowait({"event": "seed", "data": {}})  # fill slow to capacity
+        run_service._broadcast_queues.add(slow)
+        run_service._broadcast_queues.add(fast)
+
+        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 55}})
+
+        assert fast.qsize() == 1
+        # Slow is still full with its seed; the broadcast silently dropped for it.
+        assert slow.qsize() == 1
 
 
 class TestJobEviction:

@@ -127,10 +127,17 @@ export const api = {
     }),
 
   // Runs (history)
-  getRuns: (limit = 50, offset = 0, effectId?: string, kind?: 'effect' | 'playground') => {
+  getRuns: (
+    limit = 50,
+    offset = 0,
+    effectId?: string,
+    kind?: 'effect' | 'playground',
+    status?: 'processing' | 'completed' | 'failed',
+  ) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
     if (effectId) params.set('effect_id', effectId)
     if (kind) params.set('kind', kind)
+    if (status) params.set('status', status)
     return request<RunsResponse>(`/api/runs?${params}`)
   },
 

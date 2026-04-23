@@ -129,6 +129,7 @@ class HistoryService:
         offset: int = 0,
         effect_id: str | None = None,
         kind: str | None = None,
+        status: str | None = None,
     ) -> list[RunRecord]:
         limit = max(1, min(limit, 1000))
         offset = max(0, offset)
@@ -140,6 +141,9 @@ class HistoryService:
         if kind:
             clauses.append("kind=?")
             params.append(kind)
+        if status:
+            clauses.append("status=?")
+            params.append(status)
         where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
         params.extend([limit, offset])
         rows = await self._db.fetchall(

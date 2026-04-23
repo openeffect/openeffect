@@ -37,12 +37,16 @@ async def start_playground_run(req: PlaygroundRunRequest, request: Request):
         raise unauthorized(str(e), ErrorCode.NO_API_KEY)
 
 
-@router.get("/run/{job_id}/stream")
-async def stream_run(job_id: str, request: Request):
+@router.get("/runs/stream")
+async def stream_runs(request: Request):
+    """Multiplexed SSE — one connection, all in-flight jobs. Each `data`
+    payload carries its own `job_id` so the client can route events to
+    the right store entry. The client holds this open for as long as it's
+    tracking any job and closes it when its tracked set empties."""
     run_service = request.app.state.run_service
 
     async def event_stream():
-        async for event in run_service.stream(job_id):
+        async for event in run_service.stream_all():
             yield f"event: {event['event']}\ndata: {json.dumps(event['data'])}\n\n"
 
     return StreamingResponse(

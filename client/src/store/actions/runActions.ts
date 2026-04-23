@@ -7,6 +7,7 @@ import {
 } from '../mutations/runMutations'
 import { mutateSetRightTab } from '../mutations/effectsMutations'
 import { refreshLoadedHistories } from './historyActions'
+import { trackJob } from '../sseManager'
 import { api } from '@/utils/api'
 import { navigate } from '@/utils/router'
 import { buildRestoredParamsFromRecord } from '@/utils/runRecord'
@@ -92,6 +93,7 @@ export async function startRun(
     mutateSetLastAppliedRunId(s, response.job_id)
   }, 'run/start')
 
+  trackJob(response.job_id)
   navigate(`/effects/${manifest.db_id}`, { run: response.job_id })
   refreshLoadedHistories()
   return response.job_id

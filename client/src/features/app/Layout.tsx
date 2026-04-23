@@ -15,7 +15,6 @@ import { selectViewingJobId, selectJobs, selectViewingRunRecord } from '@/store/
 import { selectEditorIsOpen } from '@/store/selectors/editorSelectors'
 import { selectShowOnboarding } from '@/store/selectors/configSelectors'
 import { selectPlaygroundIsOpen } from '@/store/selectors/playgroundSelectors'
-import { useSse } from '@/hooks/useSse'
 
 const PANEL_WIDTH_PERCENT = 35
 const SLIDE_DURATION = 0.3
@@ -37,8 +36,6 @@ export function Layout() {
   const showOnboarding = useStore(selectShowOnboarding)
   const isEditorOpen = useStore(selectEditorIsOpen)
   const isPlaygroundOpen = useStore(selectPlaygroundIsOpen)
-
-  useSse(viewingJobId)
 
   const rightOpen = !!selectedId || isEditorOpen || isPlaygroundOpen
   const activeJob = viewingJobId ? activeJobs.get(viewingJobId) : null

@@ -8,6 +8,7 @@ import {
   mutateSetViewingRunRecord,
 } from '../mutations/runMutations'
 import { refreshLoadedHistories } from './historyActions'
+import { trackJob } from '../sseManager'
 import { api } from '@/utils/api'
 import { navigate } from '@/utils/router'
 import type { PlaygroundRunRequest } from '@/types/api'
@@ -118,6 +119,7 @@ export async function startPlaygroundRun(args: {
     mutateSetLastAppliedRunId(s, response.job_id)
   }, 'playground/run/start')
 
+  trackJob(response.job_id)
   navigate('/playground', { run: response.job_id })
   refreshLoadedHistories()
 

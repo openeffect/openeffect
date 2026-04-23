@@ -13,6 +13,11 @@ export function mutateClearViewingJob(s: AppState) {
 export function mutateSetViewingRunRecord(s: AppState, record: RunRecord | null) {
   s.run.viewingRunRecord = record
   if (record) {
+    // Keep `viewingJobId` aligned with the record so the run view's live
+    // overlay lookup (`activeJobs.get(viewingJobId)`) finds the SSE-backed
+    // job entry after a refresh or a history click — otherwise it reads
+    // the stale DB progress and shows 0% until the next SSE tick.
+    s.run.viewingJobId = record.id
     s.run.leftPanel = 'run-result'
   }
 }

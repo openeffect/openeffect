@@ -17,9 +17,12 @@ async def get_runs(
     offset: int = 0,
     effect_id: str | None = None,
     kind: str | None = None,
+    status: str | None = None,
 ):
     history = request.app.state.history_service
-    items = await history.get_all(limit=limit, offset=offset, effect_id=effect_id, kind=kind)
+    items = await history.get_all(
+        limit=limit, offset=offset, effect_id=effect_id, kind=kind, status=status,
+    )
     total = await history.count(effect_id=effect_id, kind=kind)
     active_count = await history.active_count()
     return {

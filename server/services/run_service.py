@@ -72,7 +72,6 @@ class RunJob:
         self.message = "Starting..."
         self.video_url: str | None = None
         self.error: str | None = None
-        self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         self.started_at = time.time()
 
 
@@ -91,6 +90,10 @@ class RunService:
         self._storage = storage_service
         self._model_service = model_service
         self._jobs: dict[str, RunJob] = {}
+        # Shared event fan-out for /api/runs/stream. Every event produced for
+        # any in-flight job is pushed into each registered queue; a subscriber
+        # iterates its queue to build the SSE stream.
+        self._broadcast_queues: set[asyncio.Queue[dict[str, Any]]] = set()
 
     async def start(self, request: RunRequest) -> str:
         # Accept either a DB UUID or a namespace/id for `effect_id`
@@ -299,45 +302,33 @@ class RunService:
 
         return job_id
 
-    async def stream(self, job_id: str) -> AsyncIterator[dict[str, Any]]:
-        job = self._jobs.get(job_id)
+    def _broadcast(self, event: dict[str, Any]) -> None:
+        """Fan out an event to every open broadcast subscriber. Sync on purpose
+        — `put_nowait` can't stall, and a slow/dead consumer's QueueFull is
+        silently dropped for that one subscriber so the event path never
+        blocks the provider."""
+        for queue in list(self._broadcast_queues):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                continue
 
-        if not job:
-            record = await self._history.get_by_id(job_id)
-            if record:
-                if record.status == "completed":
-                    yield {
-                        "event": "completed",
-                        "data": {
-                            "job_id": job_id,
-                            "video_url": record.video_url,
-                            "duration_ms": record.duration_ms,
-                        },
-                    }
-                elif record.status == "failed":
-                    yield {
-                        "event": "failed",
-                        "data": {
-                            "job_id": job_id,
-                            "error": record.error or "Run failed",
-                            "code": "RUN_FAILED",
-                        },
-                    }
-            else:
-                yield {
-                    "event": "failed",
-                    "data": {"job_id": job_id, "error": "Job not found", "code": "JOB_NOT_FOUND"},
-                }
-            return
-
+    async def stream_all(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield every event from every in-flight job to a single subscriber.
+        Caller iterates and forwards to SSE. A keepalive frame fires every
+        15s of idle so intermediate proxies don't drop the connection."""
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
+        self._broadcast_queues.add(queue)
         try:
             while True:
-                event = await job.events.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield {"event": "keepalive", "data": {}}
+                    continue
                 yield event
-                if event["event"] in ("completed", "failed"):
-                    break
         finally:
-            self._jobs.pop(job_id, None)
+            self._broadcast_queues.discard(queue)
 
     async def _execute_provider(
         self,
@@ -367,7 +358,7 @@ class RunService:
                     job.progress = event.progress or 0
                     job.message = event.message or ""
                     await self._history.update_progress(job.job_id, job.progress, job.message)
-                    await job.events.put({
+                    self._broadcast({
                         "event": "progress",
                         "data": {"job_id": job.job_id, "progress": job.progress, "message": job.message},
                     })
@@ -418,7 +409,7 @@ class RunService:
                     # Update the DB record to point to our API endpoint
                     api_video_url = f"/api/runs/{job.job_id}/result"
                     await self._history.complete(job.job_id, api_video_url, duration_ms)
-                    await job.events.put({
+                    self._broadcast({
                         "event": "completed",
                         "data": {"job_id": job.job_id, "video_url": api_video_url, "duration_ms": duration_ms},
                     })
@@ -426,7 +417,7 @@ class RunService:
                     job.status = "failed"
                     job.error = event.error
                     await self._history.fail(job.job_id, event.error or "Unknown error")
-                    await job.events.put({
+                    self._broadcast({
                         "event": "failed",
                         "data": {"job_id": job.job_id, "error": event.error, "code": "RUN_FAILED"},
                     })
@@ -441,7 +432,7 @@ class RunService:
         job.status = "failed"
         job.error = error_msg
         await self._history.fail(job.job_id, error_msg)
-        await job.events.put({
+        self._broadcast({
             "event": "failed",
             "data": {"job_id": job.job_id, "error": error_msg, "code": "INTERNAL_ERROR"},
         })

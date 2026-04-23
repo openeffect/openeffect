@@ -26,7 +26,6 @@ from services.model_service import (
     ModelService,
     get_compatible_model_ids,
     model_supported_image_keys,
-    pick_variant,
 )
 from services.storage_service import StorageService
 
@@ -151,15 +150,8 @@ class RunService:
             raw_params.update(request.output)
         if request.user_params:
             raw_params.update(request.user_params)
-        image_roles = {
-            getattr(field, "role", "") or "start_frame"
-            for key, field in manifest.inputs.items()
-            if field.type == "image" and key in (request.inputs or {})
-        }
-        variant_key = pick_variant(request.model_id, image_roles) or "image_to_video"
         params = PromptBuilder.build_provider_io(
             request.model_id,
-            variant_key,
             request.provider_id,
             raw_params=raw_params,
             manifest=manifest,
@@ -205,7 +197,6 @@ class RunService:
             parameters={
                 **params,
                 "_model_id": request.model_id,
-                "_variant_key": variant_key,
             },
         )
 
@@ -261,10 +252,8 @@ class RunService:
             raw_params.update(request.output)
         if request.user_params:
             raw_params.update(request.user_params)
-        variant_key = pick_variant(request.model_id, set(image_inputs.keys())) or "image_to_video"
         params = PromptBuilder.build_provider_io(
             request.model_id,
-            variant_key,
             request.provider_id,
             raw_params=raw_params,
         )
@@ -301,7 +290,6 @@ class RunService:
             parameters={
                 **params,
                 "_model_id": request.model_id,
-                "_variant_key": variant_key,
             },
         )
 

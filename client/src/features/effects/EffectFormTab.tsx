@@ -12,7 +12,13 @@ import {
   selectEditorLastSavedYaml,
 } from '@/store/selectors/editorSelectors'
 import { startRun } from '@/store/actions/runActions'
-import { advancedParams as advancedParamsOf, aiAudioSwitch, lockedKeys, mainParams, paramDefault, providerVariant } from '@/utils/modelParams'
+import {
+  effectAdvancedParams,
+  effectMainParams,
+  lockedKeys,
+  paramDefault,
+  providerVariant,
+} from '@/utils/modelParams'
 import { EffectFormRenderer } from './EffectFormRenderer'
 import { EffectFormField } from './EffectFormField'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -66,9 +72,8 @@ export function EffectFormTab() {
   })
   const [selectedModel, setSelectedModel] = useState(defaultModel)
   const [selectedProvider, setSelectedProvider] = useState('')
-  const [outputValues, setOutputValues] = useState<Record<string, string | number>>({})
+  const [outputValues, setOutputValues] = useState<Record<string, string | number | boolean>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
-  const [generateAudio, setGenerateAudio] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -83,14 +88,13 @@ export function EffectFormTab() {
     () => manifest ? lockedKeys(manifest, selectedModel) : new Set<string>(),
     [manifest, selectedModel],
   )
-  const outputParams = mainParams(variant).filter((p) => !locked.has(p.key))
-  const advancedParams = advancedParamsOf(variant)
+  const outputParams = effectMainParams(variant).filter((p) => !locked.has(p.key))
+  const advancedParams = effectAdvancedParams(variant)
     .filter((p) => !locked.has(p.key))
     .map((p) => {
       const v = manifest ? paramDefault(manifest, selectedModel, p.key) : undefined
       return v !== undefined ? { ...p, default: v } : p
     })
-  const audioSwitch = aiAudioSwitch(modelInfo)
 
   // Auto-select first available provider when model changes. Render-time
   // prev-state comparison instead of useEffect so we don't trigger a
@@ -114,7 +118,7 @@ export function EffectFormTab() {
     const skip = prevSeedKey === ''
     setPrevSeedKey(seedKey)
     if (!skip) {
-      const defaults: Record<string, string | number> = {}
+      const defaults: Record<string, string | number | boolean> = {}
       for (const param of outputParams) {
         const v = manifest ? paramDefault(manifest, selectedModel, param.key) : undefined
         const fallback = v ?? param.default
@@ -165,10 +169,6 @@ export function EffectFormTab() {
 
       const restored = restoredParams.userParams ?? {}
       setAdvancedValues(restored)
-
-      // Restore audio toggle from user_params
-      const audioOn = !!(restored.generate_audio || restored.generate_audio_switch)
-      setGenerateAudio(audioOn)
     }
   }
 
@@ -254,17 +254,13 @@ export function EffectFormTab() {
     setSubmitError(null)
     setIsGenerating(true)
     try {
-      const finalAdvanced = { ...advancedValues }
-      if (generateAudio && audioSwitch) {
-        finalAdvanced[audioSwitch.key] = true
-      }
       await startRun(
         manifest,
         values,
         selectedModel || defaultModel,
         selectedProvider,
         outputValues,
-        finalAdvanced,
+        advancedValues,
       )
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Run failed')
@@ -304,15 +300,6 @@ export function EffectFormTab() {
               />
             ))}
           </div>
-        )}
-
-        {/* Audio toggle — shown when model supports it and effect isn't reversed */}
-        {audioSwitch && !manifest?.generation?.reverse && (
-          <Checkbox
-            label="Generate audio"
-            checked={generateAudio}
-            onCheckedChange={(v) => setGenerateAudio(v === true)}
-          />
         )}
 
         {(advancedParams.length > 0 || advancedInputs.length > 0) && (
@@ -434,9 +421,27 @@ function AdvancedImageField({ schema, value, assetUrl, onChange, onReset }: {
   )
 }
 
-/* --- Renders a single model parameter (select/number/slider) --- */
+/* --- Renders a single model parameter (select/number/slider/boolean) --- */
 
-function ModelParamField({ param, value, onChange }: { param: ModelParam; value: string | number; onChange: (v: string | number) => void }) {
+function ModelParamField({
+  param,
+  value,
+  onChange,
+}: {
+  param: ModelParam
+  value: string | number | boolean
+  onChange: (v: string | number | boolean) => void
+}) {
+  if (param.type === 'boolean') {
+    return (
+      <Checkbox
+        label={param.label ?? param.key}
+        checked={value === true}
+        onCheckedChange={(v) => onChange(v === true)}
+      />
+    )
+  }
+
   if (param.type === 'select' && param.options) {
     return (
       <div className="space-y-2">
@@ -467,7 +472,7 @@ function ModelParamField({ param, value, onChange }: { param: ModelParam; value:
         <Label variant="form">{param.label}</Label>
         <Input
           type="number"
-          value={value}
+          value={String(value)}
           min={param.min}
           max={param.max}
           step={param.step}

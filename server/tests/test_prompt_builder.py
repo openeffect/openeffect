@@ -15,20 +15,17 @@ from effects.validator import (
     ModelParam,
     SelectOption,
 )
-from services.model_service import canonical_to_wire, get_provider_variant
+from services.model_service import canonical_to_wire, get_model, get_provider
 
 
-def apply_wire(model_id: str, variant_key: str, canonical: dict) -> dict:
+def apply_wire(model_id: str, canonical: dict) -> dict:
     """Simulate the full provider-layer wire pass: transform + canonical→wire.
     Kept here so the transform-behavior tests still integrate against the
     real provider config, even though `build_provider_io` no longer runs
     transforms itself."""
-    cfg = get_provider_variant(model_id, variant_key, "fal") or {}
-    result = dict(canonical)
-    transform = cfg.get("transform_params")
-    if transform is not None:
-        result = transform(result)
-    return canonical_to_wire(cfg.get("params", []), result)
+    model = get_model(model_id) or {}
+    provider = get_provider(model_id, "fal") or {}
+    return canonical_to_wire(model, provider, canonical)
 
 
 def make_manifest(**overrides) -> EffectManifest:
@@ -54,8 +51,8 @@ def make_manifest(**overrides) -> EffectManifest:
             negative_prompt="low quality, blurry",
             models=["kling-v3", "wan-2.2"],
             default_model="kling-v3",
-            model_params={
-                "cfg_scale": ModelParam(default=7.5),
+            params={
+                "guidance_scale": ModelParam(default=7.5),
                 "num_inference_steps": ModelParam(default=30),
             },
             model_overrides={},
@@ -101,7 +98,7 @@ class TestBuildPrompt:
                 prompt="Shot with {mood} mood. High quality.",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={},
+                params={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "kling-v3", {"mood": "dramatic"})
@@ -128,7 +125,7 @@ class TestBuildPrompt:
                 prompt="Cinematic {style} transition.",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={},
+                params={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "kling-v3", {"style": "liquid"})
@@ -141,7 +138,7 @@ class TestBuildPrompt:
                 prompt="Default template. {prompt}",
                 models=["kling-v3", "wan-2.2"],
                 default_model="kling-v3",
-                model_params={},
+                params={},
                 model_overrides={
                     "kling-v3": ModelOverride(prompt="Kling template. {prompt}"),
                 },
@@ -158,7 +155,7 @@ class TestBuildPrompt:
                 prompt="Shot with {unknown_field} effect.",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={},
+                params={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "kling-v3", {})
@@ -171,7 +168,7 @@ class TestBuildPrompt:
                 prompt="Start  {prompt}   end.",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={},
+                params={},
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "kling-v3", {"prompt": ""})
@@ -186,32 +183,29 @@ class TestBuildPrompt:
 # Transform behavior is covered in TestTransformParams.
 
 class TestBuildProviderIO:
-    def test_unknown_key_in_model_params_dropped(self):
+    def test_unknown_key_in_params_dropped(self):
         manifest = make_manifest(
             generation=GenerationConfig(
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={
-                    "cfg_scale": ModelParam(default=0.7),
+                params={
+                    "guidance_scale": ModelParam(default=0.7),
                     "unknown_param": ModelParam(default=42),
                 },
             ),
         )
-        params = PromptBuilder.build_provider_io("kling-v3", "image_to_video", "fal", manifest=manifest)
-        assert params["cfg_scale"] == 0.7
+        params = PromptBuilder.build_provider_io("kling-v3", "fal", manifest=manifest)
+        assert params["guidance_scale"] == 0.7
         assert "unknown_param" not in params
 
     def test_unknown_key_in_raw_params_dropped(self):
         manifest = make_manifest()
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.8, "fake_key": 99},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.8, "fake_key": 99},
             manifest=manifest,
         )
-        assert params["cfg_scale"] == 0.8
+        assert params["guidance_scale"] == 0.8
         assert "fake_key" not in params
 
     def test_manifest_default_lands_in_result(self):
@@ -220,11 +214,11 @@ class TestBuildProviderIO:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(default=0.8)},
+                params={"guidance_scale": ModelParam(default=0.8)},
             ),
         )
-        params = PromptBuilder.build_provider_io("kling-v3", "image_to_video", "fal", manifest=manifest)
-        assert params["cfg_scale"] == 0.8
+        params = PromptBuilder.build_provider_io("kling-v3", "fal", manifest=manifest)
+        assert params["guidance_scale"] == 0.8
 
     def test_model_override_replaces_top_level(self):
         manifest = make_manifest(
@@ -232,14 +226,14 @@ class TestBuildProviderIO:
                 prompt="test",
                 models=["kling-v3", "wan-2.2"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(default=0.5)},
+                params={"guidance_scale": ModelParam(default=0.5)},
                 model_overrides={
-                    "kling-v3": ModelOverride(model_params={"cfg_scale": ModelParam(default=0.9)}),
+                    "kling-v3": ModelOverride(params={"guidance_scale": ModelParam(default=0.9)}),
                 },
             ),
         )
-        params = PromptBuilder.build_provider_io("kling-v3", "image_to_video", "fal", manifest=manifest)
-        assert params["cfg_scale"] == 0.9
+        params = PromptBuilder.build_provider_io("kling-v3", "fal", manifest=manifest)
+        assert params["guidance_scale"] == 0.9
 
     def test_raw_params_beat_manifest_defaults(self):
         manifest = make_manifest(
@@ -247,23 +241,20 @@ class TestBuildProviderIO:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(default=0.5)},
+                params={"guidance_scale": ModelParam(default=0.5)},
                 model_overrides={
-                    "kling-v3": ModelOverride(model_params={"cfg_scale": ModelParam(default=0.7)}),
+                    "kling-v3": ModelOverride(params={"guidance_scale": ModelParam(default=0.7)}),
                 },
             ),
         )
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.95},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.95},
             manifest=manifest,
         )
-        assert params["cfg_scale"] == 0.95
+        assert params["guidance_scale"] == 0.95
 
     def test_no_raw_params_no_manifest_returns_empty(self):
-        params = PromptBuilder.build_provider_io("kling-v3", "image_to_video", "fal")
+        params = PromptBuilder.build_provider_io("kling-v3", "fal")
         assert params == {}
 
     def test_unknown_model_returns_empty(self):
@@ -272,10 +263,10 @@ class TestBuildProviderIO:
                 prompt="test",
                 models=["unknown-model"],
                 default_model="unknown-model",
-                model_params={"cfg_scale": ModelParam(default=0.5)},
+                params={"guidance_scale": ModelParam(default=0.5)},
             ),
         )
-        params = PromptBuilder.build_provider_io("unknown-model", "image_to_video", "fal", manifest=manifest)
+        params = PromptBuilder.build_provider_io("unknown-model", "fal", manifest=manifest)
         assert params == {}
 
     def test_unknown_provider_returns_empty(self):
@@ -285,29 +276,25 @@ class TestBuildProviderIO:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(default=0.5)},
+                params={"guidance_scale": ModelParam(default=0.5)},
             ),
         )
-        params = PromptBuilder.build_provider_io(
-            "kling-v3", "image_to_video", "replicate",
-            raw_params={"cfg_scale": 0.9},
+        params = PromptBuilder.build_provider_io("kling-v3", "replicate",
+            raw_params={"guidance_scale": 0.9},
             manifest=manifest,
         )
         assert params == {}
 
     def test_playground_mode_no_manifest(self):
         """Playground path: no manifest, route raw_params via registry."""
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.8, "duration": 6, "fake": "dropped"},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.8, "duration": 6, "fake": "dropped"},
         )
-        assert params == {"cfg_scale": 0.8, "duration": 6}
+        assert params == {"guidance_scale": 0.8, "duration": 6}
 
     def test_prompt_input_keys_never_in_params(self):
         """Prompt-input fields from the manifest.inputs map are unrelated to
-        model_params; they must not leak through build_provider_io."""
+        params; they must not leak through build_provider_io."""
         manifest = make_manifest(
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
@@ -319,10 +306,7 @@ class TestBuildProviderIO:
             },
         )
         # "style" is not a valid key for kling-v3's model params
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
             raw_params={"style": "particles"},
             manifest=manifest,
         )
@@ -342,25 +326,22 @@ class TestTransformParams:
                 prompt="test",
                 models=["wan-2.2"],
                 default_model="wan-2.2",
-                model_params={"duration": ModelParam(default=5)},
+                params={"duration": ModelParam(default=5)},
             ),
         )
-        canonical = PromptBuilder.build_provider_io("wan-2.2", "image_to_video", "fal", manifest=manifest)
+        canonical = PromptBuilder.build_provider_io("wan-2.2", "fal", manifest=manifest)
         # Canonical still carries duration; transforms run in the provider layer
         assert canonical["duration"] == 5
-        wire = apply_wire("wan-2.2", "image_to_video", canonical)
+        wire = apply_wire("wan-2.2", canonical)
         assert wire["num_frames"] == 80  # 5 × 16
         assert wire["frames_per_second"] == 16
         assert "duration" not in wire  # consumed by transform
 
     def test_wan22_transform_applied_to_raw_params(self):
-        canonical = PromptBuilder.build_provider_io(
-            "wan-2.2",
-            "image_to_video",
-            "fal",
+        canonical = PromptBuilder.build_provider_io("wan-2.2", "fal",
             raw_params={"duration": 3},
         )
-        wire = apply_wire("wan-2.2", "image_to_video", canonical)
+        wire = apply_wire("wan-2.2", canonical)
         assert wire["num_frames"] == 48  # 3 × 16
         assert wire["frames_per_second"] == 16
         assert "duration" not in wire
@@ -372,19 +353,16 @@ class TestTransformParams:
                 prompt="test",
                 models=["wan-2.2"],
                 default_model="wan-2.2",
-                model_params={"duration": ModelParam(value=4)},
+                params={"duration": ModelParam(value=4)},
             ),
         )
-        canonical = PromptBuilder.build_provider_io(
-            "wan-2.2",
-            "image_to_video",
-            "fal",
+        canonical = PromptBuilder.build_provider_io("wan-2.2", "fal",
             raw_params={"duration": 9},
             manifest=manifest,
         )
         # Lock wins: canonical duration = 4 → wire num_frames = 64
         assert canonical["duration"] == 4
-        wire = apply_wire("wan-2.2", "image_to_video", canonical)
+        wire = apply_wire("wan-2.2", canonical)
         assert wire["num_frames"] == 64
 
     def test_kling_v3_has_no_transform(self):
@@ -394,34 +372,28 @@ class TestTransformParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"duration": ModelParam(default=7)},
+                params={"duration": ModelParam(default=7)},
             ),
         )
-        canonical = PromptBuilder.build_provider_io("kling-v3", "image_to_video", "fal", manifest=manifest)
-        wire = apply_wire("kling-v3", "image_to_video", canonical)
+        canonical = PromptBuilder.build_provider_io("kling-v3", "fal", manifest=manifest)
+        wire = apply_wire("kling-v3", canonical)
         assert wire["duration"] == 7
         assert "num_frames" not in wire
         assert "frames_per_second" not in wire
 
     def test_other_wan_params_passthrough(self):
         """Transform only touches duration; other WAN params are unchanged."""
-        canonical = PromptBuilder.build_provider_io(
-            "wan-2.2",
-            "image_to_video",
-            "fal",
+        canonical = PromptBuilder.build_provider_io("wan-2.2", "fal",
             raw_params={"duration": 5, "guidance_scale": 4.0, "aspect_ratio": "16:9"},
         )
-        wire = apply_wire("wan-2.2", "image_to_video", canonical)
+        wire = apply_wire("wan-2.2", canonical)
         assert wire["guidance_scale"] == 4.0
         assert wire["aspect_ratio"] == "16:9"
         assert wire["num_frames"] == 80
 
     def test_variant_specific_known_set(self):
         """A param known in the i2v variant comes through; an unknown key is dropped."""
-        params_i2v = PromptBuilder.build_provider_io(
-            "wan-2.2",
-            "image_to_video",
-            "fal",
+        params_i2v = PromptBuilder.build_provider_io("wan-2.2", "fal",
             raw_params={"guidance_scale_2": 4.0, "nonexistent_knob": 123},
         )
         assert params_i2v.get("guidance_scale_2") == 4.0
@@ -429,7 +401,7 @@ class TestTransformParams:
 
 
 # -----------------------------------------
-# Locked model_params (value:) — merge precedence
+# Locked params (value:) — merge precedence
 # -----------------------------------------
 
 class TestLockedModelParams:
@@ -439,17 +411,14 @@ class TestLockedModelParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(value=0.8)},
+                params={"guidance_scale": ModelParam(value=0.8)},
             ),
         )
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.95},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.95},
             manifest=manifest,
         )
-        assert params["cfg_scale"] == 0.8
+        assert params["guidance_scale"] == 0.8
 
     def test_override_can_lock_a_default(self):
         """A model override may flip a top-level default into a locked value."""
@@ -458,20 +427,17 @@ class TestLockedModelParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(default=0.5)},
+                params={"guidance_scale": ModelParam(default=0.5)},
                 model_overrides={
-                    "kling-v3": ModelOverride(model_params={"cfg_scale": ModelParam(value=0.85)}),
+                    "kling-v3": ModelOverride(params={"guidance_scale": ModelParam(value=0.85)}),
                 },
             ),
         )
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.95},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.95},
             manifest=manifest,
         )
-        assert params["cfg_scale"] == 0.85
+        assert params["guidance_scale"] == 0.85
 
     def test_override_can_unlock_a_value(self):
         """A model override with a default unlocks a top-level locked value."""
@@ -480,23 +446,21 @@ class TestLockedModelParams:
                 prompt="test",
                 models=["kling-v3"],
                 default_model="kling-v3",
-                model_params={"cfg_scale": ModelParam(value=0.5)},
+                params={"guidance_scale": ModelParam(value=0.5)},
                 model_overrides={
-                    "kling-v3": ModelOverride(model_params={"cfg_scale": ModelParam(default=0.75)}),
+                    "kling-v3": ModelOverride(params={"guidance_scale": ModelParam(default=0.75)}),
                 },
             ),
         )
-        params = PromptBuilder.build_provider_io(
-            "kling-v3",
-            "image_to_video",
-            "fal",
-            raw_params={"cfg_scale": 0.95},
+        params = PromptBuilder.build_provider_io("kling-v3", "fal",
+            raw_params={"guidance_scale": 0.95},
             manifest=manifest,
         )
-        assert params["cfg_scale"] == 0.95  # override unlocked → user wins
+        assert params["guidance_scale"] == 0.95  # override unlocked → user wins
 
-    def test_scalar_shorthand_parses_as_default(self):
-        """A bare scalar in YAML is coerced to {default: scalar}."""
+    def test_scalar_shorthand_parses_as_locked(self):
+        """A bare scalar in YAML is coerced to {value: scalar} (locked).
+        Visible seeded defaults require the explicit long form."""
         yaml_text = """
         id: yaml-test
         name: Yaml Test
@@ -512,16 +476,16 @@ class TestLockedModelParams:
           prompt: 'test'
           models: [kling-v3]
           default_model: kling-v3
-          model_params:
-            cfg_scale: 0.7
+          params:
+            guidance_scale: 0.7
             num_inference_steps: 32
         """
         manifest = EffectManifest(**yaml.safe_load(yaml_text))
-        assert manifest.generation.model_params["cfg_scale"].default == 0.7
-        assert manifest.generation.model_params["cfg_scale"].is_locked is False
-        assert manifest.generation.model_params["num_inference_steps"].default == 32
+        assert manifest.generation.params["guidance_scale"].value == 0.7
+        assert manifest.generation.params["guidance_scale"].is_locked is True
+        assert manifest.generation.params["num_inference_steps"].value == 32
 
-    def test_explicit_value_form_parses_as_locked(self):
+    def test_explicit_default_form_parses_as_visible(self):
         yaml_text = """
         id: yaml-test
         name: Yaml Test
@@ -537,14 +501,14 @@ class TestLockedModelParams:
           prompt: 'test'
           models: [kling-v3]
           default_model: kling-v3
-          model_params:
-            cfg_scale:
-              value: 0.65
+          params:
+            guidance_scale:
+              default: 0.65
         """
         manifest = EffectManifest(**yaml.safe_load(yaml_text))
-        entry = manifest.generation.model_params["cfg_scale"]
-        assert entry.value == 0.65
-        assert entry.is_locked is True
+        entry = manifest.generation.params["guidance_scale"]
+        assert entry.default == 0.65
+        assert entry.is_locked is False
 
     def test_both_default_and_value_rejected(self):
         with pytest.raises(ValidationError):

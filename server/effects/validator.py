@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, field_validator, model_serializer, model_validator
 
 VALID_ROLES = ("start_frame", "end_frame", "reference", "prompt_input")
 
@@ -51,8 +51,14 @@ class Assets(BaseModel):
 class ModelParam(BaseModel):
     """A single model parameter entry. Exactly one of `default` or `value` must be set.
 
-    `default` is an overridable starting value (user can change it in the UI).
-    `value` is a locked value — the UI hides the field and user input is ignored.
+    `default` is a visible seeded value — the field renders in the UI with
+    this as the starting value; the user can still change it.
+    `value` is a locked value — the UI hides the field entirely and user
+    input (if any) is ignored.
+
+    In YAML, the scalar shorthand `key: 4` is treated as the lock form
+    (`value: 4`). To publish an overridable seed, use the explicit long
+    form `key: {default: 4}`. See `_coerce_params` below.
     """
     default: Any = None
     value: Any = None
@@ -67,6 +73,16 @@ class ModelParam(BaseModel):
             raise ValueError("model param entry must set either 'default' or 'value'")
         return self
 
+    @model_serializer(mode="plain")
+    def _serialize(self) -> dict[str, Any]:
+        """Emit only the field that's set. The default `model_dump()` would
+        include both fields with one as `null`, which on the client breaks
+        discriminated-union checks like `'value' in entry` (the key exists
+        even when null, so the entry gets mis-classified as locked)."""
+        if self.value is not None:
+            return {"value": self.value}
+        return {"default": self.default}
+
     @property
     def is_locked(self) -> bool:
         return self.value is not None
@@ -76,26 +92,29 @@ class ModelParam(BaseModel):
         return self.value if self.is_locked else self.default
 
 
-def _coerce_model_params(v: Any) -> Any:
-    """Allow scalar shorthand: `key: 5` becomes `key: {default: 5}`.
+def _coerce_params(v: Any) -> Any:
+    """Scalar shorthand: `key: 5` coerces to `key: {value: 5}` — i.e. locked.
+    The short form is what authors reach for to nail a canonical to a
+    specific value (UI hides the field). For a *visible, seeded default*
+    the author writes the explicit long form: `key: {default: 5}`.
     Pre-built ModelParam / dict entries are passed through unchanged.
     """
     if not isinstance(v, dict):
         return v
     return {
-        k: (entry if isinstance(entry, (dict, ModelParam)) else {"default": entry})
+        k: (entry if isinstance(entry, (dict, ModelParam)) else {"value": entry})
         for k, entry in v.items()
     }
 
 
 class ModelOverride(BaseModel):
     prompt: str | None = None
-    model_params: dict[str, ModelParam] = {}
+    params: dict[str, ModelParam] = {}
 
-    @field_validator("model_params", mode="before")
+    @field_validator("params", mode="before")
     @classmethod
     def _coerce_scalars(cls, v: Any) -> Any:
-        return _coerce_model_params(v)
+        return _coerce_params(v)
 
 
 class GenerationConfig(BaseModel):
@@ -103,14 +122,14 @@ class GenerationConfig(BaseModel):
     negative_prompt: str = ""
     models: list[str] = []
     default_model: str = ""
-    model_params: dict[str, ModelParam] = {}
+    params: dict[str, ModelParam] = {}
     model_overrides: dict[str, ModelOverride] = {}
     reverse: bool = False
 
-    @field_validator("model_params", mode="before")
+    @field_validator("params", mode="before")
     @classmethod
     def _coerce_scalars(cls, v: Any) -> Any:
-        return _coerce_model_params(v)
+        return _coerce_params(v)
 
     @model_validator(mode="after")
     def validate_default_model(self) -> GenerationConfig:
@@ -154,4 +173,32 @@ class EffectManifest(BaseModel):
         for field in self.inputs.values():
             if field.role == "start_frame" and not field.required:
                 raise ValueError("Input with role 'start_frame' must have required: true")
+        return self
+
+    @model_validator(mode="after")
+    def validate_override_params(self) -> EffectManifest:
+        """Each per-model override's `params` must reference canonicals
+        declared on the target model and must not touch `user_only` knobs."""
+        # Local import: model_service loads its own modules at module-level
+        # but never imports back from this file, so the cycle is fine.
+        from services.model_service import MODELS_BY_ID
+
+        for model_id, override in self.generation.model_overrides.items():
+            model = MODELS_BY_ID.get(model_id)
+            if not model:
+                # Manifests may declare models not currently installed — leave
+                # that to a separate check (or tolerate it as forward-compat).
+                continue
+            canonicals = {p["name"]: p for p in model.get("params", [])}
+            for key in override.params:
+                entry = canonicals.get(key)
+                if entry is None:
+                    raise ValueError(
+                        f"Unknown canonical param '{key}' for model '{model_id}'"
+                    )
+                if entry.get("user_only"):
+                    raise ValueError(
+                        f"Param '{key}' on model '{model_id}' is a runtime "
+                        f"user preference — cannot be set in manifest"
+                    )
         return self

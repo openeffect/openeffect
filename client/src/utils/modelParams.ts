@@ -5,11 +5,23 @@ import type { EffectManifest, ModelInfo, ModelParam, ModelParamEntry, ModelVaria
 export const imageInputs = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.type === 'image') : []
 
+/** Params rendered in the Playground UI's main section. Playground shows
+ *  every tunable canonical regardless of `effect_hidden` — there's no
+ *  manifest-author scope there. */
 export const mainParams = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.ui === 'main') : []
 
 export const advancedParams = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.ui === 'advanced') : []
+
+/** Params rendered in the effect page form's main section. Skips params
+ *  the manifest author has marked `effect_hidden` (tuned via YAML, not
+ *  surfaced to the end user). */
+export const effectMainParams = (v: ModelVariant | undefined): ModelParam[] =>
+  mainParams(v).filter((p) => !p.effect_hidden)
+
+export const effectAdvancedParams = (v: ModelVariant | undefined): ModelParam[] =>
+  advancedParams(v).filter((p) => !p.effect_hidden)
 
 /** Canonical keys of image-input params — also the semantic roles effect
  *  manifests bind to (e.g. 'start_frame', 'end_frame'). */
@@ -39,20 +51,6 @@ export const modelVariantKeys = (m: ModelInfo | undefined): string[] => {
   return Array.from(keys)
 }
 
-/** The AI-audio toggle param (canonical key `generate_audio`) if any
- *  provider-variant of the model exposes one. Callers use `.key` to write
- *  the canonical value through; the provider layer translates to wire. */
-export const aiAudioSwitch = (m: ModelInfo | undefined): ModelParam | null => {
-  if (!m) return null
-  for (const provider of m.providers ?? []) {
-    for (const v of Object.values(provider.variants ?? {})) {
-      const p = v.params.find((p) => p.key === 'generate_audio')
-      if (p) return p
-    }
-  }
-  return null
-}
-
 // ─── Manifest param resolution ──────────────────────────────────────────────
 
 
@@ -64,13 +62,13 @@ function isLocked(entry: ModelParamEntry): boolean {
   return 'value' in entry
 }
 
-/** Merge top-level model_params with model_overrides[modelId].model_params. */
+/** Merge top-level `params` with `model_overrides[modelId].params`. */
 export function resolveModelParams(
   manifest: EffectManifest,
   modelId: string,
 ): Record<string, ModelParamEntry> {
-  const merged: Record<string, ModelParamEntry> = { ...(manifest.generation.model_params ?? {}) }
-  const override = manifest.generation.model_overrides?.[modelId]?.model_params
+  const merged: Record<string, ModelParamEntry> = { ...(manifest.generation.params ?? {}) }
+  const override = manifest.generation.model_overrides?.[modelId]?.params
   if (override) Object.assign(merged, override)
   return merged
 }

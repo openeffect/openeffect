@@ -1,77 +1,87 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-# ─── Wire boundary ───────────────────────────────────────────────────────────
-#
-# This module owns all provider-specific wire concerns (endpoint URLs, wire
-# param keys, wire-format transforms). Nothing outside this module should
-# encode provider-specific details — effects bind by canonical `key`, clients
-# consume the filtered `params` payload, and the rest is opaque.
-#
 # ─── Registry shape ──────────────────────────────────────────────────────────
 #
-# Each model declares a set of providers that host it. The `variants` layer
-# inside each provider is preserved even though only `image_to_video` is
-# populated today — it's a cheap, stable surface for additive modes later
-# (e.g. `video_to_video`). A provider-variant owns everything needed to
-# render the form AND call the wire API: the full `params` list (UI +
-# headless), the `endpoint` URL, and an optional `transform_params` callable.
+# Each model has three layers:
 #
-# Each param entry:
-#   - `key`       — the provider's wire name (what goes on the API call).
-#                   For most knobs this is all you need.
-#   - `role`      — optional. Marks the param as carrying a canonical,
-#                   cross-provider role that effects and the client bind to
-#                   (e.g. `role: start_frame`, `role: end_frame`, `role: generate_audio`).
-#                   Matches the `role` field on effect manifest inputs.
-#                   When absent, the param is a plain wire knob with no
-#                   role identity. When present, canonical == `role` and
-#                   wire == `key` — the provider layer renames canonical→wire
-#                   before calling the API. Always explicit: even when the
-#                   wire name equals the canonical role, write both (e.g.
-#                   `{"key": "start_frame", "role": "start_frame"}`).
-#   - `type`      — image | select | slider | number | text | boolean.
-#   - `required`  — for `type: image`, whether the user must supply it.
-#   - `ui`        — main | advanced | none. Scalars only. Image-type and
-#                   `role == "generate_audio"` always show regardless.
-#   - `label`, `default`, `options`, `min`/`max`/`step`, `hint`, `multiline`
-#                 — render metadata for the form.
+#   1. `inputs` — canonical text/image role entries the author binds via
+#      `manifest.inputs` (and via `generation.prompt` /
+#      `generation.negative_prompt` for the always-present text roles).
+#      Examples: `start_frame`, `end_frame`, `reference`, `prompt`,
+#      `negative_prompt`.
 #
-# The AI-audio toggle is identified by the reserved canonical role
-# `generate_audio` (`role: generate_audio`). Clients render a checkbox;
-# providers write through via the param's wire `key`.
+#   2. `params` — canonical tunable knob entries, author-facing. These carry
+#      the UI metadata (label, type, default, min/max, ui placement) plus
+#      two routing flags:
+#        - `user_only: True`    → never settable via manifest; runtime user
+#                                 preference (e.g. `resolution`, `seed`).
+#        - `effect_hidden: True`→ not shown on the effect page; manifest
+#                                 authors tune via YAML. Playground still
+#                                 renders it.
 #
-# Provider-variant:
-#   - `endpoint`         — wire URL / identifier.
-#   - `cost`             — pricing string copied from the provider's page.
-#   - `transform_params` — callable that munges the canonical dict into wire
-#                          values (int↔string enums, derived keys like
-#                          num_frames = duration × fps). Runs before the
-#                          canonical→wire key rename.
-#   - `params`           — the full list (see above).
+#   3. `providers.<id>` — wire layer. Each provider owns:
+#        - `endpoint`        — wire URL / identifier.
+#        - `cost`            — pricing string from the provider's page.
+#        - `inputs`          — `{canonical_role: wire_key}`. Roles absent
+#                              from this map are unsupported for this
+#                              provider (UI greys them out upstream).
+#        - `params`          — `{canonical_name: {wire: str|None, ...}}`.
+#                              Canonicals absent here are silently dropped
+#                              at send time for this provider. `wire: None`
+#                              marks a canonical that's consumed by the
+#                              transform rather than renamed directly.
+#                              Any extra keys here (e.g. `max`, `default`,
+#                              `options`) overlay the canonical UI metadata
+#                              for this provider — use it when one provider
+#                              accepts a tighter range or different default.
+#        - `transform`       — optional callable `(canonical_dict) → dict`.
+#                              Runs after value resolution, before the
+#                              canonical→wire rename. Use it for derived
+#                              fields (e.g. duration → num_frames + fps)
+#                              or per-provider value conversions.
+#
+# Effect manifests reference only the canonical layer (inputs + params).
+# Adding a provider is purely additive — drop in a new `providers.<id>`
+# entry; no manifest migration.
 
 
-def _wan22_image_to_video_transform(params: dict[str, Any]) -> dict[str, Any]:
-    """WAN 2.2 image-to-video wants num_frames (seconds × fps)."""
+# wan-2.2 was trained at 16fps; the native `num_frames` knob is the only
+# length control fal's endpoint accepts. We expose a seconds-based slider
+# and derive num_frames + frames_per_second from it. Pinning fps to the
+# training rate: raising it doesn't buy quality, it just crams more frames
+# into the same clip.
+_WAN22_FPS = 16
+# fal's hard bounds on num_frames. Duration bounds on the canonical are
+# chosen to stay inside this window at `_WAN22_FPS`; the transform also
+# clamps as a safety net.
+_WAN22_NUM_FRAMES_MIN = 17
+_WAN22_NUM_FRAMES_MAX = 161
+
+
+def _wan22_fal_transform(params: dict[str, Any]) -> dict[str, Any]:
+    """Canonical → fal wire for wan-2.2.
+
+    `duration` (seconds, user-facing) expands to `num_frames` +
+    `frames_per_second` on the wire. num_frames is clamped to fal's
+    [17, 161] so a manifest locking duration to an out-of-range value
+    can't ship a bad request to fal."""
     out = dict(params)
-    if "duration" in out:
-        fps = 16
-        seconds = int(out.pop("duration"))
-        out["num_frames"] = seconds * fps
-        out["frames_per_second"] = fps
+    if "duration" not in out:
+        return out
+    seconds = int(out.pop("duration"))
+    num_frames = max(_WAN22_NUM_FRAMES_MIN, min(_WAN22_NUM_FRAMES_MAX, seconds * _WAN22_FPS))
+    out["num_frames"] = num_frames
+    out["frames_per_second"] = _WAN22_FPS
     return out
 
 
-# ─── Providers ───────────────────────────────────────────────────────────────
-#
-# Provider identity (display name, type) lives here so each model only needs
-# to declare the provider-specific bits (cost, variants). The ModelService
-# merges these when serving the client payload.
+# ─── Providers registry ──────────────────────────────────────────────────────
 PROVIDERS: dict[str, dict[str, Any]] = {
     "fal": {
         "name": "fal.ai",
@@ -82,50 +92,123 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 MODELS: list[dict[str, Any]] = [
     # ── WAN 2.2 ───────────────────────────────────────────────────────────
+    #
+    # Ordering within `inputs` and `params` follows UI flow: image roles
+    # (the thing the effect animates) → text roles → main knobs (what the
+    # user configures) → advanced knobs (collapsed by default) → wire-only
+    # knobs (manifest-tunable but not rendered). Within each block: the
+    # knobs a user reaches for first come first; `seed` and feature toggles
+    # (`generate_audio`) end each block by convention.
     {
         "id": "wan-2.2",
         "name": "WAN 2.2",
         "group": "WAN",
         "description": "Affordable, good for quick iterations",
+        "inputs": [
+            # image inputs first — the effect's subject comes before its text
+            {"role": "start_frame",     "type": "image", "required": True},
+            {"role": "end_frame",       "type": "image"},
+            {"role": "prompt",          "type": "text",  "required": True},
+            {"role": "negative_prompt", "type": "text"},
+        ],
+        "params": [
+            # ─── Main (user-facing) ───
+            # `duration` max derives from fal's `num_frames` max (161) at the
+            # default 16 fps → ~10s. Bumping fps would allow shorter videos
+            # at the same frame count, but we expose the seconds knob.
+            {"name": "duration", "type": "slider", "ui": "main",
+             "label": "Duration (seconds)",
+             "default": 5, "min": 3, "max": 10, "step": 1},
+            {"name": "resolution", "type": "select", "ui": "main",
+             "label": "Resolution", "default": "720p",
+             "options": [
+                 {"value": "480p", "label": "480p"},
+                 {"value": "580p", "label": "580p"},
+                 {"value": "720p", "label": "720p"},
+             ],
+             "user_only": True},
+            {"name": "aspect_ratio", "type": "select", "ui": "main",
+             "label": "Aspect Ratio", "default": "auto",
+             "options": [
+                 {"value": "auto", "label": "Auto"},
+                 {"value": "16:9", "label": "16:9"},
+                 {"value": "9:16", "label": "9:16"},
+                 {"value": "1:1",  "label": "1:1"},
+             ],
+             "user_only": True},
+
+            # ─── Advanced (collapsed) ───
+            # `num_frames` and `frames_per_second` are deliberately *not*
+            # canonicals. fal's native knob is num_frames, but exposing
+            # both it and duration invites the two to drift — manifests
+            # would set `num_frames: 49` while the UI slider still said
+            # "5 seconds". Duration is the single source of truth; the
+            # transform above derives the wire fields.
+            {"name": "num_inference_steps", "type": "slider", "ui": "advanced",
+             "label": "Quality steps",
+             "default": 27, "min": 2, "max": 40, "step": 1,
+             "hint": "More = better but slower",
+             "effect_hidden": True},
+            {"name": "guidance_scale", "type": "slider", "ui": "advanced",
+             "label": "Guidance scale",
+             "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.1,
+             "hint": "Higher = closer to prompt",
+             "effect_hidden": True},
+            {"name": "seed", "type": "number", "ui": "advanced",
+             "label": "Seed", "default": -1, "hint": "-1 = random",
+             "user_only": True},
+
+            # ─── Wire-only knobs (manifest-tunable, not rendered) ───
+            # Grouped by concept: interpolation, sampling, output, safety.
+            {"name": "num_interpolated_frames",      "type": "number",  "ui": "none"},
+            {"name": "interpolator_model",           "type": "text",    "ui": "none"},
+            {"name": "adjust_fps_for_interpolation", "type": "boolean", "ui": "none"},
+            {"name": "guidance_scale_2",             "type": "number",  "ui": "none"},
+            {"name": "shift",                        "type": "number",  "ui": "none"},
+            {"name": "acceleration",                 "type": "text",    "ui": "none"},
+            {"name": "video_quality",                "type": "text",    "ui": "none"},
+            {"name": "video_write_mode",             "type": "text",    "ui": "none"},
+            {"name": "enable_safety_checker",        "type": "boolean", "ui": "none"},
+            {"name": "enable_output_safety_checker", "type": "boolean", "ui": "none"},
+            {"name": "enable_prompt_expansion",      "type": "boolean", "ui": "none"},
+        ],
         "providers": {
             "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
-                        "cost": "$0.04–$0.08 per second (by resolution)",
-                        "transform_params": _wan22_image_to_video_transform,
-                        "params": [
-                            {"key": "image_url",     "role": "start_frame", "type": "image", "required": True},
-                            {"key": "end_image_url", "role": "end_frame",   "type": "image"},
-                            {"key": "aspect_ratio", "ui": "main", "type": "select", "label": "Aspect Ratio", "default": "auto",
-                             "options": [{"value": "auto", "label": "Auto"}, {"value": "16:9", "label": "16:9"}, {"value": "9:16", "label": "9:16"}, {"value": "1:1", "label": "1:1"}]},
-                            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
-                             "default": 5, "min": 1, "max": 16, "step": 1},
-                            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "720p",
-                             "options": [{"value": "480p", "label": "480p"}, {"value": "580p", "label": "580p"}, {"value": "720p", "label": "720p"}]},
-                            {"key": "guidance_scale", "ui": "advanced", "type": "slider", "label": "Guidance scale",
-                             "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.5, "hint": "Higher = closer to prompt"},
-                            {"key": "num_inference_steps", "ui": "advanced", "type": "slider", "label": "Quality steps",
-                             "default": 27, "min": 1, "max": 50, "step": 1, "hint": "More = better but slower"},
-                            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
-                            # Headless
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                            {"key": "num_frames", "ui": "none", "type": "number"},
-                            {"key": "frames_per_second", "ui": "none", "type": "number"},
-                            {"key": "guidance_scale_2", "ui": "none", "type": "number"},
-                            {"key": "shift", "ui": "none", "type": "number"},
-                            {"key": "acceleration", "ui": "none", "type": "text"},
-                            {"key": "interpolator_model", "ui": "none", "type": "text"},
-                            {"key": "num_interpolated_frames", "ui": "none", "type": "number"},
-                            {"key": "adjust_fps_for_interpolation", "ui": "none", "type": "boolean"},
-                            {"key": "video_quality", "ui": "none", "type": "text"},
-                            {"key": "video_write_mode", "ui": "none", "type": "text"},
-                            {"key": "enable_safety_checker", "ui": "none", "type": "boolean"},
-                            {"key": "enable_output_safety_checker", "ui": "none", "type": "boolean"},
-                            {"key": "enable_prompt_expansion", "ui": "none", "type": "boolean"},
-                        ],
-                    },
+                "endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
+                "cost": "$0.04–$0.08 per second (by resolution)",
+                # Provider inputs/params mirror the canonical order above so
+                # a side-by-side read shows what each layer does at a glance.
+                "inputs": {
+                    "start_frame":     "image_url",
+                    "end_frame":       "end_image_url",
+                    "prompt":          "prompt",
+                    "negative_prompt": "negative_prompt",
                 },
+                "params": {
+                    # Main — `duration` is consumed by the transform, which
+                    # produces wire keys `num_frames` and `frames_per_second`
+                    # directly (they're not canonicals, so no entry here).
+                    "duration":                     {"wire": None},
+                    "resolution":                   {"wire": "resolution"},
+                    "aspect_ratio":                 {"wire": "aspect_ratio"},
+                    # Advanced
+                    "num_inference_steps":          {"wire": "num_inference_steps"},
+                    "guidance_scale":               {"wire": "guidance_scale"},
+                    "seed":                         {"wire": "seed"},
+                    # Wire-only
+                    "num_interpolated_frames":      {"wire": "num_interpolated_frames"},
+                    "interpolator_model":           {"wire": "interpolator_model"},
+                    "adjust_fps_for_interpolation": {"wire": "adjust_fps_for_interpolation"},
+                    "guidance_scale_2":             {"wire": "guidance_scale_2"},
+                    "shift":                        {"wire": "shift"},
+                    "acceleration":                 {"wire": "acceleration"},
+                    "video_quality":                {"wire": "video_quality"},
+                    "video_write_mode":             {"wire": "video_write_mode"},
+                    "enable_safety_checker":        {"wire": "enable_safety_checker"},
+                    "enable_output_safety_checker": {"wire": "enable_output_safety_checker"},
+                    "enable_prompt_expansion":      {"wire": "enable_prompt_expansion"},
+                },
+                "transform": _wan22_fal_transform,
             },
         },
     },
@@ -135,25 +218,52 @@ MODELS: list[dict[str, Any]] = [
         "name": "Kling 3.0 V3",
         "group": "Kling",
         "description": "Best for cinematic shots, supports AI audio",
+        "inputs": [
+            {"role": "start_frame",     "type": "image", "required": True},
+            {"role": "end_frame",       "type": "image"},
+            {"role": "prompt",          "type": "text",  "required": True},
+            {"role": "negative_prompt", "type": "text"},
+        ],
+        "params": [
+            # ─── Main (user-facing) ───
+            # `generate_audio` goes last in main — it's a feature toggle,
+            # conceptually separate from the output-shaping knobs above.
+            {"name": "duration", "type": "slider", "ui": "main",
+             "label": "Duration (seconds)",
+             "default": 5, "min": 3, "max": 15, "step": 1},
+            {"name": "generate_audio", "type": "boolean", "ui": "main",
+             "label": "Generate audio", "default": False},
+
+            # ─── Advanced (collapsed) ───
+            # `guidance_scale` shares its canonical name with wan-2.2; the
+            # actual numeric range differs (kling 0–1, wan 1–10) and lives
+            # on the per-model entry. Wire key stays `cfg_scale` — that's
+            # what kling's fal endpoint accepts.
+            {"name": "guidance_scale", "type": "slider", "ui": "advanced",
+             "label": "Guidance scale",
+             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
+             "effect_hidden": True},
+            {"name": "seed", "type": "number", "ui": "advanced",
+             "label": "Seed", "default": -1, "hint": "-1 = random",
+             "user_only": True},
+        ],
         "providers": {
             "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
-                        "cost": "$0.084 per second (audio off), $0.126 with audio",
-                        "params": [
-                            {"key": "start_image_url", "role": "start_frame", "type": "image", "required": True},
-                            {"key": "end_image_url",   "role": "end_frame",   "type": "image"},
-                            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
-                             "default": 5, "min": 3, "max": 15, "step": 1},
-                            {"key": "cfg_scale", "ui": "advanced", "type": "slider", "label": "CFG scale",
-                             "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1},
-                            {"key": "generate_audio", "role": "generate_audio", "type": "boolean", "ui": "none"},
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                            {"key": "shot_type", "ui": "none", "type": "text"},
-                            {"key": "elements", "ui": "none", "type": "text"},
-                        ],
-                    },
+                "endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
+                "cost": "$0.084 per second (audio off), $0.126 with audio",
+                "inputs": {
+                    "start_frame":     "start_image_url",
+                    "end_frame":       "end_image_url",
+                    "prompt":          "prompt",
+                    "negative_prompt": "negative_prompt",
+                },
+                "params": {
+                    # Main
+                    "duration":       {"wire": "duration"},
+                    "generate_audio": {"wire": "generate_audio"},
+                    # Advanced — canonical `guidance_scale`, wire `cfg_scale`.
+                    "guidance_scale": {"wire": "cfg_scale"},
+                    # seed not declared on kling v3 fal → silently dropped
                 },
             },
         },
@@ -164,27 +274,79 @@ MODELS: list[dict[str, Any]] = [
         "name": "PixVerse V6",
         "group": "PixVerse",
         "description": "Creative styles, AI audio, up to 15s",
+        "inputs": [
+            {"role": "start_frame",     "type": "image", "required": True},
+            {"role": "end_frame",       "type": "image"},
+            {"role": "prompt",          "type": "text",  "required": True},
+            {"role": "negative_prompt", "type": "text"},
+        ],
+        "params": [
+            # ─── Main (user-facing) ───
+            # Output shape (duration, resolution, aspect_ratio) → look
+            # (style) → feature toggle (generate_audio, last).
+            {"name": "duration", "type": "slider", "ui": "main",
+             "label": "Duration (seconds)",
+             "default": 5, "min": 1, "max": 15, "step": 1},
+            {"name": "resolution", "type": "select", "ui": "main",
+             "label": "Resolution", "default": "720p",
+             "options": [
+                 {"value": "360p",  "label": "360p"},
+                 {"value": "540p",  "label": "540p"},
+                 {"value": "720p",  "label": "720p"},
+                 {"value": "1080p", "label": "1080p"},
+             ],
+             "user_only": True},
+            {"name": "aspect_ratio", "type": "select", "ui": "main",
+             "label": "Aspect Ratio", "default": "16:9",
+             "options": [
+                 {"value": "16:9", "label": "16:9"},
+                 {"value": "9:16", "label": "9:16"},
+                 {"value": "1:1",  "label": "1:1"},
+             ],
+             "user_only": True},
+            # `style` is an author-tuning knob: the effect's prompt already
+            # expresses the intended look, so we don't surface a second
+            # "pick a style" control on the effect page. Manifest authors
+            # can still lock a style via YAML, and Playground shows it
+            # (Playground ignores `effect_hidden`).
+            {"name": "style", "type": "select", "ui": "main",
+             "label": "Style", "default": "",
+             "options": [
+                 {"value": "",             "label": "None"},
+                 {"value": "anime",        "label": "Anime"},
+                 {"value": "3d_animation", "label": "3D Animation"},
+                 {"value": "clay",         "label": "Clay"},
+                 {"value": "comic",        "label": "Comic"},
+                 {"value": "cyberpunk",    "label": "Cyberpunk"},
+             ],
+             "effect_hidden": True},
+            {"name": "generate_audio", "type": "boolean", "ui": "main",
+             "label": "Generate audio", "default": False},
+
+            # ─── Advanced (collapsed) ───
+            {"name": "seed", "type": "number", "ui": "advanced",
+             "label": "Seed", "default": -1, "hint": "-1 = random",
+             "user_only": True},
+        ],
         "providers": {
             "fal": {
-                "variants": {
-                    "image_to_video": {
-                        "endpoint": "fal-ai/pixverse/v6/image-to-video",
-                        "cost": "$0.025–$0.115 per second (by resolution / audio)",
-                        "params": [
-                            {"key": "image_url", "role": "start_frame", "type": "image", "required": True},
-                            {"key": "resolution", "ui": "main", "type": "select", "label": "Resolution", "default": "720p",
-                             "options": [{"value": "360p", "label": "360p"}, {"value": "540p", "label": "540p"}, {"value": "720p", "label": "720p"}, {"value": "1080p", "label": "1080p"}]},
-                            {"key": "duration", "ui": "main", "type": "slider", "label": "Duration (seconds)",
-                             "default": 5, "min": 1, "max": 15, "step": 1},
-                            {"key": "style", "ui": "main", "type": "select", "label": "Style", "default": "",
-                             "options": [{"value": "", "label": "None"}, {"value": "anime", "label": "Anime"}, {"value": "3d_animation", "label": "3D Animation"}, {"value": "clay", "label": "Clay"}, {"value": "comic", "label": "Comic"}, {"value": "cyberpunk", "label": "Cyberpunk"}]},
-                            {"key": "generate_audio_switch", "role": "generate_audio", "type": "boolean", "ui": "none"},
-                            {"key": "generate_multi_clip_switch", "ui": "none", "type": "boolean"},
-                            {"key": "negative_prompt", "ui": "none", "type": "text"},
-                            {"key": "seed", "ui": "advanced", "type": "number", "label": "Seed", "default": -1, "hint": "-1 = random"},
-                            {"key": "thinking_type", "ui": "none", "type": "text"},
-                        ],
-                    },
+                "endpoint": "fal-ai/pixverse/v6/image-to-video",
+                "cost": "$0.025–$0.115 per second (by resolution / audio)",
+                "inputs": {
+                    "start_frame":     "image_url",
+                    # end_frame omitted — fal's i2v doesn't support it
+                    "prompt":          "prompt",
+                    "negative_prompt": "negative_prompt",
+                },
+                "params": {
+                    # Main
+                    "duration":       {"wire": "duration"},
+                    "resolution":     {"wire": "resolution"},
+                    # aspect_ratio omitted — fal's i2v doesn't accept it
+                    "style":          {"wire": "style"},
+                    "generate_audio": {"wire": "generate_audio_switch"},
+                    # Advanced
+                    "seed":           {"wire": "seed"},
                 },
             },
         },
@@ -198,161 +360,134 @@ MODELS_BY_ID: dict[str, dict[str, Any]] = {m["id"]: m for m in MODELS}
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def get_provider_variant(
-    model_id: str, variant_key: str, provider_id: str,
-) -> dict[str, Any] | None:
-    """Returns the per-provider wire config for a (model, variant, provider)
-    triple: `{endpoint, transform_params?, params}`, or None if any of the
-    three is unknown."""
+def get_model(model_id: str) -> dict[str, Any] | None:
+    return MODELS_BY_ID.get(model_id)
+
+
+def get_provider(model_id: str, provider_id: str) -> dict[str, Any] | None:
+    """Returns the per-provider wire config
+    `{endpoint, cost, inputs, params, transform?}`, or None."""
     model = MODELS_BY_ID.get(model_id)
     if not model:
         return None
-    provider = model.get("providers", {}).get(provider_id)
-    if not provider:
-        return None
-    return provider.get("variants", {}).get(variant_key)
+    return model.get("providers", {}).get(provider_id)
 
 
-def get_provider_variant_params(
-    model_id: str, variant_key: str, provider_id: str,
-) -> list[dict[str, Any]]:
-    """Returns the params list for a (model, variant, provider), or empty."""
-    pv = get_provider_variant(model_id, variant_key, provider_id)
-    return list(pv.get("params", [])) if pv else []
+def model_input_roles(model: dict[str, Any]) -> list[str]:
+    """Canonical input roles this model declares (both image and text)."""
+    return [entry["role"] for entry in model.get("inputs", [])]
 
 
-def model_variant_keys(model: dict[str, Any]) -> set[str]:
-    """Union of variant names across all providers of a model. Returns
-    `{"image_to_video"}` today; kept for forward-compat when additional
-    modes (e.g. `video_to_video`) land."""
-    keys: set[str] = set()
-    for provider in model.get("providers", {}).values():
-        keys.update(provider.get("variants", {}).keys())
-    return keys
+def model_image_input_roles(model: dict[str, Any]) -> list[str]:
+    """Only the image-type input roles for this model (start_frame, etc.)."""
+    return [e["role"] for e in model.get("inputs", []) if e.get("type") == "image"]
 
 
-def _provider_variants(model: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Yield (variant_key, provider_variant_dict) across all providers."""
-    for provider in model.get("providers", {}).values():
-        yield from provider.get("variants", {}).items()
-
-
-def canonical_key(param: dict[str, Any]) -> str:
-    """The canonical role name for a param, or its wire key if it carries
-    no role. `role` always wins when present; otherwise `key` is both the
-    wire name AND the (non-role) identifier."""
-    return param.get("role", param["key"])
-
-
-def get_image_inputs(variant: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return params of `type: image` for a provider-variant."""
-    return [p for p in variant.get("params", []) if p.get("type") == "image"]
-
-
-def variant_has_image_key(variant: dict[str, Any], role: str) -> bool:
-    """True if the provider-variant has an image-type param tagged with the given canonical role."""
-    return any(
-        p.get("type") == "image" and canonical_key(p) == role
-        for p in variant.get("params", [])
-    )
-
-
-def variant_image_key_required(variant: dict[str, Any], role: str) -> bool:
-    for p in variant.get("params", []):
-        if p.get("type") == "image" and canonical_key(p) == role:
-            return bool(p.get("required", False))
+def model_input_required(model: dict[str, Any], role: str) -> bool:
+    for e in model.get("inputs", []):
+        if e.get("role") == role:
+            return bool(e.get("required", False))
     return False
 
 
-def _variant_supports_image_keys(variant: dict[str, Any], input_keys: set[str]) -> bool:
-    """Whether a provider-variant satisfies the given input image keys.
-
-    Rules:
-      - start+end       → compatible if variant supports end_frame.
-      - start only      → compatible if variant supports start_frame and
-                          does not require end_frame.
-      - end only        → same as start-only (end-only is treated like
-                          start-only after `reverse:` flips the video).
-      - no inputs       → compatible only if the variant requires neither
-                          frame. With the current i2v-only registry every
-                          variant requires start_frame, so this branch
-                          evaluates to False — and the effect validator
-                          enforces start_frame's presence anyway.
-    """
-    has_start = "start_frame" in input_keys
-    has_end = "end_frame" in input_keys
-    supports_start = variant_has_image_key(variant, "start_frame")
-    supports_end = variant_has_image_key(variant, "end_frame")
-    start_required = variant_image_key_required(variant, "start_frame")
-    end_required = variant_image_key_required(variant, "end_frame")
-
-    if not (has_start or has_end):
-        return not start_required and not end_required
-    if has_start and has_end:
-        return supports_end
-    # start-only or end-only
-    return supports_start and not end_required
+def provider_has_input(provider: dict[str, Any], role: str) -> bool:
+    return role in provider.get("inputs", {})
 
 
-def model_supported_image_keys(model: dict[str, Any]) -> list[str]:
-    """Union of image-input canonical roles across every provider-variant."""
-    keys: set[str] = set()
-    for _, variant in _provider_variants(model):
-        for p in get_image_inputs(variant):
-            keys.add(canonical_key(p))
-    return sorted(keys)
+def provider_has_param(provider: dict[str, Any], canonical: str) -> bool:
+    return canonical in provider.get("params", {})
 
 
 def model_has_generate_audio(model: dict[str, Any]) -> bool:
-    """True if any provider-variant exposes the canonical `generate_audio` toggle."""
-    for _, variant in _provider_variants(model):
-        for p in variant.get("params", []):
-            if canonical_key(p) == "generate_audio":
-                return True
-    return False
+    """True if the model declares a `generate_audio` canonical param."""
+    return any(p.get("name") == "generate_audio" for p in model.get("params", []))
 
 
 def canonical_to_wire(
-    params: list[dict[str, Any]], canonical: dict[str, Any],
+    model: dict[str, Any],
+    provider: dict[str, Any],
+    canonical: dict[str, Any],
 ) -> dict[str, Any]:
-    """Rename canonical role names to wire keys using each param's `role` field.
-    Entries whose incoming key isn't a canonical role pass through unchanged
-    (their name is already the wire name)."""
-    rename = {p["role"]: p["key"] for p in params if "role" in p}
-    return {rename.get(k, k): v for k, v in canonical.items()}
+    """Apply the provider's canonical→wire mapping + optional transform.
 
-
-def pick_variant(model_id: str, image_keys: set[str] | frozenset[str] | None) -> str | None:
-    """Choose the variant key for the given inputs.
-
-    With only `image_to_video` available today, this returns
-    `"image_to_video"` for any model that has it. `image_keys` is kept in
-    the signature (and unused) to avoid churn at call sites — it matters
-    again when a second variant lands (e.g. `video_to_video`).
+    Steps:
+      1. Run the provider's `transform` on the canonical dict (derived fields,
+         value conversions). Transforms may drop canonical keys (e.g. wan
+         consumes `duration`) and/or add new wire-level keys (e.g. wan
+         derives `num_frames`).
+      2. For each remaining key:
+           - If it's declared in `provider.inputs` → rename to its wire key.
+           - If it's declared in `provider.params` → rename (or drop when
+             `wire: None` indicates the transform should have consumed it).
+           - If it's a known canonical of this model but *not* declared on
+             this provider → silent drop (provider doesn't support it).
+           - Else (not a canonical at all) → pass through as a wire key
+             (produced by the transform).
     """
-    model = MODELS_BY_ID.get(model_id)
-    if not model:
-        return None
-    variants = model_variant_keys(model)
-    if "image_to_video" in variants:
-        return "image_to_video"
-    return None
+    transform: Callable[[dict[str, Any]], dict[str, Any]] | None = provider.get("transform")
+    if transform is not None:
+        canonical = transform(canonical)
+
+    inputs_map: dict[str, str] = provider.get("inputs", {})
+    params_map: dict[str, dict[str, Any]] = provider.get("params", {})
+
+    model_canonicals: set[str] = {
+        entry["role"] for entry in model.get("inputs", [])
+    } | {
+        entry["name"] for entry in model.get("params", [])
+    }
+
+    out: dict[str, Any] = {}
+    for k, v in canonical.items():
+        if k in inputs_map:
+            out[inputs_map[k]] = v
+        elif k in params_map:
+            wire = params_map[k].get("wire")
+            if wire is not None:
+                out[wire] = v
+            # wire=None → consumed by transform; drop defensively
+        elif k in model_canonicals:
+            # Known canonical for the model but not declared on this provider
+            # → silent drop (e.g. pixverse's `aspect_ratio` canonical when
+            # running on fal, whose pixverse endpoint doesn't accept it).
+            pass
+        else:
+            # Not a canonical at all — transform-produced wire key, pass through
+            out[k] = v
+    return out
+
+
+def _any_provider_wires(model: dict[str, Any], scenario: set[str]) -> bool:
+    """True iff at least one of the model's providers declares every image
+    role in `scenario` in its `inputs` map. A model whose canonical claims
+    to support a scenario but whose only provider(s) don't wire the roles
+    is unusable today — surfacing it in the picker would silently drop
+    the user's uploaded image at run time."""
+    for provider in model.get("providers", {}).values():
+        wired = set(provider.get("inputs", {}).keys())
+        if scenario.issubset(wired):
+            return True
+    return False
 
 
 def get_compatible_model_ids(
     required_keys: set[str],
     optional_keys: set[str] | None = None,
 ) -> list[str]:
-    """Return model IDs compatible with the given input image keys.
+    """Return model IDs whose canonical inputs cover the required image roles
+    AND whose at-least-one provider actually wires those roles.
 
     - `required_keys`: image roles the effect *must* supply.
     - `optional_keys`: image roles the effect *may* supply but doesn't have
-      to. When present, a model also qualifies as compatible if it can run
-      with the optional keys provided (not just without them).
+      to. When present, a model also qualifies if it can run with the
+      optional keys provided.
 
-    A model is compatible if **any** of its provider-variants can satisfy at
-    least one of the viable input scenarios (required alone, or required +
-    optional). Per-provider gating stays deferred.
+    The check spans two layers: the model's canonical inputs (author
+    contract) and each provider's `inputs` map (wire layer). A model with
+    a matching canonical but no provider that wires the scenario is
+    excluded — e.g. pixverse-v6's canonical declares `end_frame`, but its
+    only provider (fal) doesn't wire it, so pixverse-v6 is NOT compatible
+    with effects that supply end_frame.
     """
     optional_keys = optional_keys or set()
     scenarios: list[set[str]] = [set(required_keys)]
@@ -361,36 +496,87 @@ def get_compatible_model_ids(
 
     result: list[str] = []
     for model in MODELS:
-        for _, variant in _provider_variants(model):
-            if any(_variant_supports_image_keys(variant, keys) for keys in scenarios):
+        supported = set(model_image_input_roles(model))
+        start_required = model_input_required(model, "start_frame")
+        end_required = model_input_required(model, "end_frame")
+
+        for scenario in scenarios:
+            has_start = "start_frame" in scenario
+            has_end = "end_frame" in scenario
+            if not (has_start or has_end):
+                ok = not start_required and not end_required
+            elif has_start and has_end:
+                ok = "end_frame" in supported
+            else:
+                ok = "start_frame" in supported and not end_required
+            if ok and _any_provider_wires(model, scenario):
                 result.append(model["id"])
                 break
     return result
 
 
-def _client_visible_params(variant: dict[str, Any]) -> list[dict[str, Any]]:
-    """Filter a provider-variant's params down to what the client needs.
+def model_supported_image_keys(model: dict[str, Any]) -> list[str]:
+    """Canonical image-input roles this model declares."""
+    return sorted(model_image_input_roles(model))
 
-    Rule: include if `type == "image"` (upload slot), OR its `ui` placement
-    is main/advanced, OR its canonical role is `generate_audio` (reserved
-    role for the AI-audio toggle). Pure pass-through scalars (`ui: "none"`
-    with no special meaning) are hidden.
 
-    The output uses the canonical name as `key` (the wire name stays
-    server-side) — the client always operates in the canonical space.
+# ─── Client-facing payload ───────────────────────────────────────────────────
+
+
+def _client_params_for(model: dict[str, Any], provider: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the param list the client renders for this (model, provider).
+
+    The client consumes canonical names. A param is included if:
+      - `type == "image"` (image input slot from model.inputs), OR
+      - It's a declared `model.params` entry with `ui` in (main, advanced).
+
+    User-only params are included so the UI can render them as runtime
+    controls (the effect-page and playground renderers decide how).
+    `effect_hidden` stays on the param so the client knows whether to
+    show it in the effect form.
+
+    Per-provider overrides: any key on `provider.params[name]` other than
+    `wire` overlays the canonical entry — useful when the same canonical
+    has different UI constraints per provider (tighter `max`, different
+    `default`, restricted `options`, …). `wire` is wire-layer only and
+    never leaks to the client.
+
+    Params the provider doesn't declare are dropped.
     """
     out: list[dict[str, Any]] = []
-    for p in variant.get("params", []):
-        role = canonical_key(p)
-        if (
-            p.get("type") == "image"
-            or p.get("ui") in ("main", "advanced")
-            or role == "generate_audio"
-        ):
-            pp = dict(p)
-            pp["key"] = role
-            pp.pop("role", None)
-            out.append(pp)
+
+    # 1) Image inputs (from model.inputs, filtered by provider support).
+    for entry in model.get("inputs", []):
+        if entry.get("type") != "image":
+            continue
+        role = entry["role"]
+        if not provider_has_input(provider, role):
+            continue
+        out.append({
+            "key": role,                      # canonical name
+            "role": role,                     # kept for client-side role lookup
+            "type": "image",
+            "required": bool(entry.get("required", False)),
+        })
+
+    # 2) Tunable params (from model.params, filtered by provider support).
+    provider_params = provider.get("params", {})
+    for entry in model.get("params", []):
+        name = entry["name"]
+        provider_entry = provider_params.get(name)
+        if provider_entry is None:
+            continue
+        if entry.get("ui", "none") not in ("main", "advanced"):
+            continue
+        pp = dict(entry)
+        for k, v in provider_entry.items():
+            if k == "wire":
+                continue
+            pp[k] = v
+        pp["key"] = name
+        pp.pop("name", None)
+        out.append(pp)
+
     return out
 
 
@@ -401,30 +587,26 @@ class ModelService:
     def get_available_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
         models = []
         for model in MODELS:
-            m = {k: v for k, v in model.items() if k != "providers"}
+            m = {k: v for k, v in model.items() if k not in ("providers", "inputs", "params")}
 
-            # Nest variants under each provider so the client can look up
-            # params by (provider, variant). Each provider-variant exposes
-            # its client-visible params + `cost` — endpoint/transform stay
-            # server-side. Provider identity (name/type) comes from the
-            # top-level PROVIDERS registry.
             providers_out = []
             for provider_id, provider in model.get("providers", {}).items():
                 identity = PROVIDERS.get(provider_id, {})
-                variants_out: dict[str, Any] = {}
-                for vkey, pvariant in provider.get("variants", {}).items():
-                    v_out: dict[str, Any] = {
-                        "params": _client_visible_params(pvariant),
-                    }
-                    if "cost" in pvariant:
-                        v_out["cost"] = pvariant["cost"]
-                    variants_out[vkey] = v_out
                 provider_type = identity.get("type", "cloud")
                 p = {
                     "id": provider_id,
                     "name": identity.get("name", provider_id),
                     "type": provider_type,
-                    "variants": variants_out,
+                    # Params land under `variants.image_to_video` — the
+                    # client reads from that path. Keeping the nesting
+                    # leaves room to add sibling variants (e.g. a future
+                    # `video_to_video`) without reshaping this response.
+                    "variants": {
+                        "image_to_video": {
+                            "params": _client_params_for(model, provider),
+                            "cost": provider.get("cost", ""),
+                        },
+                    },
                     "is_available": bool(api_key) if provider_type == "cloud" else False,
                 }
                 providers_out.append(p)

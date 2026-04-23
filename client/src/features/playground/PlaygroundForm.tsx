@@ -17,7 +17,6 @@ import { Checkbox } from '@/components/ui/Checkbox'
 import type { ModelInfo, ModelParam } from '@/types/api'
 import {
   advancedParams as advancedParamsOf,
-  aiAudioSwitch,
   imageInputs as imageInputParams,
   mainParams,
   providerVariant,
@@ -47,9 +46,8 @@ export function PlaygroundForm() {
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
   const [imageInputs, setImageInputs] = useState<Record<string, File | string>>({})
-  const [outputValues, setOutputValues] = useState<Record<string, string | number>>({})
+  const [outputValues, setOutputValues] = useState<Record<string, string | number | boolean>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
-  const [generateAudio, setGenerateAudio] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({})
@@ -61,7 +59,6 @@ export function PlaygroundForm() {
   const supportedRoles = imageSlots.map((p) => p.key)
   const outputParams: ModelParam[] = mainParams(variant)
   const advancedParams: ModelParam[] = advancedParamsOf(variant)
-  const audioSwitch = aiAudioSwitch(modelInfo)
   const compatibleModels = useMemo(() => availableModels.map((m) => m.id), [availableModels])
 
   // Models may load AFTER the form mounts (loadConfig runs async). When they
@@ -100,13 +97,12 @@ export function PlaygroundForm() {
       const skip = prevSeedKey === ''
       setPrevSeedKey(seedKey)
       if (!skip) {
-        const defaults: Record<string, string | number> = {}
+        const defaults: Record<string, string | number | boolean> = {}
         for (const param of outputParams) {
           if (param.default !== undefined) defaults[param.key] = param.default
         }
         setOutputValues(defaults)
         setAdvancedValues({})
-        setGenerateAudio(false)
         setImageInputs((prev) => {
           const next: Record<string, File | string> = {}
           for (const role of supportedRoles) {
@@ -156,14 +152,13 @@ export function PlaygroundForm() {
       setImageInputs(nextImages)
 
       if (restoredParams.output) {
-        setOutputValues(restoredParams.output as Record<string, string | number>)
+        setOutputValues(restoredParams.output as Record<string, string | number | boolean>)
       } else {
         setOutputValues({})
       }
 
       const restoredUserParams = (restoredParams.userParams ?? {}) as Record<string, unknown>
       setAdvancedValues(restoredUserParams)
-      setGenerateAudio(!!(restoredUserParams.generate_audio || restoredUserParams.generate_audio_switch))
     }
   }
 
@@ -215,10 +210,6 @@ export function PlaygroundForm() {
     setSubmitError(null)
     setIsGenerating(true)
     try {
-      const finalAdvanced = { ...advancedValues }
-      if (generateAudio && audioSwitch) {
-        finalAdvanced[audioSwitch.key] = true
-      }
       // Only send images the selected model's variant actually accepts —
       // e.g. an end_frame uploaded earlier shouldn't be sent if the user
       // now has PixVerse selected (its i2v variant has no end_frame slot).
@@ -234,7 +225,7 @@ export function PlaygroundForm() {
         negativePrompt,
         imageInputs: filteredImages,
         output: outputValues,
-        userParams: finalAdvanced as Record<string, number | string | boolean>,
+        userParams: advancedValues as Record<string, number | string | boolean>,
       })
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Run failed')
@@ -328,15 +319,6 @@ export function PlaygroundForm() {
           </div>
         )}
 
-        {/* Audio toggle */}
-        {audioSwitch && (
-          <Checkbox
-            label="Generate audio"
-            checked={generateAudio}
-            onCheckedChange={(v) => setGenerateAudio(v === true)}
-          />
-        )}
-
         {/* Advanced */}
         {advancedParams.length > 0 && (
           <AdvancedSettings
@@ -373,16 +355,26 @@ export function PlaygroundForm() {
   )
 }
 
-/* Renders a single output param (select/slider/number). Mirrors the helper inside EffectFormTab. */
+/* Renders a single output param (boolean/select/slider/number). Mirrors the helper inside EffectFormTab. */
 function PlaygroundParamField({
   param,
   value,
   onChange,
 }: {
   param: ModelParam
-  value: string | number
-  onChange: (v: string | number) => void
+  value: string | number | boolean
+  onChange: (v: string | number | boolean) => void
 }) {
+  if (param.type === 'boolean') {
+    return (
+      <Checkbox
+        label={param.label ?? param.key}
+        checked={value === true}
+        onCheckedChange={(v) => onChange(v === true)}
+      />
+    )
+  }
+
   if (param.type === 'select' && param.options) {
     return (
       <div className="space-y-2">
@@ -413,7 +405,7 @@ function PlaygroundParamField({
         <Label variant="form">{param.label}</Label>
         <Input
           type="number"
-          value={value}
+          value={String(value)}
           min={param.min}
           max={param.max}
           step={param.step}

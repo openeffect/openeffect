@@ -73,7 +73,7 @@ export async function startPlaygroundRun(args: {
   prompt: string
   negativePrompt: string
   imageInputs: Record<string, File | string>
-  output: Record<string, string | number>
+  output: Record<string, string | number | boolean>
   userParams: Record<string, number | string | boolean>
 }): Promise<string> {
   // Upload any File objects to get ref_ids; pass through existing ref_id strings

@@ -17,7 +17,6 @@ def _isolate_fal_key_env(monkeypatch):
 
 def _mk_input(
     model_id: str = "wan-2.2",
-    variant_key: str = "image_to_video",
     image_inputs: dict[str, str] | None = None,
     **params,
 ) -> ProviderInput:
@@ -25,7 +24,7 @@ def _mk_input(
         prompt=params.pop("prompt", "test prompt"),
         negative_prompt=params.pop("negative_prompt", ""),
         image_inputs=image_inputs or {"start_frame": "/tmp/fake.jpg"},
-        parameters={"_model_id": model_id, "_variant_key": variant_key, **params},
+        parameters={"_model_id": model_id, **params},
     )
 
 
@@ -35,11 +34,11 @@ def _mk_input(
 class TestGenerate:
     async def test_unknown_model_yields_failed(self):
         provider = FalProvider(api_key="test-key")
-        inp = _mk_input(model_id="does-not-exist", variant_key="")
+        inp = _mk_input(model_id="does-not-exist")
         events = [e async for e in provider.generate(inp)]
         assert len(events) == 1
         assert events[0].type == "failed"
-        assert "No variant found" in (events[0].error or "")
+        assert "No fal provider config" in (events[0].error or "")
 
     async def test_wan22_happy_path_emits_expected_events(self, monkeypatch):
         """End-to-end wire check: upload → submit → streamed events → completed,

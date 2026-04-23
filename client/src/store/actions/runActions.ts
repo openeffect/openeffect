@@ -53,7 +53,7 @@ export async function startRun(
   values: Record<string, unknown>,
   selectedModel: string,
   selectedProvider: string,
-  outputValues: Record<string, string | number>,
+  outputValues: Record<string, string | number | boolean>,
   advancedValues: Record<string, unknown>,
 ): Promise<string> {
   const inputs = await prepareInputs(manifest, values)
@@ -66,7 +66,7 @@ export async function startRun(
     output: outputValues,
     user_params:
       Object.keys(advancedValues).length > 0
-        ? (advancedValues as Record<string, number | string>)
+        ? (advancedValues as Record<string, number | string | boolean>)
         : undefined,
   }
 

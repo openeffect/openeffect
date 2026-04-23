@@ -72,7 +72,7 @@ export type ModelParamEntry =
 
 export interface ModelOverride {
   prompt?: string
-  model_params?: Record<string, ModelParamEntry>
+  params?: Record<string, ModelParamEntry>
 }
 
 export interface GenerationConfig {
@@ -80,7 +80,7 @@ export interface GenerationConfig {
   negative_prompt: string
   models: string[]
   default_model: string
-  model_params: Record<string, ModelParamEntry>
+  params: Record<string, ModelParamEntry>
   model_overrides: Record<string, ModelOverride>
   reverse: boolean
 }
@@ -123,20 +123,25 @@ export interface RunRecord {
 
 export interface ModelParam {
   // Canonical (provider-agnostic) key. For image inputs, the canonical key
-  // IS the semantic role (e.g. "start_frame", "end_frame"). The reserved
-  // canonical key "generate_audio" identifies the AI-audio toggle.
+  // IS the semantic role (e.g. "start_frame", "end_frame").
   key: string
   type: 'image' | 'select' | 'slider' | 'number' | 'text' | 'boolean'
   required?: boolean
   ui?: 'main' | 'advanced' | 'none'
   label?: string
-  default?: string | number
+  default?: string | number | boolean
   options?: { value: string | number; label: string }[]
   min?: number
   max?: number
   step?: number
   hint?: string
   multiline?: boolean
+  /** Hidden from the effect page form — only shown in Playground. Manifest
+   *  authors tune it via YAML; effect runners never see the control. */
+  effect_hidden?: boolean
+  /** Runtime user preference — never settable via manifest. Always rendered
+   *  as a user control (both effect page and Playground). */
+  user_only?: boolean
 }
 
 export interface ModelVariant {
@@ -191,8 +196,8 @@ export interface RunRequest {
   model_id: string
   provider_id: string
   inputs: Record<string, string>
-  output: Record<string, string | number>
-  user_params?: Record<string, number | string>
+  output: Record<string, string | number | boolean>
+  user_params?: Record<string, number | string | boolean>
 }
 
 export interface PlaygroundRunRequest {
@@ -201,7 +206,7 @@ export interface PlaygroundRunRequest {
   prompt: string
   negative_prompt?: string
   image_inputs?: Record<string, string>
-  output?: Record<string, string | number>
+  output?: Record<string, string | number | boolean>
   user_params?: Record<string, number | string | boolean>
 }
 

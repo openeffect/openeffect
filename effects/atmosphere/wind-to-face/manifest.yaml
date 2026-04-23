@@ -73,10 +73,10 @@ generation:
         Cinematic fashion-editorial energy, realistic motion, clean continuity,
         no cut, no scene replacement.
         {scene_prompt}
-      model_params:
+      params:
         duration: 4
-        cfg_scale: 0.56
         generate_audio: false
+        guidance_scale: 0.56
 
     wan-2.2:
       prompt: >
@@ -89,18 +89,15 @@ generation:
         not like the subject moving through the scene.
         No cut, no scene replacement, no duplicate subject.
         {scene_prompt}
-      model_params:
-        num_frames: 49
-        frames_per_second: 16
-        resolution: 720p
-        aspect_ratio: auto
+      params:
+        duration: 4
         num_inference_steps: 27
         guidance_scale: 3.5
         guidance_scale_2: 3.5
         shift: 5
         acceleration: regular
-        enable_prompt_expansion: false
-        enable_safety_checker: true
-        enable_output_safety_checker: false
         video_quality: medium
         video_write_mode: balanced
+        enable_safety_checker: true
+        enable_output_safety_checker: false
+        enable_prompt_expansion: false

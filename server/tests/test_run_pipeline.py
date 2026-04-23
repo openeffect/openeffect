@@ -130,7 +130,7 @@ class TestStartRun:
                 provider_id="fal",
                 inputs={"prompt": "city night"},
                 output={"duration": 5},
-                user_params={"cfg_scale": 3.5},
+                user_params={"guidance_scale": 3.5},
             ))
 
         record = await history.get_by_id(job_id)
@@ -138,7 +138,7 @@ class TestStartRun:
         # Raw user inputs are stored field-keyed so a form can re-hydrate them
         assert data["inputs"]["prompt"] == "city night"
         assert data["output"]["duration"] == 5
-        assert data["user_params"]["cfg_scale"] == 3.5
+        assert data["user_params"]["guidance_scale"] == 3.5
         # model_inputs holds the normalized, resolved shape (prompt templates expanded)
         assert "model_inputs" in data
         assert data["model_inputs"]["prompt"] == "Test city night"  # template "Test {prompt}" resolved

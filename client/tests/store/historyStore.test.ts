@@ -253,7 +253,7 @@ describe('historyStore', () => {
             negative_prompt: '',
             models: [],
             default_model: '',
-            model_params: {},
+            params: {},
             model_overrides: {},
             reverse: false,
           },

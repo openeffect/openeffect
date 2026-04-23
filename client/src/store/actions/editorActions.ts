@@ -55,7 +55,7 @@ generation:
   negative_prompt: >
     low quality, blurry, watermark
 
-  model_params:
+  params:
     duration: 5
     guidance_scale: 8.0
 `
@@ -96,7 +96,7 @@ const BLANK_MANIFEST: EffectManifest = {
     negative_prompt: 'low quality, blurry, watermark',
     models: ['kling-v3', 'wan-2.2'],
     default_model: 'kling-v3',
-    model_params: { duration: { default: 5 }, guidance_scale: { default: 8.0 } },
+    params: { duration: { default: 5 }, guidance_scale: { default: 8.0 } },
     model_overrides: {},
     reverse: false,
   },

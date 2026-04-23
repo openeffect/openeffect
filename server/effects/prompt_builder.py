@@ -2,7 +2,7 @@ import re
 from typing import Any
 
 from effects.validator import EffectManifest, ModelParam
-from services.model_service import canonical_key, get_provider_variant_params
+from services.model_service import get_provider
 
 
 class PromptBuilder:
@@ -46,36 +46,36 @@ class PromptBuilder:
     @staticmethod
     def build_provider_io(
         model_id: str,
-        variant_key: str,
         provider_id: str,
         raw_params: dict[str, Any] | None = None,
         manifest: EffectManifest | None = None,
     ) -> dict[str, Any]:
-        """Build the canonical-keyed parameters dict for a given (model,
-        variant, provider) triple.
+        """Build the canonical-keyed parameters dict for a (model, provider).
 
-        Merges the manifest's model_params with caller-supplied raw_params,
-        keyed by the canonical param keys declared by the provider-variant.
-        Wire-format munging (value transforms, canonical→wire key renames)
-        happens later in the provider layer.
+        Merges the manifest's `params` with caller-supplied `raw_params`.
+        Canonical keys not declared by the provider's params map are silently
+        dropped — that's how provider-specific features degrade gracefully
+        on providers that don't support them.
 
         Precedence (lowest → highest):
-          1. Manifest's non-locked model_params (top-level then model_overrides)
-          2. Caller-supplied raw_params (user input from the form / API request)
-          3. Manifest's locked model_params (always wins)
-
-        Keys not declared by the provider-variant are silently dropped.
+          1. Manifest's non-locked `params` (top-level then model override)
+          2. Caller-supplied `raw_params` (user input from the form / API request)
+          3. Manifest's locked `params` (always wins)
         """
-        known = {canonical_key(p) for p in get_provider_variant_params(model_id, variant_key, provider_id)}
+        provider = get_provider(model_id, provider_id)
+        if provider is None:
+            return {}
+
+        known = set(provider.get("params", {}).keys())
         result: dict[str, Any] = {}
 
-        # Compute the effective manifest param map (top-level + model_override)
+        # Compute the effective manifest param map (top-level + model override)
         effective: dict[str, ModelParam] = {}
         if manifest is not None:
-            effective = dict(manifest.generation.model_params)
+            effective = dict(manifest.generation.params)
             override = manifest.generation.model_overrides.get(model_id)
-            if override and override.model_params:
-                effective.update(override.model_params)
+            if override and override.params:
+                effective.update(override.params)
 
         # Pass 1: manifest defaults (non-locked) — low priority
         for key, param in effective.items():

@@ -6,13 +6,7 @@ from typing import Any
 import fal_client
 
 from providers.base import BaseProvider, ProviderEvent, ProviderInput
-from services.model_service import (
-    canonical_key,
-    canonical_to_wire,
-    get_image_inputs,
-    get_provider_variant,
-    pick_variant,
-)
+from services.model_service import canonical_to_wire, get_model, get_provider
 
 
 class FalProvider(BaseProvider):
@@ -23,27 +17,22 @@ class FalProvider(BaseProvider):
 
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
         model_id = input.parameters.get("_model_id", "wan-2.2")
-        variant_key = input.parameters.get("_variant_key") or pick_variant(
-            model_id, set(input.image_inputs.keys())
-        )
-        if not variant_key:
-            yield ProviderEvent(type="failed", error=f"No variant found for model {model_id}")
-            return
 
-        # All wire-level concerns (endpoint, per-param wire `key`, transform)
-        # live under the per-provider variant config — this is the only spot
-        # that knows about fal-specific wire details.
-        provider_cfg = get_provider_variant(model_id, variant_key, "fal")
-        if not provider_cfg:
-            yield ProviderEvent(type="failed", error=f"No fal provider config for {model_id}/{variant_key}")
+        # All wire-level concerns (endpoint, canonical→wire rename, value
+        # transforms) live under the per-provider config — this is the only
+        # spot that knows about fal-specific wire details.
+        model_cfg = get_model(model_id)
+        provider_cfg = get_provider(model_id, "fal") if model_cfg else None
+        if not model_cfg or not provider_cfg:
+            yield ProviderEvent(type="failed", error=f"No fal provider config for {model_id}")
             return
 
         endpoint = provider_cfg.get("endpoint")
         if not endpoint:
-            yield ProviderEvent(type="failed", error=f"No endpoint for {model_id}/{variant_key}")
+            yield ProviderEvent(type="failed", error=f"No endpoint for {model_id}")
             return
 
-        # Build a canonical-keyed args dict. Wire remap happens at the end
+        # Build a canonical-keyed args dict. Wire remap happens at the end.
         canonical: dict[str, Any] = {
             "prompt": input.prompt,
             **{k: v for k, v in input.parameters.items() if not k.startswith("_") and v != "" and v is not None},
@@ -52,24 +41,22 @@ class FalProvider(BaseProvider):
         if input.negative_prompt:
             canonical["negative_prompt"] = input.negative_prompt
 
-        # Upload images — keyed by canonical name. Remap to wire at the end
+        # Upload images — keyed by canonical role. canonical_to_wire renames
+        # to the provider's wire keys at the end.
         yield ProviderEvent(type="progress", progress=5, message="Uploading images...")
-        image_keys = {canonical_key(p) for p in get_image_inputs(provider_cfg)}
-        for role, local_path in input.image_inputs.items():
-            if role not in image_keys:
-                continue
+        supported_image_roles = {
+            role for role in provider_cfg.get("inputs", {})
+            if role in input.image_inputs  # only roles we have a path for
+        }
+        for role in supported_image_roles:
+            local_path = input.image_inputs[role]
             url = await self._client.upload_file(Path(local_path))
             canonical[role] = url
 
-        # Apply provider-specific value transform (int↔string enums,
-        # derived keys like num_frames = duration × fps, etc.).
-        transform = provider_cfg.get("transform_params")
-        if transform is not None:
-            canonical = transform(canonical)
-
-        # Final step: rename canonical roles to wire keys via each param's
-        # `role` → `key` mapping (entries with no `role` pass through unchanged).
-        arguments = canonical_to_wire(provider_cfg.get("params", []), canonical)
+        # Rename canonicals to wire keys (and run the provider's optional
+        # transform for derived/converted fields). Canonicals the provider
+        # doesn't declare are silently dropped.
+        arguments = canonical_to_wire(model_cfg, provider_cfg, canonical)
 
         yield ProviderEvent(type="progress", progress=10, message="Submitting to fal.ai...")
 

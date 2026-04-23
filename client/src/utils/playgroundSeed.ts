@@ -16,7 +16,7 @@ function humanizeRole(role: string): string {
 /**
  * Build a RestoredParams shape for "Try in playground" from an effect that
  * has never been run. The raw template (with `{placeholder}` tokens intact)
- * becomes the prompt. The manifest's `model_params` for the default model
+ * becomes the prompt. The manifest's `params` for the default model
  * are unwrapped to their effective values and split between output_params
  * and advanced_params based on the model's param definitions.
  */
@@ -32,7 +32,7 @@ export function effectToPlaygroundParams(
   const prompt = override || manifest.generation.prompt
   const negativePrompt = manifest.generation.negative_prompt ?? ''
 
-  // Resolve effective model_params (top-level + per-model override) and unwrap
+  // Resolve effective params (top-level + per-model override) and unwrap
   // each entry to its scalar value, then split by output vs advanced. Effects
   // are always launched from an image input, so use the image_to_video variant
   // from the default provider (values still land in the form regardless of
@@ -83,7 +83,7 @@ export function runToPlaygroundParams(record: RunRecord): RestoredParams {
  * The playground prompt is taken as-is (it's already the final string the
  * user sent; there are no placeholders to preserve). Each image role becomes
  * an `image` input field in the manifest schema. All output + advanced
- * params are merged into `generation.model_params` as overridable defaults.
+ * params are merged into `generation.params` as overridable defaults.
  */
 export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   const parsed = parseRunInputs(record)
@@ -141,7 +141,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
       negative_prompt: negativePrompt,
       models: [record.model_id],
       default_model: record.model_id,
-      model_params: mergedParams,
+      params: mergedParams,
       model_overrides: {},
       reverse: false,
     },

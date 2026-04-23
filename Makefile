@@ -1,18 +1,15 @@
 .PHONY: dev test lint install build
 
 dev:
-	@echo "Starting OpenEffect in development mode..."
-	@trap 'kill %1 %2' EXIT; \
-	  (cd server && uv run uvicorn main:app --reload --port 3131) & \
-	  (cd client && pnpm dev) & \
-	  wait
+	uv run python run.py
 
 test:
-	uv run pytest
+	uv run pytest -q
 	cd client && pnpm test
 
 lint:
 	uv run ruff check server/
+	uv run mypy server/
 	cd client && pnpm eslint . && pnpm tsc --noEmit
 
 install:

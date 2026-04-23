@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/Label'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
 import { Separator } from '@/components/ui/Separator'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
+import { PricingBadge } from '@/components/PricingBadge'
 import { KeyringFallbackNotice } from '@/components/KeyringFallbackNotice'
 
 interface SettingsDialogProps {
@@ -105,19 +105,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                                 <span className="truncate text-xs text-secondary-foreground">
                                   {provider.name}
                                 </span>
-                                {providerCost && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="shrink-0 rounded-full border border-foreground/15 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
-                                      >
-                                        Pricing
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">{providerCost}</TooltipContent>
-                                  </Tooltip>
-                                )}
+                                {providerCost && <PricingBadge tooltip={providerCost} />}
                               </div>
                               {!provider.is_available && (
                                 <span className="shrink-0 text-xs text-muted-foreground">

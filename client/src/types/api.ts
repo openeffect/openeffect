@@ -142,6 +142,10 @@ export interface ModelParam {
   /** Runtime user preference — never settable via manifest. Always rendered
    *  as a user control (both effect page and Playground). */
   user_only?: boolean
+  /** This field's value changes the final bill. UI renders a `$` badge
+   *  next to the label so the user knows to watch the cost popup; the
+   *  system doesn't compute a precise estimate. */
+  price_affecting?: boolean
 }
 
 export interface ModelVariant {

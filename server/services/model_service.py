@@ -89,8 +89,20 @@ MODELS: list[dict[str, Any]] = [
             {"name": "duration", "type": "slider", "ui": "main",
              "label": "Duration (seconds)",
              "default": 5, "min": 3, "max": 15, "step": 1},
+            # Resolution routes to fal's standard (720p) vs pro (1080p)
+            # endpoint — see the lambda in `providers.fal.endpoint` below.
+            # Pro pricing is materially higher, hence `price_affecting`.
+            {"name": "resolution", "type": "select", "ui": "main",
+             "label": "Resolution", "default": "720p",
+             "options": [
+                 {"value": "720p",  "label": "720p"},
+                 {"value": "1080p", "label": "1080p"},
+             ],
+             "user_only": True,
+             "price_affecting": True},
             {"name": "generate_audio", "type": "boolean", "ui": "main",
-             "label": "Generate audio", "default": False},
+             "label": "Generate audio", "default": False,
+             "price_affecting": True},
 
             # ─── Advanced (collapsed) ───
             # `guidance_scale` is kling-specific here (wan-2.7 drops it);
@@ -106,8 +118,21 @@ MODELS: list[dict[str, Any]] = [
         ],
         "providers": {
             "fal": {
-                "endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
-                "cost": "$0.084 per second (audio off), $0.126 with audio",
+                # Endpoint is a function so we can route 1080p to fal's
+                # pro tier. Any provider whose URL depends on a canonical
+                # value can do the same.
+                "endpoint": lambda p: (
+                    "fal-ai/kling-video/v3/pro/image-to-video"
+                    if p.get("resolution") == "1080p"
+                    else "fal-ai/kling-video/v3/standard/image-to-video"
+                ),
+                # Rendered in the tooltip with `whitespace-pre font-mono`,
+                # so the spaces below become real columns (resolution · price
+                # · price-with-audio).
+                "cost": (
+                    "720p   $0.084/s  $0.126/s with audio\n"
+                    "1080p  $0.112/s  $0.168/s with audio"
+                ),
                 "inputs": {
                     "start_frame":     "start_image_url",
                     "end_frame":       "end_image_url",
@@ -117,6 +142,10 @@ MODELS: list[dict[str, Any]] = [
                 "params": {
                     # Main
                     "duration":       {"wire": "duration"},
+                    # `resolution` is consumed by the endpoint resolver above;
+                    # fal's kling endpoints don't accept it as a field, so
+                    # `wire: None` drops it from the outgoing payload.
+                    "resolution":     {"wire": None},
                     "generate_audio": {"wire": "generate_audio"},
                     # Advanced — canonical `guidance_scale`, wire `cfg_scale`.
                     "guidance_scale": {"wire": "cfg_scale"},
@@ -144,6 +173,8 @@ MODELS: list[dict[str, Any]] = [
             {"name": "duration", "type": "slider", "ui": "main",
              "label": "Duration (seconds)",
              "default": 5, "min": 1, "max": 15, "step": 1},
+            # Resolution spans 4 tiers here; pricing scales ~4× across
+            # them (see the `cost` string below), so it's price_affecting.
             {"name": "resolution", "type": "select", "ui": "main",
              "label": "Resolution", "default": "720p",
              "options": [
@@ -152,7 +183,8 @@ MODELS: list[dict[str, Any]] = [
                  {"value": "720p",  "label": "720p"},
                  {"value": "1080p", "label": "1080p"},
              ],
-             "user_only": True},
+             "user_only": True,
+             "price_affecting": True},
             {"name": "aspect_ratio", "type": "select", "ui": "main",
              "label": "Aspect Ratio", "default": "16:9",
              "options": [
@@ -178,7 +210,8 @@ MODELS: list[dict[str, Any]] = [
              ],
              "effect_hidden": True},
             {"name": "generate_audio", "type": "boolean", "ui": "main",
-             "label": "Generate audio", "default": False},
+             "label": "Generate audio", "default": False,
+             "price_affecting": True},
 
             # ─── Advanced (collapsed) ───
             {"name": "seed", "type": "number", "ui": "advanced",
@@ -188,7 +221,12 @@ MODELS: list[dict[str, Any]] = [
         "providers": {
             "fal": {
                 "endpoint": "fal-ai/pixverse/v6/image-to-video",
-                "cost": "$0.025–$0.115 per second (by resolution / audio)",
+                "cost": (
+                    "360p   $0.025/s  $0.035/s with audio\n"
+                    "540p   $0.035/s  $0.045/s with audio\n"
+                    "720p   $0.045/s  $0.060/s with audio\n"
+                    "1080p  $0.090/s  $0.115/s with audio"
+                ),
                 "inputs": {
                     "start_frame":     "image_url",
                     # end_frame omitted — fal's i2v doesn't support it
@@ -247,7 +285,8 @@ MODELS: list[dict[str, Any]] = [
         "providers": {
             "fal": {
                 "endpoint": "fal-ai/wan/v2.7/image-to-video",
-                "cost": "$0.10 per second",
+                # Flat rate across resolution and audio — no tier table.
+                "cost": "$0.10/s",
                 "inputs": {
                     "start_frame":     "image_url",
                     "end_frame":       "end_image_url",
@@ -287,6 +326,20 @@ def get_provider(model_id: str, provider_id: str) -> dict[str, Any] | None:
     if not model:
         return None
     return model.get("providers", {}).get(provider_id)
+
+
+def resolve_endpoint(
+    provider_cfg: dict[str, Any],
+    canonical: dict[str, Any],
+) -> str | None:
+    """`provider.endpoint` can be either a bare URL string or a callable
+    taking the canonical param dict and returning the URL. The callable
+    form is how models route to per-tier endpoints (e.g. kling's
+    pro/standard split driven by resolution)."""
+    endpoint = provider_cfg.get("endpoint")
+    if callable(endpoint):
+        return endpoint(canonical)
+    return endpoint
 
 
 def model_input_roles(model: dict[str, Any]) -> list[str]:

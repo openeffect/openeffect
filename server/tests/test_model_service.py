@@ -9,6 +9,7 @@ from services.model_service import (
     model_input_required,
     model_supported_image_keys,
     provider_has_input,
+    resolve_endpoint,
 )
 
 
@@ -253,3 +254,51 @@ class TestClientParamsProviderOverrides:
         out = _client_params_for(model, provider)
         assert out[0]["default"] == 5
         assert out[0]["max"] == 10
+
+
+class TestResolveEndpoint:
+    """`provider.endpoint` accepts a bare string or a callable that receives
+    the canonical dict and returns the URL. Callable form is how a model
+    routes to different endpoints depending on user-selected params."""
+
+    def test_string_endpoint_returned_as_is(self):
+        provider = {"endpoint": "fal-ai/some/endpoint"}
+        assert resolve_endpoint(provider, {"any": "canonical"}) == "fal-ai/some/endpoint"
+
+    def test_callable_endpoint_is_called_with_canonical(self):
+        seen: list[dict] = []
+
+        def pick(canonical: dict) -> str:
+            seen.append(canonical)
+            return f"fal-ai/{canonical['resolution']}/endpoint"
+
+        provider = {"endpoint": pick}
+        url = resolve_endpoint(provider, {"resolution": "1080p", "seed": 42})
+        assert url == "fal-ai/1080p/endpoint"
+        assert seen == [{"resolution": "1080p", "seed": 42}]
+
+    def test_missing_endpoint_returns_none(self):
+        assert resolve_endpoint({}, {}) is None
+
+    def test_kling_routes_1080p_to_pro(self):
+        provider = get_provider("kling-3.0", "fal")
+        assert provider is not None
+        assert resolve_endpoint(provider, {"resolution": "1080p"}) == (
+            "fal-ai/kling-video/v3/pro/image-to-video"
+        )
+
+    def test_kling_routes_720p_to_standard(self):
+        provider = get_provider("kling-3.0", "fal")
+        assert provider is not None
+        assert resolve_endpoint(provider, {"resolution": "720p"}) == (
+            "fal-ai/kling-video/v3/standard/image-to-video"
+        )
+
+    def test_kling_without_resolution_defaults_to_standard(self):
+        """No explicit resolution → fall through to the standard tier.
+        Matches the "safe default" intent of the registry lambda."""
+        provider = get_provider("kling-3.0", "fal")
+        assert provider is not None
+        assert resolve_endpoint(provider, {}) == (
+            "fal-ai/kling-video/v3/standard/image-to-video"
+        )

@@ -7,25 +7,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/DropdownMenu'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/Tooltip'
+import { PricingBadge } from '@/components/PricingBadge'
 import { cn } from '@/utils/cn'
-
-function PriceBadge({ cost }: { cost: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="shrink-0 rounded-full border border-foreground/15 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-        >
-          Pricing
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">{cost}</TooltipContent>
-    </Tooltip>
-  )
-}
 
 interface ModelSelectorProps {
   compatibleModels: string[]
@@ -139,7 +122,7 @@ export function ModelSelector({
                     <Cloud size={12} />
                     <span className="font-medium">{provider.name}</span>
                   </div>
-                  {providerCost && <PriceBadge cost={providerCost} />}
+                  {providerCost && <PricingBadge tooltip={providerCost} />}
                 </DropdownMenuItem>
               )
             })}
@@ -150,7 +133,7 @@ export function ModelSelector({
           <Cloud size={12} />
           {selectedProviderInfo.name}
           {selectedProviderInfo.variants?.image_to_video?.cost && (
-            <PriceBadge cost={selectedProviderInfo.variants.image_to_video.cost} />
+            <PricingBadge tooltip={selectedProviderInfo.variants.image_to_video.cost} />
           )}
         </span>
       ) : null}

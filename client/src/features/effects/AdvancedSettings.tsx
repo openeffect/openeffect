@@ -5,6 +5,7 @@ import type { ModelParam } from '@/types/api'
 import { Label } from '@/components/ui/Label'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { DollarBadge } from '@/components/DollarBadge'
 
 interface AdvancedSettingsProps {
   parameters: ModelParam[]
@@ -40,12 +41,15 @@ export function AdvancedSettings({ parameters, values, onChange, children }: Adv
               {children}
               {parameters.map((param) => {
                 const defaultVal = param.default
+                const priceBadge = param.price_affecting
+                  ? <DollarBadge tooltip="Changing this value affects pricing" />
+                  : null
 
                 if (param.type === 'slider' && param.min != null && param.max != null) {
                   return (
                     <div key={param.key} className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <Label variant="form" className="mb-0">{param.label}</Label>
+                        <Label variant="form" className="mb-0">{param.label}{priceBadge}</Label>
                         <span className="text-xs font-medium tabular-nums text-secondary-foreground">
                           {String(values[param.key] ?? defaultVal)}
                         </span>
@@ -67,7 +71,7 @@ export function AdvancedSettings({ parameters, values, onChange, children }: Adv
                 if (param.type === 'text') {
                   return (
                     <div key={param.key} className="space-y-2">
-                      <Label variant="form">{param.label}</Label>
+                      <Label variant="form">{param.label}{priceBadge}</Label>
                       {param.multiline ? (
                         <Textarea
                           value={String(values[param.key] ?? defaultVal)}
@@ -89,7 +93,7 @@ export function AdvancedSettings({ parameters, values, onChange, children }: Adv
                 if (param.type === 'number') {
                   return (
                     <div key={param.key} className="space-y-2">
-                      <Label variant="form">{param.label}</Label>
+                      <Label variant="form">{param.label}{priceBadge}</Label>
                       <Input
                         type="number"
                         value={Number(values[param.key] ?? defaultVal)}

@@ -8,6 +8,7 @@ import { ModelSelector } from '@/features/effects/ModelSelector'
 import { AdvancedSettings } from '@/features/effects/AdvancedSettings'
 import { GenerateButton } from '@/features/effects/GenerateButton'
 import { ImageUploader } from '@/components/ImageUploader'
+import { DollarBadge } from '@/components/DollarBadge'
 import { RestoreFormBanner } from '@/components/RestoreFormBanner'
 import { Textarea } from '@/components/ui/Textarea'
 import { Input } from '@/components/ui/Input'
@@ -365,20 +366,27 @@ function PlaygroundParamField({
   value: string | number | boolean
   onChange: (v: string | number | boolean) => void
 }) {
+  const priceBadge = param.price_affecting
+    ? <DollarBadge tooltip="Changing this value affects pricing" />
+    : null
+
   if (param.type === 'boolean') {
     return (
-      <Checkbox
-        label={param.label ?? param.key}
-        checked={value === true}
-        onCheckedChange={(v) => onChange(v === true)}
-      />
+      <div className="flex items-center gap-1">
+        <Checkbox
+          label={param.label ?? param.key}
+          checked={value === true}
+          onCheckedChange={(v) => onChange(v === true)}
+        />
+        {priceBadge}
+      </div>
     )
   }
 
   if (param.type === 'select' && param.options) {
     return (
       <div className="space-y-2">
-        <Label variant="form">{param.label}</Label>
+        <Label variant="form">{param.label}{priceBadge}</Label>
         <div className="flex flex-wrap gap-1.5">
           {param.options.map((opt) => {
             const isActive = value === opt.value
@@ -402,7 +410,7 @@ function PlaygroundParamField({
   if (param.type === 'number') {
     return (
       <div className="space-y-2">
-        <Label variant="form">{param.label}</Label>
+        <Label variant="form">{param.label}{priceBadge}</Label>
         <Input
           type="number"
           value={String(value)}
@@ -420,7 +428,7 @@ function PlaygroundParamField({
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <Label variant="form" className="mb-0">{param.label}</Label>
+          <Label variant="form" className="mb-0">{param.label}{priceBadge}</Label>
           <span className="text-xs font-medium tabular-nums text-secondary-foreground">{String(value)}</span>
         </div>
         <input

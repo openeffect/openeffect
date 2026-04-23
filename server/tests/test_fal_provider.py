@@ -120,6 +120,65 @@ class TestGenerate:
         assert submitted["arguments"]["start_image_url"] == "https://fal.cdn/k.jpg"
         assert "start_frame" not in submitted["arguments"]
 
+    async def test_kling_1080p_routes_to_pro_endpoint(self, monkeypatch):
+        """Passing `resolution: 1080p` must hit fal's pro endpoint; 720p (or
+        unset) falls back to standard. `resolution` itself is consumed by the
+        endpoint resolver and must NOT appear in the outgoing payload."""
+        async def fake_upload(self, path, **_kwargs):
+            return f"https://fal.cdn/{os.path.basename(path)}"
+
+        submitted: dict = {}
+
+        async def fake_subscribe(
+            self, endpoint, *, arguments,
+            with_logs=True, on_enqueue=None, on_queue_update=None, **_kwargs,
+        ):
+            submitted["endpoint"] = endpoint
+            submitted["arguments"] = arguments
+            if on_enqueue:
+                await on_enqueue("r")
+            return {"video": {"url": "u"}}
+
+        monkeypatch.setattr("fal_client.AsyncClient.upload_file", fake_upload)
+        monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
+
+        provider = FalProvider(api_key="k")
+        inp = _mk_input(
+            model_id="kling-3.0",
+            image_inputs={"start_frame": "/tmp/k.jpg"},
+            resolution="1080p",
+        )
+        _ = [e async for e in provider.generate(inp)]
+        assert submitted["endpoint"] == "fal-ai/kling-video/v3/pro/image-to-video"
+        assert "resolution" not in submitted["arguments"]
+
+    async def test_kling_720p_routes_to_standard_endpoint(self, monkeypatch):
+        async def fake_upload(self, path, **_kwargs):
+            return f"https://fal.cdn/{os.path.basename(path)}"
+
+        submitted: dict = {}
+
+        async def fake_subscribe(
+            self, endpoint, *, arguments,
+            with_logs=True, on_enqueue=None, on_queue_update=None, **_kwargs,
+        ):
+            submitted["endpoint"] = endpoint
+            if on_enqueue:
+                await on_enqueue("r")
+            return {"video": {"url": "u"}}
+
+        monkeypatch.setattr("fal_client.AsyncClient.upload_file", fake_upload)
+        monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
+
+        provider = FalProvider(api_key="k")
+        inp = _mk_input(
+            model_id="kling-3.0",
+            image_inputs={"start_frame": "/tmp/k.jpg"},
+            resolution="720p",
+        )
+        _ = [e async for e in provider.generate(inp)]
+        assert submitted["endpoint"] == "fal-ai/kling-video/v3/standard/image-to-video"
+
     async def test_subscribe_exception_yields_failed(self, monkeypatch):
         async def fake_upload(self, path, **_kwargs):
             return "https://fal.cdn/x"

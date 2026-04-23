@@ -6,7 +6,7 @@ from typing import Any
 import fal_client
 
 from providers.base import BaseProvider, ProviderEvent, ProviderInput
-from services.model_service import canonical_to_wire, get_model, get_provider
+from services.model_service import canonical_to_wire, get_model, get_provider, resolve_endpoint
 
 
 class FalProvider(BaseProvider):
@@ -27,8 +27,10 @@ class FalProvider(BaseProvider):
             yield ProviderEvent(type="failed", error=f"No fal provider config for {model_id}")
             return
 
-        endpoint = provider_cfg.get("endpoint")
-        if not endpoint:
+        # Sanity check — the actual URL is resolved once the canonical dict
+        # is built, since callable endpoints can route off canonical values
+        # (see `resolve_endpoint` and kling's pro/standard split).
+        if provider_cfg.get("endpoint") is None:
             yield ProviderEvent(type="failed", error=f"No endpoint for {model_id}")
             return
 
@@ -52,6 +54,11 @@ class FalProvider(BaseProvider):
             local_path = input.image_inputs[role]
             url = await self._client.upload_file(Path(local_path))
             canonical[role] = url
+
+        # Resolve the actual endpoint URL now that canonical is fully
+        # populated — callable endpoints read canonical values to pick
+        # their tier (e.g. kling 1080p → pro).
+        endpoint = resolve_endpoint(provider_cfg, canonical)
 
         # Rename canonicals to wire keys (and run the provider's optional
         # transform for derived/converted fields). Canonicals the provider

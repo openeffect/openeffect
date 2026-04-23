@@ -41,10 +41,10 @@ inputs:
 
 generation:
   models:
-    - kling-v3
-    - wan-2.2
+    - kling-3.0
+    - wan-2.7
 
-  default_model: kling-v3
+  default_model: kling-3.0
 
   prompt: >
     Single continuous crash zoom from the input image.
@@ -62,7 +62,7 @@ generation:
     heavy jitter, flicker, blur, text, watermark
 
   model_overrides:
-    kling-v3:
+    kling-3.0:
       prompt: >
         Medium close-up of the same subject from the input image.
         Fast crash zoom straight into the face in one unbroken shot.
@@ -77,7 +77,7 @@ generation:
         generate_audio: false
         guidance_scale: 0.55
 
-    wan-2.2:
+    wan-2.7:
       prompt: >
         Continue from the input image in a single continuous shot.
         The camera performs a rapid forward push straight toward the subject.
@@ -89,13 +89,3 @@ generation:
         {scene_prompt}
       params:
         duration: 4
-        num_inference_steps: 27
-        guidance_scale: 3.5
-        guidance_scale_2: 3.5
-        shift: 5
-        acceleration: regular
-        video_quality: medium
-        video_write_mode: balanced
-        enable_safety_checker: true
-        enable_output_safety_checker: false
-        enable_prompt_expansion: false

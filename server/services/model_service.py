@@ -43,42 +43,14 @@ logger = logging.getLogger(__name__)
 #        - `transform`       — optional callable `(canonical_dict) → dict`.
 #                              Runs after value resolution, before the
 #                              canonical→wire rename. Use it for derived
-#                              fields (e.g. duration → num_frames + fps)
-#                              or per-provider value conversions.
+#                              fields (split one canonical into multiple
+#                              wire keys) or per-provider value conversions.
+#                              No active model uses one today; kept as a
+#                              hook for any future provider that needs it.
 #
 # Effect manifests reference only the canonical layer (inputs + params).
 # Adding a provider is purely additive — drop in a new `providers.<id>`
 # entry; no manifest migration.
-
-
-# wan-2.2 was trained at 16fps; the native `num_frames` knob is the only
-# length control fal's endpoint accepts. We expose a seconds-based slider
-# and derive num_frames + frames_per_second from it. Pinning fps to the
-# training rate: raising it doesn't buy quality, it just crams more frames
-# into the same clip.
-_WAN22_FPS = 16
-# fal's hard bounds on num_frames. Duration bounds on the canonical are
-# chosen to stay inside this window at `_WAN22_FPS`; the transform also
-# clamps as a safety net.
-_WAN22_NUM_FRAMES_MIN = 17
-_WAN22_NUM_FRAMES_MAX = 161
-
-
-def _wan22_fal_transform(params: dict[str, Any]) -> dict[str, Any]:
-    """Canonical → fal wire for wan-2.2.
-
-    `duration` (seconds, user-facing) expands to `num_frames` +
-    `frames_per_second` on the wire. num_frames is clamped to fal's
-    [17, 161] so a manifest locking duration to an out-of-range value
-    can't ship a bad request to fal."""
-    out = dict(params)
-    if "duration" not in out:
-        return out
-    seconds = int(out.pop("duration"))
-    num_frames = max(_WAN22_NUM_FRAMES_MIN, min(_WAN22_NUM_FRAMES_MAX, seconds * _WAN22_FPS))
-    out["num_frames"] = num_frames
-    out["frames_per_second"] = _WAN22_FPS
-    return out
 
 
 # ─── Providers registry ──────────────────────────────────────────────────────
@@ -91,131 +63,17 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 
 MODELS: list[dict[str, Any]] = [
-    # ── WAN 2.2 ───────────────────────────────────────────────────────────
-    #
-    # Ordering within `inputs` and `params` follows UI flow: image roles
-    # (the thing the effect animates) → text roles → main knobs (what the
-    # user configures) → advanced knobs (collapsed by default) → wire-only
-    # knobs (manifest-tunable but not rendered). Within each block: the
-    # knobs a user reaches for first come first; `seed` and feature toggles
-    # (`generate_audio`) end each block by convention.
-    {
-        "id": "wan-2.2",
-        "name": "WAN 2.2",
-        "group": "WAN",
-        "description": "Affordable, good for quick iterations",
-        "inputs": [
-            # image inputs first — the effect's subject comes before its text
-            {"role": "start_frame",     "type": "image", "required": True},
-            {"role": "end_frame",       "type": "image"},
-            {"role": "prompt",          "type": "text",  "required": True},
-            {"role": "negative_prompt", "type": "text"},
-        ],
-        "params": [
-            # ─── Main (user-facing) ───
-            # `duration` max derives from fal's `num_frames` max (161) at the
-            # default 16 fps → ~10s. Bumping fps would allow shorter videos
-            # at the same frame count, but we expose the seconds knob.
-            {"name": "duration", "type": "slider", "ui": "main",
-             "label": "Duration (seconds)",
-             "default": 5, "min": 3, "max": 10, "step": 1},
-            {"name": "resolution", "type": "select", "ui": "main",
-             "label": "Resolution", "default": "720p",
-             "options": [
-                 {"value": "480p", "label": "480p"},
-                 {"value": "580p", "label": "580p"},
-                 {"value": "720p", "label": "720p"},
-             ],
-             "user_only": True},
-            {"name": "aspect_ratio", "type": "select", "ui": "main",
-             "label": "Aspect Ratio", "default": "auto",
-             "options": [
-                 {"value": "auto", "label": "Auto"},
-                 {"value": "16:9", "label": "16:9"},
-                 {"value": "9:16", "label": "9:16"},
-                 {"value": "1:1",  "label": "1:1"},
-             ],
-             "user_only": True},
+    # Registry entries are ordered alphabetically by `id`. Within each
+    # entry, `inputs` and `params` follow UI flow: image roles first (the
+    # effect's subject) → text roles → main knobs (user-configurable) →
+    # advanced knobs (collapsed by default) → wire-only knobs (manifest-
+    # tunable, not rendered). `seed` and feature toggles (`generate_audio`)
+    # end each block by convention.
 
-            # ─── Advanced (collapsed) ───
-            # `num_frames` and `frames_per_second` are deliberately *not*
-            # canonicals. fal's native knob is num_frames, but exposing
-            # both it and duration invites the two to drift — manifests
-            # would set `num_frames: 49` while the UI slider still said
-            # "5 seconds". Duration is the single source of truth; the
-            # transform above derives the wire fields.
-            {"name": "num_inference_steps", "type": "slider", "ui": "advanced",
-             "label": "Quality steps",
-             "default": 27, "min": 2, "max": 40, "step": 1,
-             "hint": "More = better but slower",
-             "effect_hidden": True},
-            {"name": "guidance_scale", "type": "slider", "ui": "advanced",
-             "label": "Guidance scale",
-             "default": 3.5, "min": 1.0, "max": 10.0, "step": 0.1,
-             "hint": "Higher = closer to prompt",
-             "effect_hidden": True},
-            {"name": "seed", "type": "number", "ui": "advanced",
-             "label": "Seed", "default": -1, "hint": "-1 = random",
-             "user_only": True},
-
-            # ─── Wire-only knobs (manifest-tunable, not rendered) ───
-            # Grouped by concept: interpolation, sampling, output, safety.
-            {"name": "num_interpolated_frames",      "type": "number",  "ui": "none"},
-            {"name": "interpolator_model",           "type": "text",    "ui": "none"},
-            {"name": "adjust_fps_for_interpolation", "type": "boolean", "ui": "none"},
-            {"name": "guidance_scale_2",             "type": "number",  "ui": "none"},
-            {"name": "shift",                        "type": "number",  "ui": "none"},
-            {"name": "acceleration",                 "type": "text",    "ui": "none"},
-            {"name": "video_quality",                "type": "text",    "ui": "none"},
-            {"name": "video_write_mode",             "type": "text",    "ui": "none"},
-            {"name": "enable_safety_checker",        "type": "boolean", "ui": "none"},
-            {"name": "enable_output_safety_checker", "type": "boolean", "ui": "none"},
-            {"name": "enable_prompt_expansion",      "type": "boolean", "ui": "none"},
-        ],
-        "providers": {
-            "fal": {
-                "endpoint": "fal-ai/wan/v2.2-a14b/image-to-video",
-                "cost": "$0.04–$0.08 per second (by resolution)",
-                # Provider inputs/params mirror the canonical order above so
-                # a side-by-side read shows what each layer does at a glance.
-                "inputs": {
-                    "start_frame":     "image_url",
-                    "end_frame":       "end_image_url",
-                    "prompt":          "prompt",
-                    "negative_prompt": "negative_prompt",
-                },
-                "params": {
-                    # Main — `duration` is consumed by the transform, which
-                    # produces wire keys `num_frames` and `frames_per_second`
-                    # directly (they're not canonicals, so no entry here).
-                    "duration":                     {"wire": None},
-                    "resolution":                   {"wire": "resolution"},
-                    "aspect_ratio":                 {"wire": "aspect_ratio"},
-                    # Advanced
-                    "num_inference_steps":          {"wire": "num_inference_steps"},
-                    "guidance_scale":               {"wire": "guidance_scale"},
-                    "seed":                         {"wire": "seed"},
-                    # Wire-only
-                    "num_interpolated_frames":      {"wire": "num_interpolated_frames"},
-                    "interpolator_model":           {"wire": "interpolator_model"},
-                    "adjust_fps_for_interpolation": {"wire": "adjust_fps_for_interpolation"},
-                    "guidance_scale_2":             {"wire": "guidance_scale_2"},
-                    "shift":                        {"wire": "shift"},
-                    "acceleration":                 {"wire": "acceleration"},
-                    "video_quality":                {"wire": "video_quality"},
-                    "video_write_mode":             {"wire": "video_write_mode"},
-                    "enable_safety_checker":        {"wire": "enable_safety_checker"},
-                    "enable_output_safety_checker": {"wire": "enable_output_safety_checker"},
-                    "enable_prompt_expansion":      {"wire": "enable_prompt_expansion"},
-                },
-                "transform": _wan22_fal_transform,
-            },
-        },
-    },
-    # ── Kling 3.0 V3 ──────────────────────────────────────────────────────
+    # ── Kling 3.0 ─────────────────────────────────────────────────────────
     {
-        "id": "kling-v3",
-        "name": "Kling 3.0 V3",
+        "id": "kling-3.0",
+        "name": "Kling 3.0",
         "group": "Kling",
         "description": "Best for cinematic shots, supports AI audio",
         "inputs": [
@@ -235,10 +93,9 @@ MODELS: list[dict[str, Any]] = [
              "label": "Generate audio", "default": False},
 
             # ─── Advanced (collapsed) ───
-            # `guidance_scale` shares its canonical name with wan-2.2; the
-            # actual numeric range differs (kling 0–1, wan 1–10) and lives
-            # on the per-model entry. Wire key stays `cfg_scale` — that's
-            # what kling's fal endpoint accepts.
+            # `guidance_scale` is kling-specific here (wan-2.7 drops it);
+            # wire key stays `cfg_scale` — that's what kling's fal endpoint
+            # accepts.
             {"name": "guidance_scale", "type": "slider", "ui": "advanced",
              "label": "Guidance scale",
              "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
@@ -351,6 +208,65 @@ MODELS: list[dict[str, Any]] = [
             },
         },
     },
+    # ── Wan 2.7 ───────────────────────────────────────────────────────────
+    # fal's v2.7 accepts `duration` natively as an integer 2–15 s, so no
+    # transform is needed — the canonical flows straight to the wire.
+    {
+        "id": "wan-2.7",
+        "name": "Wan 2.7",
+        "group": "Wan",
+        "description": "Enhanced motion and fidelity, up to 15s at 1080p",
+        "inputs": [
+            {"role": "start_frame",     "type": "image", "required": True},
+            {"role": "end_frame",       "type": "image"},
+            {"role": "prompt",          "type": "text",  "required": True},
+            {"role": "negative_prompt", "type": "text"},
+        ],
+        "params": [
+            # ─── Main (user-facing) ───
+            {"name": "duration", "type": "slider", "ui": "main",
+             "label": "Duration (seconds)",
+             "default": 5, "min": 2, "max": 15, "step": 1},
+            {"name": "resolution", "type": "select", "ui": "main",
+             "label": "Resolution", "default": "1080p",
+             "options": [
+                 {"value": "720p",  "label": "720p"},
+                 {"value": "1080p", "label": "1080p"},
+             ],
+             "user_only": True},
+
+            # ─── Advanced (collapsed) ───
+            {"name": "seed", "type": "number", "ui": "advanced",
+             "label": "Seed", "default": -1, "hint": "-1 = random",
+             "user_only": True},
+
+            # ─── Wire-only knobs ───
+            {"name": "enable_safety_checker",   "type": "boolean", "ui": "none"},
+            {"name": "enable_prompt_expansion", "type": "boolean", "ui": "none"},
+        ],
+        "providers": {
+            "fal": {
+                "endpoint": "fal-ai/wan/v2.7/image-to-video",
+                "cost": "$0.10 per second",
+                "inputs": {
+                    "start_frame":     "image_url",
+                    "end_frame":       "end_image_url",
+                    "prompt":          "prompt",
+                    "negative_prompt": "negative_prompt",
+                },
+                "params": {
+                    # Main
+                    "duration":                {"wire": "duration"},
+                    "resolution":              {"wire": "resolution"},
+                    # Advanced
+                    "seed":                    {"wire": "seed"},
+                    # Wire-only
+                    "enable_safety_checker":   {"wire": "enable_safety_checker"},
+                    "enable_prompt_expansion": {"wire": "enable_prompt_expansion"},
+                },
+            },
+        },
+    },
 ]
 
 # Build lookup dicts
@@ -411,10 +327,10 @@ def canonical_to_wire(
     """Apply the provider's canonical→wire mapping + optional transform.
 
     Steps:
-      1. Run the provider's `transform` on the canonical dict (derived fields,
-         value conversions). Transforms may drop canonical keys (e.g. wan
-         consumes `duration`) and/or add new wire-level keys (e.g. wan
-         derives `num_frames`).
+      1. Run the provider's `transform` on the canonical dict, if it has
+         one (derived fields, value conversions). Transforms may drop
+         canonical keys and/or add new wire-level keys; no current provider
+         registers one, but the hook stays for future use.
       2. For each remaining key:
            - If it's declared in `provider.inputs` → rename to its wire key.
            - If it's declared in `provider.params` → rename (or drop when

@@ -168,7 +168,7 @@ class TestStartRun:
         ]
         resp = client.post("/api/run", json={
             "effect_id": "test-uuid-001",
-            "model_id": "wan-2.2",
+            "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "a cat"},
             "output": {},
@@ -179,13 +179,13 @@ class TestStartRun:
         # Record is created synchronously in `start()`, so even if the
         # background task hasn't run yet, the record exists at processing.
         assert data["record"]["status"] in ("processing", "completed")
-        assert data["record"]["model_id"] == "wan-2.2"
+        assert data["record"]["model_id"] == "wan-2.7"
         assert data["record"]["effect_name"] == "HDR"
 
     def test_unknown_effect_returns_422(self, client):
         resp = client.post("/api/run", json={
             "effect_id": "does-not-exist",
-            "model_id": "wan-2.2",
+            "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {},
             "output": {},
@@ -214,7 +214,7 @@ class TestStartPlaygroundRun:
     def test_happy_path(self, client):
         FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
         resp = client.post("/api/playground/run", json={
-            "model_id": "wan-2.2",
+            "model_id": "wan-2.7",
             "provider_id": "fal",
             "prompt": "make it pop",
             "output": {},
@@ -228,7 +228,7 @@ class TestStartPlaygroundRun:
 
     def test_empty_prompt_returns_422(self, client):
         resp = client.post("/api/playground/run", json={
-            "model_id": "wan-2.2",
+            "model_id": "wan-2.7",
             "provider_id": "fal",
             "prompt": "",
             "output": {},

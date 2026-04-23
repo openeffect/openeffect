@@ -108,7 +108,7 @@ class TestStartRun:
         with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
             job_id = await run_service.start(RunRequest(
                 effect_id="test-uuid-001",
-                model_id="wan-2.2",
+                model_id="wan-2.7",
                 provider_id="fal",
                 inputs={"prompt": "hello"},
                 output={},
@@ -126,7 +126,7 @@ class TestStartRun:
         with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
             job_id = await run_service.start(RunRequest(
                 effect_id="test-uuid-001",
-                model_id="wan-2.2",
+                model_id="wan-2.7",
                 provider_id="fal",
                 inputs={"prompt": "city night"},
                 output={"duration": 5},
@@ -151,14 +151,14 @@ class TestStartRun:
         with pytest.raises(ValueError, match="Effect not found"):
             await run_service.start(RunRequest(
                 effect_id="nonexistent",
-                model_id="wan-2.2",
+                model_id="wan-2.7",
                 provider_id="fal",
                 inputs={},
                 output={},
             ))
 
     async def test_rejects_incompatible_model(self, run_service):
-        # kling-v3 doesn't support end_frame, but our test manifest only has start_frame
+        # kling-3.0 doesn't support end_frame, but our test manifest only has start_frame
         # so all models are compatible. Let's test with a truly incompatible scenario.
         # Create a manifest with only prompt_input (no image) — all models work.
         # Instead, test with a model ID that doesn't exist at all.
@@ -175,7 +175,7 @@ class TestStartRun:
         with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
             await run_service.start(RunRequest(
                 effect_id="test-uuid-001",
-                model_id="wan-2.2",
+                model_id="wan-2.7",
                 provider_id="fal",
                 inputs={"image": "ref-123", "prompt": "test"},
                 output={},

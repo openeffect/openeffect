@@ -16,7 +16,7 @@ class FalProvider(BaseProvider):
         self._client = fal_client.AsyncClient(key=api_key)
 
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
-        model_id = input.parameters.get("_model_id", "wan-2.2")
+        model_id = input.parameters.get("_model_id", "wan-2.7")
 
         # All wire-level concerns (endpoint, canonical→wire rename, value
         # transforms) live under the per-provider config — this is the only

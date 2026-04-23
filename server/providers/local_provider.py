@@ -12,7 +12,7 @@ class LocalProvider(BaseProvider):
         self._models_dir = models_dir
 
     async def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
-        model_dir = self._models_dir / "wan-2.2"
+        model_dir = self._models_dir / "wan-2.7"
         python = model_dir / ".venv" / "bin" / "python"
         runner = model_dir / "runner.py"
 

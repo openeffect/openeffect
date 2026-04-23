@@ -31,8 +31,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt: 'zoom from space to {image}',
       negative_prompt: 'blurry, low quality',
-      models: ['wan-2.2'],
-      default_model: 'kling-v3',
+      models: ['wan-2.7'],
+      default_model: 'kling-3.0',
       params: { guidance_scale: { default: 7.5 } },
       model_overrides: {},
     },
@@ -69,8 +69,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt: '{image_a} hugs {image_b}',
       negative_prompt: '',
-      models: ['wan-2.2'],
-      default_model: 'kling-v3',
+      models: ['wan-2.7'],
+      default_model: 'kling-3.0',
       params: {},
       model_overrides: {},
     },
@@ -99,8 +99,8 @@ const mockEffects: EffectManifest[] = [
     generation: {
       prompt: '{image} dancing',
       negative_prompt: 'static',
-      models: ['wan-2.2'],
-      default_model: 'kling-v3',
+      models: ['wan-2.7'],
+      default_model: 'kling-3.0',
       params: { guidance_scale: { default: 5 } },
       model_overrides: {},
     },

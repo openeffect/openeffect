@@ -16,7 +16,7 @@ def _isolate_fal_key_env(monkeypatch):
 
 
 def _mk_input(
-    model_id: str = "wan-2.2",
+    model_id: str = "wan-2.7",
     image_inputs: dict[str, str] | None = None,
     **params,
 ) -> ProviderInput:
@@ -40,10 +40,11 @@ class TestGenerate:
         assert events[0].type == "failed"
         assert "No fal provider config" in (events[0].error or "")
 
-    async def test_wan22_happy_path_emits_expected_events(self, monkeypatch):
+    async def test_wan27_happy_path_emits_expected_events(self, monkeypatch):
         """End-to-end wire check: upload → submit → streamed events → completed,
-        with the canonical→wire rename applied (`start_frame` → `image_url`)
-        and the wan-2.2 transform expanding `duration` to `num_frames`."""
+        with the canonical→wire rename applied (`start_frame` → `image_url`).
+        wan-2.7 takes duration natively — no transform, the value passes
+        straight through."""
         uploaded: list[str] = []
 
         async def fake_upload(self, path, **_kwargs):
@@ -67,7 +68,7 @@ class TestGenerate:
 
         provider = FalProvider(api_key="test-key")
         inp = _mk_input(
-            model_id="wan-2.2",
+            model_id="wan-2.7",
             image_inputs={"start_frame": "/tmp/image.jpg"},
             duration=5,
         )
@@ -79,12 +80,13 @@ class TestGenerate:
         assert events[3].video_url == "https://fal.cdn/result.mp4"
 
         # Endpoint comes from the real registry
-        assert submitted["endpoint"] == "fal-ai/wan/v2.2-a14b/image-to-video"
+        assert submitted["endpoint"] == "fal-ai/wan/v2.7/image-to-video"
         # start_frame → image_url rename happened
         assert submitted["arguments"]["image_url"] == "https://fal.cdn/image.jpg"
-        # wan-2.2 transform: duration=5 → num_frames=80, frames_per_second=16
-        assert submitted["arguments"]["num_frames"] == 80
-        assert submitted["arguments"]["frames_per_second"] == 16
+        # duration passes through unchanged; no num_frames/fps derivation.
+        assert submitted["arguments"]["duration"] == 5
+        assert "num_frames" not in submitted["arguments"]
+        assert "frames_per_second" not in submitted["arguments"]
         # Only the image that matches a canonical image role in the variant got uploaded
         # (provider wraps the path in Path(...) before handing to fal_client).
         assert [str(p) for p in uploaded] == ["/tmp/image.jpg"]
@@ -111,7 +113,7 @@ class TestGenerate:
 
         provider = FalProvider(api_key="k")
         inp = _mk_input(
-            model_id="kling-v3",
+            model_id="kling-3.0",
             image_inputs={"start_frame": "/tmp/k.jpg"},
         )
         _ = [e async for e in provider.generate(inp)]

@@ -29,7 +29,7 @@ async def service(tmp_path):
 
 
 def _make_job(job_id: str = "job-001", effect_id: str = "single-image/hdr",
-              effect_name: str = "HDR", model_id: str = "wan-2.2") -> FakeJob:
+              effect_name: str = "HDR", model_id: str = "wan-2.7") -> FakeJob:
     return FakeJob(job_id=job_id, effect_id=effect_id,
                    effect_name=effect_name, model_id=model_id)
 
@@ -42,7 +42,7 @@ class TestCreateProcessing:
         assert record.status == "processing"
         assert record.effect_id == "single-image/hdr"
         assert record.effect_name == "HDR"
-        assert record.model_id == "wan-2.2"
+        assert record.model_id == "wan-2.7"
 
     async def test_sets_initial_progress(self, service):
         job = _make_job("job-create-2")

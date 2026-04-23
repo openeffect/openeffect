@@ -11,7 +11,7 @@ vi.mock('../../src/utils/api', () => ({
       active_count: 0,
     }),
     getRun: vi.fn().mockResolvedValue({
-      id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', model_id: 'wan-2.2',
+      id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', model_id: 'wan-2.7',
       status: 'completed', progress: 100, video_url: '/v.mp4', inputs: '{"inputs":{"prompt":"test"}}',
       error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null,
     }),

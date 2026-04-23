@@ -49,7 +49,7 @@ export function ModelSelector({
   const selectedProviderInfo = providers.find((p) => p.id === selectedProvider)
   const hasMultipleProviders = providers.filter((p) => p.is_available).length > 1
 
-  // Group compatible models by family (WAN / Kling / PixVerse …) and preserve
+  // Group compatible models by family (Wan / Kling / PixVerse …) and preserve
   // registry order within each family.
   const groups = useMemo(() => {
     const filtered = availableModels.filter((m) => compatibleModels.includes(m.id))

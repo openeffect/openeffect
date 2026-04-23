@@ -44,9 +44,9 @@ inputs:
 
 generation:
   models:
-    - kling-v3
-    - wan-2.2
-  default_model: kling-v3
+    - kling-3.0
+    - wan-2.7
+  default_model: kling-3.0
 
   prompt: >
     Cinematic effect on the subject. {prompt}
@@ -94,8 +94,8 @@ const BLANK_MANIFEST: EffectManifest = {
   generation: {
     prompt: 'Cinematic effect on the subject. {prompt} High quality, 4K resolution.',
     negative_prompt: 'low quality, blurry, watermark',
-    models: ['kling-v3', 'wan-2.2'],
-    default_model: 'kling-v3',
+    models: ['kling-3.0', 'wan-2.7'],
+    default_model: 'kling-3.0',
     params: { duration: { default: 5 }, guidance_scale: { default: 8.0 } },
     model_overrides: {},
     reverse: false,

@@ -37,6 +37,12 @@ def find_port(start: int = DEFAULT_PORT) -> int:
     port = start
     while port < start + 100:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Matches the option uvicorn itself sets on its listening socket,
+            # so a quick restart right after Ctrl-C can reclaim the preferred
+            # port instead of bumping off it — TIME_WAIT lingers ~60s on
+            # macOS after the previous process initiated the close, and a
+            # probe without SO_REUSEADDR would falsely see that as "taken."
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind(("127.0.0.1", port))
                 return port

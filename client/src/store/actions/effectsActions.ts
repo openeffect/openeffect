@@ -82,6 +82,15 @@ export async function loadEffects(): Promise<void> {
         setState((s) => {
           mutateCloseEditor(s)
           s.playground.isOpen = false
+          // Arriving at /effects/{id} without a runId means the user isn't
+          // viewing a specific run — drop any lingering restoredParams /
+          // viewingRunRecord from a prior context (e.g. back-nav from
+          // playground, whose `restoredParams.inputs` carries
+          // `prompt`/`negative_prompt` keys that don't match any effect
+          // manifest and would otherwise show up as "Previous parameters").
+          if (!runId) {
+            mutateClearViewingJob(s)
+          }
           mutateSelectEffect(s, dbId)
           mutateSetFilters(s, filters)
         }, 'router/effect')

@@ -15,40 +15,40 @@ COPY client/ ./
 
 RUN pnpm build
 
-# Stage 2: Python app
-FROM python:3.12-slim
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
- && rm -rf /var/lib/apt/lists/*
+# Stage 2: Build the Python venv (kept separate so uv doesn't ship in the
+# final image).
+FROM python:3.12-slim AS python-builder
 
-# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-# Non-root runtime user + a stable data dir owned by them, so a code-exec
-# bug in any upstream dependency can't escape with root privileges.
-RUN useradd -m -u 1000 openeffect \
- && mkdir -p /data \
- && chown openeffect:openeffect /data
 
 WORKDIR /app
 
-# Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies (no dev deps)
+# --no-dev drops pytest/ruff/mypy; the venv lands at /app/.venv. Same
+# WORKDIR in the runtime stage keeps the venv's shebangs valid without
+# rewriting.
 RUN uv sync --frozen --no-dev
 
-# Copy application
-COPY run.py .
-COPY server/ ./server/
-COPY effects/ ./effects/
 
-# Copy built frontend from stage 1
-COPY --from=frontend /build/dist/ ./client/dist/
+# Stage 3: Runtime. Non-root user for defense-in-depth.
+FROM python:3.12-slim
 
-# Flip ownership of /app so the runtime user can read the venv + code
-RUN chown -R openeffect:openeffect /app
+RUN useradd -m -u 1000 openeffect \
+ && mkdir -p /data /app \
+ && chown openeffect:openeffect /data /app
+
+USER openeffect
+WORKDIR /app
+
+# Files are born owned by openeffect (--chown on every COPY) so no post-hoc
+# `chown -R` is needed — that otherwise doubles the venv's layer weight.
+COPY --from=python-builder --chown=openeffect:openeffect /app/.venv ./.venv
+COPY --chown=openeffect:openeffect run.py ./
+COPY --chown=openeffect:openeffect server/ ./server/
+COPY --chown=openeffect:openeffect effects/ ./effects/
+COPY --from=frontend --chown=openeffect:openeffect /build/dist/ ./client/dist/
 
 EXPOSE 3131
 
@@ -61,6 +61,4 @@ ENV OPENEFFECT_HOST=0.0.0.0
 ENV OPENEFFECT_PORT=3131
 ENV OPENEFFECT_NO_BROWSER=true
 
-USER openeffect
-
-CMD ["uv", "run", "python", "run.py"]
+CMD [".venv/bin/python", "run.py"]

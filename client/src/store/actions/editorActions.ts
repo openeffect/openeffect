@@ -113,6 +113,7 @@ export function openEditor(
 ): void {
   setState((s) => {
     mutateClearViewingJob(s)
+    s.playground.isOpen = false
     s.effects.rightTab = 'form'
     s.editor.yamlContent = yaml
     s.editor.lastSavedYaml = yaml

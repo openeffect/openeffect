@@ -278,9 +278,9 @@ MODELS: list[dict[str, Any]] = [
              "label": "Seed", "default": -1, "hint": "-1 = random",
              "user_only": True},
 
-            # ─── Wire-only knobs ───
-            {"name": "enable_safety_checker",   "type": "boolean", "ui": "none"},
-            {"name": "enable_prompt_expansion", "type": "boolean", "ui": "none"},
+            # ─── Wire-only knobs (no `ui` key → never reaches the client) ───
+            {"name": "enable_safety_checker",   "type": "boolean"},
+            {"name": "enable_prompt_expansion", "type": "boolean"},
         ],
         "providers": {
             "fal": {
@@ -535,7 +535,7 @@ def _client_params_for(model: dict[str, Any], provider: dict[str, Any]) -> list[
         provider_entry = provider_params.get(name)
         if provider_entry is None:
             continue
-        if entry.get("ui", "none") not in ("main", "advanced"):
+        if entry.get("ui") not in ("main", "advanced"):
             continue
         pp = dict(entry)
         for k, v in provider_entry.items():

@@ -255,6 +255,29 @@ class TestClientParamsProviderOverrides:
         assert out[0]["default"] == 5
         assert out[0]["max"] == 10
 
+    def test_missing_ui_key_excludes_from_client_payload(self):
+        """Entries without a `ui` key are wire-only knobs — the server
+        sends them to the provider but hides them from the client UI."""
+        from services.model_service import _client_params_for
+
+        model = {
+            "id": "demo",
+            "params": [
+                {"name": "duration", "type": "slider", "ui": "main",
+                 "label": "Duration", "default": 5},
+                {"name": "enable_safety_checker", "type": "boolean"},
+            ],
+        }
+        provider = {
+            "params": {
+                "duration": {"wire": "duration"},
+                "enable_safety_checker": {"wire": "enable_safety_checker"},
+            },
+        }
+        out = _client_params_for(model, provider)
+        assert len(out) == 1
+        assert out[0]["key"] == "duration"
+
 
 class TestResolveEndpoint:
     """`provider.endpoint` accepts a bare string or a callable that receives

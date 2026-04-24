@@ -28,15 +28,18 @@ import {
 } from '../../src/store/actions/runActions'
 
 const mockManifest: EffectManifest = {
-  db_id: 'uuid-test-001',
-  id: 'zoom-from-space',
+  id: 'uuid-test-001',
+  slug: 'zoom-from-space',
   namespace: 'single-image',
+  full_id: 'single-image/zoom-from-space',
   name: 'Zoom From Space',
   description: 'test',
   version: '1.0.0',
   author: 'test',
-  type: 'single-image',
+  category: 'single-image',
   source: 'official',
+  compatible_models: [],
+  is_favorite: false,
   tags: [],
   assets: {},
   inputs: {},
@@ -47,6 +50,7 @@ const mockManifest: EffectManifest = {
     default_model: 'wan-2.7',
     params: {},
     model_overrides: {},
+    reverse: false,
   },
 }
 

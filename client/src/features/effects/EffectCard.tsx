@@ -15,7 +15,7 @@ interface EffectCardProps {
 export function EffectCard({ effect }: EffectCardProps) {
   const selectedId = useStore(selectSelectedId)
 
-  const isSelected = selectedId === effect.db_id
+  const isSelected = selectedId === effect.id
   // Assets are pre-resolved URLs from the server
   const firstInputUrl = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.includes('.jpg') || v.includes('.jpeg') || v.includes('.png') || v.includes('.webp')) : null
   const posterUrl = firstInputUrl ?? null
@@ -23,7 +23,7 @@ export function EffectCard({ effect }: EffectCardProps) {
 
   return (
     <motion.div
-      onClick={() => selectEffect(effect.db_id)}
+      onClick={() => selectEffect(effect.id)}
       className={cn(
         'group cursor-pointer overflow-hidden rounded-xl border-2 bg-card shadow-sm transition-shadow',
         isSelected

@@ -229,14 +229,15 @@ describe('historyStore', () => {
 
     it('deleteEffect invalidates the history caches', async () => {
       // The effect must be in the store's items Map before deleteEffect can
-      // find its db_id by (namespace, id). Seed both that and the per-effect
-      // history cache keyed to the same db_id.
-      const dbId = 'uuid-to-remove'
+      // find its UUID by (namespace, slug). Seed both that and the per-effect
+      // history cache keyed to the same UUID.
+      const effectId = 'uuid-to-remove'
       useStore.setState((s) => {
         const effect: EffectManifest = {
-          db_id: dbId,
+          id: effectId,
           namespace: 'openeffect',
-          id: 'to-remove',
+          slug: 'to-remove',
+          full_id: 'openeffect/to-remove',
           name: 'Doomed Effect',
           description: '',
           version: '1.0.0',
@@ -258,10 +259,10 @@ describe('historyStore', () => {
             reverse: false,
           },
         }
-        s.effects.items.set(effect.db_id, effect)
+        s.effects.items.set(effect.id, effect)
       })
       await loadHistory()
-      await loadEffectHistory(dbId)
+      await loadEffectHistory(effectId)
 
       expect(useStore.getState().history.status).toBe('succeeded')
       expect(useStore.getState().history.effectStatus).toBe('succeeded')
@@ -269,7 +270,7 @@ describe('historyStore', () => {
       await deleteEffect('openeffect', 'to-remove')
 
       const s = useStore.getState()
-      expect(s.effects.items.has(dbId)).toBe(false)
+      expect(s.effects.items.has(effectId)).toBe(false)
       expect(s.history.status).toBe('idle')
       expect(s.history.effectStatus).toBe('idle')
       expect(s.history.effectId).toBeNull()

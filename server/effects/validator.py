@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 import jinja2
@@ -8,6 +9,23 @@ from pydantic import BaseModel, field_validator, model_serializer, model_validat
 from effects.jinja_env import env
 
 VALID_ROLES = ("start_frame", "end_frame")
+
+# Docker-style identifier parts: lowercase alphanumeric, hyphens allowed
+# in the middle, no leading/trailing hyphen, no underscores or dots.
+_IDENT_PART_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+_IDENT_PART_MAX = 64
+
+
+def _validate_ident_part(value: str, label: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} cannot be empty")
+    if len(value) > _IDENT_PART_MAX:
+        raise ValueError(f"{label} '{value}' is too long (max {_IDENT_PART_MAX})")
+    if not _IDENT_PART_RE.match(value):
+        raise ValueError(
+            f"{label} '{value}' is invalid: use lowercase letters, digits, "
+            f"and hyphens (no leading or trailing hyphen)"
+        )
 
 
 class SelectOption(BaseModel):
@@ -147,8 +165,11 @@ class GenerationConfig(BaseModel):
 
 
 class EffectManifest(BaseModel):
-    id: str
-    namespace: str = "openeffect"
+    # YAML carries a single `id: namespace/slug` field. The
+    # `_parse_id` before-validator splits it into `namespace` + `slug`
+    # so the rest of the code works against two clean internal fields.
+    namespace: str
+    slug: str
     name: str
     description: str
     version: str = "1.0.0"
@@ -160,9 +181,38 @@ class EffectManifest(BaseModel):
     inputs: dict[str, InputFieldSchema]
     generation: GenerationConfig
 
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_id(cls, data: Any) -> Any:
+        """Accept either the YAML-authoring form `id: namespace/slug`
+        or the model_dump round-trip form with separate `namespace` +
+        `slug` keys. When `id` is present it wins — that matches the
+        semantics an author expects when editing YAML."""
+        if not isinstance(data, dict):
+            return data
+        raw = data.pop("id", None)
+        if raw is not None:
+            if not isinstance(raw, str) or raw.count("/") != 1:
+                raise ValueError(
+                    f"'id' must be 'namespace/slug' — got '{raw!r}'"
+                )
+            ns, slug = raw.split("/")
+            _validate_ident_part(ns, "namespace")
+            _validate_ident_part(slug, "slug")
+            data["namespace"] = ns
+            data["slug"] = slug
+        elif not ("namespace" in data and "slug" in data):
+            raise ValueError(
+                "manifest must declare an 'id' field of the form 'namespace/slug'"
+            )
+        else:
+            _validate_ident_part(data["namespace"], "namespace")
+            _validate_ident_part(data["slug"], "slug")
+        return data
+
     @property
     def full_id(self) -> str:
-        return f"{self.namespace}/{self.id}"
+        return f"{self.namespace}/{self.slug}"
 
     @model_validator(mode="after")
     def validate_roles(self) -> EffectManifest:

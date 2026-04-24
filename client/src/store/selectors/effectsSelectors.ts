@@ -3,7 +3,7 @@ import type { AppState } from '../types'
 
 // ─── Base selectors ──────────────────────────────────────────────────────────
 
-/** Underlying Map<db_id, EffectManifest>. Use `selectEffects` (the memoized
+/** Underlying Map<id, EffectManifest> (id = UUID). Use `selectEffects` (the memoized
  *  array view) in components; this is the internal handle for keyed lookup. */
 const selectEffectsMap = (s: AppState) => s.effects.items
 

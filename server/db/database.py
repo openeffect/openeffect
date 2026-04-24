@@ -100,7 +100,7 @@ async def init_db(db_path: Path) -> None:
             CREATE TABLE IF NOT EXISTS effects (
                 id            TEXT PRIMARY KEY,
                 namespace     TEXT NOT NULL,
-                effect_id     TEXT NOT NULL,
+                slug          TEXT NOT NULL,
                 source        TEXT NOT NULL,
                 source_url    TEXT,
                 manifest_yaml TEXT NOT NULL,
@@ -109,7 +109,7 @@ async def init_db(db_path: Path) -> None:
                 installed_at  TEXT NOT NULL,
                 updated_at    TEXT,
                 is_favorite   INTEGER DEFAULT 0,
-                UNIQUE(namespace, effect_id)
+                UNIQUE(namespace, slug)
             )
         """)
         await db.execute("""

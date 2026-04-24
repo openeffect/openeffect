@@ -1,5 +1,4 @@
-namespace: openeffect
-id: eyes-glow
+id: openeffect/eyes-glow
 name: Eyes Glow
 description: >
   A subtle luminous spark appears in the subject's eyes,

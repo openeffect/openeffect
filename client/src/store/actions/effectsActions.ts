@@ -11,15 +11,15 @@ import { parseRoute, navigate, replaceRoute, initRouteListener } from '@/utils/r
 import type { EffectManifest } from '@/types/api'
 import type { EffectSource } from '../types'
 
-async function restoreEditor(dbId: string, preloaded?: EffectManifest[]): Promise<void> {
+async function restoreEditor(effectId: string, preloaded?: EffectManifest[]): Promise<void> {
   try {
     const manifest = preloaded
-      ? preloaded.find((e) => e.db_id === dbId) ?? null
-      : getState().effects.items.get(dbId) ?? null
+      ? preloaded.find((e) => e.id === effectId) ?? null
+      : getState().effects.items.get(effectId) ?? null
     if (!manifest) { navigate('/'); return }
-    const { yaml, files } = await api.getEffectEditorData(manifest.namespace, manifest.id)
-    openEditor(yaml, dbId, manifest, files)
-    selectEffect(dbId, true)
+    const { yaml, files } = await api.getEffectEditorData(manifest.namespace, manifest.slug)
+    openEditor(yaml, effectId, manifest, files)
+    selectEffect(effectId, true)
   } catch {
     navigate('/')
   }
@@ -38,7 +38,7 @@ export async function loadEffects(): Promise<void> {
     let selectedId: string | null = null
 
     if (route.page === 'effect') {
-      if (effects.some((e) => e.db_id === route.effectId)) {
+      if (effects.some((e) => e.id === route.effectId)) {
         selectedId = route.effectId
       }
       if (route.runId) {
@@ -60,7 +60,7 @@ export async function loadEffects(): Promise<void> {
     }
 
     setState((s) => {
-      s.effects.items = new Map(effects.map((e) => [e.db_id, e]))
+      s.effects.items = new Map(effects.map((e) => [e.id, e]))
       s.effects.status = 'succeeded'
       mutateSelectEffect(s, selectedId)
       // Seed filters + search from the URL so a fresh page load with query
@@ -75,7 +75,7 @@ export async function loadEffects(): Promise<void> {
     void bootstrapSse()
 
     initRouteListener(
-      (dbId, runId, filters) => {
+      (effectId, runId, filters) => {
         // Capture "was the right side panel open" BEFORE mutating state, so
         // we can decide whether to auto-apply the run's params to the form.
         // Right panel is "open" if any of: effect selected, editor open, or
@@ -96,16 +96,16 @@ export async function loadEffects(): Promise<void> {
           if (!runId) {
             mutateClearViewingJob(s)
           }
-          mutateSelectEffect(s, dbId)
+          mutateSelectEffect(s, effectId)
           mutateSetFilters(s, filters)
         }, 'router/effect')
         if (runId) {
           restoreFromUrl(runId, !wasRightOpen)
         }
       },
-      (dbId, filters) => {
+      (effectId, filters) => {
         setState((s) => { mutateSetFilters(s, filters) }, 'router/edit')
-        restoreEditor(dbId)
+        restoreEditor(effectId)
       },
       (filters) => {
         setState((s) => {
@@ -144,13 +144,13 @@ export async function loadEffects(): Promise<void> {
   }
 }
 
-export function selectEffect(dbId: string | null, skipNav?: boolean): void {
+export function selectEffect(effectId: string | null, skipNav?: boolean): void {
   if (!skipNav) {
-    navigate(dbId ? `/effects/${dbId}` : '/')
+    navigate(effectId ? `/effects/${effectId}` : '/')
   }
   setState((s) => {
-    mutateSelectEffect(s, dbId)
-    if (dbId === null) {
+    mutateSelectEffect(s, effectId)
+    if (effectId === null) {
       mutateClearViewingJob(s)
     }
   }, 'effects/select')
@@ -193,16 +193,16 @@ export async function toggleFavorite(effect: EffectManifest): Promise<void> {
   const newValue = !effect.is_favorite
   // Optimistic update
   setState((s) => {
-    const item = s.effects.items.get(effect.db_id)
+    const item = s.effects.items.get(effect.id)
     if (item) item.is_favorite = newValue
   }, 'effects/toggleFavorite')
 
   try {
-    await api.toggleFavorite(effect.namespace, effect.id, newValue)
+    await api.toggleFavorite(effect.namespace, effect.slug, newValue)
   } catch {
     // Revert on failure
     setState((s) => {
-      const item = s.effects.items.get(effect.db_id)
+      const item = s.effects.items.get(effect.id)
       if (item) item.is_favorite = !newValue
     }, 'effects/toggleFavoriteRevert')
   }
@@ -217,27 +217,27 @@ export async function setEffectEditable(
   effect: EffectManifest,
   editable: boolean,
 ): Promise<void> {
-  await api.setEditable(effect.namespace, effect.id, editable)
+  await api.setEditable(effect.namespace, effect.slug, editable)
   setState((s) => {
-    const item = s.effects.items.get(effect.db_id)
+    const item = s.effects.items.get(effect.id)
     if (item) item.source = editable ? 'local' : 'archive'
   }, 'effects/setEditable')
 }
 
-export async function deleteEffect(namespace: string, id: string): Promise<void> {
+export async function deleteEffect(namespace: string, slug: string): Promise<void> {
   try {
-    await api.uninstallEffect(namespace, id)
+    await api.uninstallEffect(namespace, slug)
     setState((s) => {
       // Locate the deleted effect in the Map so we can drop it and any
       // caches that referenced it without refetching the whole list.
-      let deletedDbId: string | null = null
-      for (const [dbId, effect] of s.effects.items) {
-        if (effect.namespace === namespace && effect.id === id) {
-          deletedDbId = dbId
+      let deletedId: string | null = null
+      for (const [effectId, effect] of s.effects.items) {
+        if (effect.namespace === namespace && effect.slug === slug) {
+          deletedId = effectId
           break
         }
       }
-      if (deletedDbId) s.effects.items.delete(deletedDbId)
+      if (deletedId) s.effects.items.delete(deletedId)
 
       mutateCloseEditor(s)
       mutateSelectEffect(s, null)
@@ -246,7 +246,7 @@ export async function deleteEffect(namespace: string, id: string): Promise<void>
       // the global cache so the next open refetches. If the per-effect
       // history slice was loaded for this effect, drop it too.
       s.history.status = 'idle'
-      if (deletedDbId && s.history.effectId === deletedDbId) {
+      if (deletedId && s.history.effectId === deletedId) {
         s.history.effectStatus = 'idle'
         s.history.effectId = null
         s.history.effectItems = new Map()

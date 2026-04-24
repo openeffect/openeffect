@@ -14,7 +14,7 @@ from effects.validator import (
 def make_valid_manifest(**overrides) -> dict:
     """Return a valid manifest dict that can be modified for testing."""
     defaults = {
-        "id": "test-effect",
+        "id": "tester/test-effect",
         "name": "Test Effect",
         "description": "A test effect",
         "version": "1.0.0",
@@ -42,7 +42,9 @@ class TestEffectValidator:
     def test_valid_manifest_passes(self):
         data = make_valid_manifest()
         manifest = EffectManifest(**data)
-        assert manifest.id == "test-effect"
+        assert manifest.namespace == "tester"
+        assert manifest.slug == "test-effect"
+        assert manifest.full_id == "tester/test-effect"
         assert manifest.category == "animation"
 
     def test_missing_required_field(self):
@@ -192,6 +194,56 @@ class TestEffectValidator:
         assert manifest.inputs["prompt"].role is None
         assert manifest.inputs["style"].role is None
 
+    def test_id_missing_raises(self):
+        data = make_valid_manifest()
+        del data["id"]
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "namespace/slug" in str(e.value)
+
+    def test_id_without_slash_raises(self):
+        data = make_valid_manifest(id="just-slug")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "namespace/slug" in str(e.value)
+
+    def test_id_with_two_slashes_raises(self):
+        data = make_valid_manifest(id="ns/a/b")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "namespace/slug" in str(e.value)
+
+    def test_id_uppercase_rejected(self):
+        data = make_valid_manifest(id="Namespace/slug")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "namespace" in str(e.value).lower()
+
+    def test_id_underscore_rejected(self):
+        data = make_valid_manifest(id="my_ns/slug")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "namespace" in str(e.value).lower()
+
+    def test_id_leading_hyphen_rejected(self):
+        data = make_valid_manifest(id="ns/-bad")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "slug" in str(e.value).lower()
+
+    def test_id_too_long_rejected(self):
+        data = make_valid_manifest(id=f"ns/{'x' * 65}")
+        with pytest.raises(ValidationError) as e:
+            EffectManifest(**data)
+        assert "too long" in str(e.value).lower()
+
+    def test_id_single_char_parts_allowed(self):
+        """Minimal valid form — a single alphanumeric char on each side."""
+        data = make_valid_manifest(id="a/b")
+        manifest = EffectManifest(**data)
+        assert manifest.namespace == "a"
+        assert manifest.slug == "b"
+
     def test_boolean_type_accepted(self):
         data = make_valid_manifest(
             inputs={
@@ -246,14 +298,14 @@ def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
         ),
         **extra_inputs,
     }
-    return EffectManifest(
-        id="t",
-        name="T",
-        description="T",
-        category="test",
-        inputs=inputs,
-        generation=GenerationConfig(prompt="go"),
-    )
+    return EffectManifest.model_validate({
+        "id": "tester/t",
+        "name": "T",
+        "description": "T",
+        "category": "test",
+        "inputs": inputs,
+        "generation": GenerationConfig(prompt="go"),
+    })
 
 
 class TestValidateRunInputsRequired:

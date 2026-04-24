@@ -90,8 +90,10 @@ export interface GenerationConfig {
 }
 
 export interface EffectManifest {
-  id: string
+  id: string                    // UUID primary key
   namespace: string
+  slug: string                  // short identifier within the namespace
+  full_id: string               // "namespace/slug" — convenience mirror of the YAML id
   name: string
   description: string
   version: string
@@ -103,7 +105,6 @@ export interface EffectManifest {
   inputs: Record<string, InputFieldSchema>
   generation: GenerationConfig
   source: 'official' | 'url' | 'archive' | 'local'
-  db_id: string
   compatible_models: string[]
   is_favorite: boolean
 }

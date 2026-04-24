@@ -1,5 +1,4 @@
-namespace: openeffect
-id: cyborg-transformation
+id: openeffect/cyborg-transformation
 name: Cyborg Transformation
 description: >
   The subject rapidly transforms into a sleek cinematic cyborg,

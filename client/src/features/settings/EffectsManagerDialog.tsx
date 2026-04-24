@@ -43,7 +43,7 @@ export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogPr
                 <div className="space-y-2">
                   {installedEffects.map((effect) => (
                     <InstalledEffectRow
-                      key={`${effect.namespace}/${effect.id}`}
+                      key={`${effect.namespace}/${effect.slug}`}
                       effect={effect}
                     />
                   ))}
@@ -214,7 +214,7 @@ function InstalledEffectRow({ effect }: { effect: EffectManifest }) {
 
   const handleUninstall = async () => {
     setUninstalling(true)
-    await deleteEffect(effect.namespace, effect.id)
+    await deleteEffect(effect.namespace, effect.slug)
     // Store drops the item from its Map; this row unmounts with the list
   }
 
@@ -231,7 +231,7 @@ function InstalledEffectRow({ effect }: { effect: EffectManifest }) {
     <div className="flex items-center justify-between rounded-lg border p-3">
       <div className="min-w-0 flex-1">
         <span className="text-sm font-medium text-foreground">{effect.name}</span>
-        <p className="text-xs text-muted-foreground">{effect.namespace}/{effect.id}</p>
+        <p className="text-xs text-muted-foreground">{effect.namespace}/{effect.slug}</p>
       </div>
       <div className="flex items-center gap-3">
         <Checkbox

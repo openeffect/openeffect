@@ -16,28 +16,27 @@ from services.run_service import RunJob, RunService
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 def _make_manifest() -> EffectManifest:
-    return EffectManifest(
-        id="test-effect",
-        namespace="test",
-        name="Test Effect",
-        description="Test",
-        category="animation",
-        inputs={
+    return EffectManifest.model_validate({
+        "id": "test/test-effect",
+        "name": "Test Effect",
+        "description": "Test",
+        "category": "animation",
+        "inputs": {
             "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
             "prompt": InputFieldSchema(
                 type="text", required=False,
                 label="Prompt", multiline=False,
             ),
         },
-        generation=GenerationConfig(prompt="Test {{ prompt }}"),
-    )
+        "generation": GenerationConfig(prompt="Test {{ prompt }}"),
+    })
 
 
-def _make_loaded(manifest: EffectManifest, db_id: str = "test-uuid-001") -> LoadedEffect:
+def _make_loaded(manifest: EffectManifest, effect_id: str = "test-uuid-001") -> LoadedEffect:
     return LoadedEffect(
         manifest=manifest,
-        db_id=db_id,
-        full_id=f"{manifest.namespace}/{manifest.id}",
+        id=effect_id,
+        full_id=manifest.full_id,
         assets_dir=Path("/tmp/test-assets"),
         source="local",
     )
@@ -65,7 +64,7 @@ def effect_loader():
     manifest = _make_manifest()
     loaded = _make_loaded(manifest)
     loader = MagicMock(spec=EffectLoaderService)
-    loader.get_by_db_id.return_value = loaded
+    loader.get_by_id.return_value = loaded
     loader.get_loaded.return_value = loaded
     return loader
 
@@ -145,7 +144,7 @@ class TestStartRun:
         assert "negative_prompt" in data["model_inputs"]
 
     async def test_rejects_unknown_effect(self, run_service):
-        run_service._effect_loader.get_by_db_id.return_value = None
+        run_service._effect_loader.get_by_id.return_value = None
         run_service._effect_loader.get_loaded.return_value = None
 
         with pytest.raises(ValueError, match="Effect not found"):

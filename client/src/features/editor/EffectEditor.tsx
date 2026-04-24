@@ -159,7 +159,7 @@ export function EffectEditor() {
 
   const handleExport = () => {
     if (!savedManifest) return
-    window.open(api.exportEffect(savedManifest.namespace, savedManifest.id), '_blank')
+    window.open(api.exportEffect(savedManifest.namespace, savedManifest.slug), '_blank')
   }
 
   const handleClose = () => {
@@ -172,15 +172,14 @@ export function EffectEditor() {
     }
   }
 
-  // Show the canonical `namespace/id` — it's the stable handle authors
-  // reference and matches how the effect is keyed in the registry / URL,
-  // whereas the display `name` is free-form prose. `savedManifest` is
-  // always populated when this header renders (both `openEditor` and
-  // `openBlankEditor` set it synchronously before isOpen flips); the
-  // empty-string fallback is purely for the TypeScript null-check.
-  const effectTitle = savedManifest
-    ? `${savedManifest.namespace}/${savedManifest.id}`
-    : ''
+  // Show the canonical `namespace/slug` — it's the stable handle
+  // authors reference and matches how the effect is keyed in the
+  // registry / URL, whereas the display `name` is free-form prose.
+  // `savedManifest` is always populated when this header renders (both
+  // `openEditor` and `openBlankEditor` set it synchronously before
+  // isOpen flips); the empty-string fallback is purely for the
+  // TypeScript null-check.
+  const effectTitle = savedManifest?.full_id ?? ''
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -248,15 +247,15 @@ function AssetPanel({ effectId }: { effectId: string }) {
   const [renamingFile, setRenamingFile] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
-  // effectId is now a DB UUID — resolve to namespace/id for API calls
+  // effectId is a UUID — resolve to namespace/slug for API calls.
   const effect = useStore((s) => (effectId ? s.effects.items.get(effectId) : undefined))
   const ns = effect?.namespace
-  const id = effect?.id
+  const slug = effect?.slug
 
   const handleUpload = async (file: File) => {
-    if (!ns || !id) return
+    if (!ns || !slug) return
     try {
-      const result = await api.uploadAsset(ns, id, file)
+      const result = await api.uploadAsset(ns, slug, file)
       setFiles((prev) => [...prev, result])
     } catch {
       // ignore
@@ -264,9 +263,9 @@ function AssetPanel({ effectId }: { effectId: string }) {
   }
 
   const handleDelete = async (filename: string) => {
-    if (!ns || !id) return
+    if (!ns || !slug) return
     try {
-      await api.deleteAsset(ns, id, filename)
+      await api.deleteAsset(ns, slug, filename)
       setFiles((prev) => prev.filter((f) => f.filename !== filename))
     } catch {
       // ignore
@@ -279,13 +278,13 @@ function AssetPanel({ effectId }: { effectId: string }) {
   }
 
   const handleRename = async () => {
-    if (!ns || !id || !renamingFile || !renameValue.trim()) return
+    if (!ns || !slug || !renamingFile || !renameValue.trim()) return
     if (renameValue === renamingFile) {
       setRenamingFile(null)
       return
     }
     try {
-      const result = await api.renameAsset(ns, id, renamingFile, renameValue.trim())
+      const result = await api.renameAsset(ns, slug, renamingFile, renameValue.trim())
       setFiles((prev) =>
         prev.map((f) => f.filename === renamingFile ? { ...f, filename: result.filename, url: result.url } : f),
       )

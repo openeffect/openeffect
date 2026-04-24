@@ -48,16 +48,17 @@ export function EffectPanel() {
   // Orphaned effect: selected but not found in loaded effects
   const isOrphaned = !!selectedId && !selectedEffect && !isEditorOpen
 
-  // DB UUID for API calls like history filtering (runs store db_id as effect_id)
-  const effectDbId = manifest?.db_id ?? selectedId
+  // UUID for API calls like history filtering (runs store the effect's UUID
+  // in `record.effect_id`).
+  const effectId = manifest?.id ?? selectedId
   const displayName = manifest?.name ?? 'Deleted effect'
 
   if (!manifest && !isOrphaned) return null
 
   const showFormTab = !!manifest && !isOrphaned
-  // History tab is always rendered; just disabled when there's no effectDbId
+  // History tab is always rendered; just disabled when there's no effectId
   // (i.e. brand-new unsaved effect in the editor).
-  const isHistoryEnabled = !!effectDbId
+  const isHistoryEnabled = !!effectId
   // Which tab content is visible. The form is always mounted (just hidden)
   // so its useState survives tab switches; only its visibility flips.
   const showFormView = (rightTab === 'form' && showFormTab) || !isHistoryEnabled
@@ -147,9 +148,9 @@ export function EffectPanel() {
           <EffectFormTab key={`${selectedId}-${saveVersion}`} />
         </div>
       )}
-      {!showFormView && effectDbId && (
+      {!showFormView && effectId && (
         <div className="flex-1 overflow-y-auto p-3">
-          <EffectHistoryTab effectId={effectDbId} />
+          <EffectHistoryTab effectId={effectId} />
         </div>
       )}
     </div>
@@ -172,7 +173,7 @@ function EffectMenu({ effect, isInstalled }: { effect: EffectManifest; isInstall
   }
 
   const handleExport = () => {
-    window.open(api.exportEffect(effect.namespace, effect.id), '_blank')
+    window.open(api.exportEffect(effect.namespace, effect.slug), '_blank')
   }
 
   const handleTryInPlayground = () => {
@@ -209,7 +210,7 @@ function EffectMenu({ effect, isInstalled }: { effect: EffectManifest; isInstall
         )}
         {canDelete && (
           confirmDelete ? (
-            <DropdownMenuItem onClick={() => deleteEffect(effect.namespace, effect.id)} className="text-destructive hover:bg-destructive/15">
+            <DropdownMenuItem onClick={() => deleteEffect(effect.namespace, effect.slug)} className="text-destructive hover:bg-destructive/15">
               <Trash2 size={14} />
               Confirm delete
             </DropdownMenuItem>

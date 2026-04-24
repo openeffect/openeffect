@@ -60,7 +60,7 @@ export async function startRun(
   const inputs = await prepareInputs(manifest, values)
 
   const request: RunRequest = {
-    effect_id: manifest.db_id,
+    effect_id: manifest.id,
     model_id: selectedModel || manifest.generation.default_model,
     provider_id: selectedProvider,
     inputs,
@@ -94,7 +94,7 @@ export async function startRun(
   }, 'run/start')
 
   trackJob(response.job_id)
-  navigate(`/effects/${manifest.db_id}`, { run: response.job_id })
+  navigate(`/effects/${manifest.id}`, { run: response.job_id })
   refreshLoadedHistories()
   return response.job_id
 }

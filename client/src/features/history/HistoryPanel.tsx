@@ -88,7 +88,7 @@ export function HistoryPanel() {
               <div className="space-y-1.5">
                 {items.map((item) => {
                   const isPlayground = item.kind === 'playground'
-                  const isOrphaned = !isPlayground && !effects.some((e) => e.db_id === item.effect_id)
+                  const isOrphaned = !isPlayground && !effects.some((e) => e.id === item.effect_id)
                   const displayName = isPlayground
                     ? 'Playground'
                     : isOrphaned

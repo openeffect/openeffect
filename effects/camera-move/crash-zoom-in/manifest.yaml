@@ -1,5 +1,4 @@
-namespace: openeffect
-id: crash-zoom-in
+id: openeffect/crash-zoom-in
 name: Crash Zoom In
 description: >
   A fast, aggressive cinematic zoom pushes straight into your subject,

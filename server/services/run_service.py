@@ -97,15 +97,15 @@ class RunService:
         self._broadcast_queues: set[asyncio.Queue[dict[str, Any]]] = set()
 
     async def start(self, request: RunRequest) -> str:
-        # Accept either a DB UUID or a namespace/id for `effect_id`
-        loaded = self._effect_loader.get_by_db_id(request.effect_id)
+        # Accept either a UUID or a namespace/slug for `effect_id`
+        loaded = self._effect_loader.get_by_id(request.effect_id)
         if not loaded:
             loaded = self._effect_loader.get_loaded(request.effect_id)
         if not loaded:
             raise ValueError(f"Effect not found: {request.effect_id}")
 
         manifest = loaded.manifest
-        db_id = loaded.db_id
+        effect_uuid = loaded.id
 
         # Reject out-of-range / too-long / unknown-option values before we
         # spend any more work on the run. Images skipped — ref_ids were
@@ -132,7 +132,7 @@ class RunService:
         job_id = str(uuid_utils.uuid7())
         job = RunJob(
             job_id=job_id,
-            effect_id=db_id,
+            effect_id=effect_uuid,
             effect_name=manifest.name,
             model_id=request.model_id,
         )

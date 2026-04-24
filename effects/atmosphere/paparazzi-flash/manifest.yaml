@@ -1,5 +1,4 @@
-namespace: openeffect
-id: paparazzi-flash
+id: openeffect/paparazzi-flash
 name: Paparazzi Flash
 description: >
   Rapid camera flash bursts illuminate the subject like a paparazzi moment,

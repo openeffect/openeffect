@@ -39,13 +39,12 @@ class FakeProvider:
 
 
 def _make_manifest() -> EffectManifest:
-    return EffectManifest(
-        id="hdr",
-        namespace="openeffect",
-        name="HDR",
-        description="Test",
-        category="animation",
-        inputs={
+    return EffectManifest.model_validate({
+        "id": "openeffect/hdr",
+        "name": "HDR",
+        "description": "Test",
+        "category": "animation",
+        "inputs": {
             # EffectManifest's validator requires a start_frame image input
             "image": InputFieldSchema(
                 type="image", role="start_frame", required=True, label="Photo",
@@ -55,8 +54,8 @@ def _make_manifest() -> EffectManifest:
                 label="Prompt", multiline=False, max_length=500,
             ),
         },
-        generation=GenerationConfig(prompt="Make {{ prompt }}"),
-    )
+        "generation": GenerationConfig(prompt="Make {{ prompt }}"),
+    })
 
 
 @pytest.fixture
@@ -83,20 +82,20 @@ def client(tmp_path, monkeypatch):
     manifest = _make_manifest()
     loaded = LoadedEffect(
         manifest=manifest,
-        db_id="test-uuid-001",
+        id="test-uuid-001",
         full_id="openeffect/hdr",
         assets_dir=effects_dir / "test-uuid-001",
         source="official",
     )
 
-    def _by_db_id(db_id):
-        return loaded if db_id == "test-uuid-001" else None
+    def _by_id(effect_id):
+        return loaded if effect_id == "test-uuid-001" else None
 
-    def _by_full(effect_id):
-        return loaded if effect_id in ("test-uuid-001", "openeffect/hdr") else None
+    def _by_full(full_id):
+        return loaded if full_id in ("test-uuid-001", "openeffect/hdr") else None
 
     effect_loader = MagicMock(spec=EffectLoaderService)
-    effect_loader.get_by_db_id.side_effect = _by_db_id
+    effect_loader.get_by_id.side_effect = _by_id
     effect_loader.get_loaded.side_effect = _by_full
 
     # config_service is used via `await config.get_api_key()` now — AsyncMock

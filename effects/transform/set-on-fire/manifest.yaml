@@ -1,5 +1,4 @@
-namespace: openeffect
-id: set-on-fire
+id: openeffect/set-on-fire
 name: Set On Fire
 description: >
   Controlled cinematic flames ignite around the subject, creating a dramatic

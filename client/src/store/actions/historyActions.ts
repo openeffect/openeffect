@@ -5,10 +5,12 @@ import { api } from '@/utils/api'
 import { navigate } from '@/utils/router'
 import type { RunRecord } from '@/types/api'
 
-/** Look up the DB UUID for an effect by its namespace/id. Falls back to the fullId itself (for orphaned effects). */
-function effectDbId(fullId: string): string {
+/** Resolve an effect's UUID from its `namespace/slug`. Falls back to the
+ *  fullId itself (for orphaned-effect history entries the UI still wants
+ *  to render). */
+function effectUuid(fullId: string): string {
   for (const effect of getState().effects.items.values()) {
-    if (`${effect.namespace}/${effect.id}` === fullId) return effect.db_id
+    if (effect.full_id === fullId) return effect.id
   }
   return fullId
 }
@@ -100,7 +102,7 @@ export function openHistoryItem(item: Pick<RunRecord, 'id' | 'effect_id' | 'kind
     navigate('/')
     return
   }
-  navigate(`/effects/${effectDbId(item.effect_id)}`, { run: item.id })
+  navigate(`/effects/${effectUuid(item.effect_id)}`, { run: item.id })
 }
 
 export function startPolling(): void {
@@ -205,7 +207,7 @@ export async function openRunFromHistory(runId: string, effectFullId: string): P
     setState((s) => {
       mutateSetViewingRunRecord(s, record)
     }, 'history/openRun')
-    navigate(`/effects/${effectDbId(effectFullId)}`, { run: runId })
+    navigate(`/effects/${effectUuid(effectFullId)}`, { run: runId })
   } catch (e) {
     console.error('Failed to load run:', e)
   }
@@ -244,7 +246,7 @@ export async function deleteRunFromHistory(runId: string, effectFullId: string):
         mutateClearViewingJob(s)
       }
     }, 'history/deleteRun')
-    navigate(`/effects/${effectDbId(effectFullId)}`)
+    navigate(`/effects/${effectUuid(effectFullId)}`)
     // Local `.delete()` above is authoritative — no refetch needed
   } catch {
     // API failed

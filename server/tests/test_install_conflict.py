@@ -11,8 +11,7 @@ from db.database import Database, init_db
 from services.install_service import InstallConflictError, InstallService
 
 MANIFEST_BASE: dict[str, Any] = {
-    "id": "demo",
-    "namespace": "tester",
+    "id": "tester/demo",
     "name": "Demo",
     "description": "Demo effect",
     "version": "1.0.0",
@@ -90,7 +89,7 @@ class TestArchiveInstallConflict:
         conflicts = excinfo.value.conflicts
         assert len(conflicts) == 1
         assert conflicts[0]["namespace"] == "tester"
-        assert conflicts[0]["id"] == "demo"
+        assert conflicts[0]["slug"] == "demo"
         assert conflicts[0]["existing_version"] == "1.0.0"
         assert conflicts[0]["incoming_version"] == "2.0.0"
 
@@ -112,17 +111,17 @@ class TestArchiveInstallConflict:
 
     async def test_multi_effect_archive_with_one_duplicate_raises(self, install_service):
         # Seed one effect
-        await install_service.install_from_archive(_zip_one(_manifest(id="existing")))
+        await install_service.install_from_archive(_zip_one(_manifest(id="tester/existing")))
         # Archive with three effects, one of which conflicts
         archive = _zip_many([
-            _manifest(id="existing", version="2.0.0"),
-            _manifest(id="new-a"),
-            _manifest(id="new-b"),
+            _manifest(id="tester/existing", version="2.0.0"),
+            _manifest(id="tester/new-a"),
+            _manifest(id="tester/new-b"),
         ])
         with pytest.raises(InstallConflictError) as excinfo:
             await install_service.install_from_archive(archive)
         assert len(excinfo.value.conflicts) == 1
-        assert excinfo.value.conflicts[0]["id"] == "existing"
+        assert excinfo.value.conflicts[0]["slug"] == "existing"
         # Nothing else should have been installed
         assert await install_service.get_effect("tester", "new-a") is None
         assert await install_service.get_effect("tester", "new-b") is None
@@ -130,12 +129,12 @@ class TestArchiveInstallConflict:
     async def test_allow_official_skips_conflict_check(self, install_service):
         """Boot-time bundled sync passes allow_official=True and updates silently."""
         await install_service.install_from_archive(
-            _zip_one(_manifest(namespace="openeffect", id="bundled", version="1.0.0")),
+            _zip_one(_manifest(id="openeffect/bundled", version="1.0.0")),
             allow_official=True,
         )
         # Different version — should NOT raise, should update silently
         installed = await install_service.install_from_archive(
-            _zip_one(_manifest(namespace="openeffect", id="bundled", version="2.0.0")),
+            _zip_one(_manifest(id="openeffect/bundled", version="2.0.0")),
             allow_official=True,
         )
         assert installed == ["openeffect/bundled"]

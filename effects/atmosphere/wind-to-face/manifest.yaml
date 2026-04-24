@@ -1,5 +1,4 @@
-namespace: openeffect
-id: wind-to-face
+id: openeffect/wind-to-face
 name: Wind To Face
 description: >
   A gust of wind hits the subject from the front, pushing hair, fabric,

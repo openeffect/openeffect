@@ -86,7 +86,7 @@ async def delete_run(item_id: str, request: Request):
                 loader = request.app.state.effect_loader
                 loaded = None
                 if record.effect_id:
-                    loaded = loader.get_by_db_id(record.effect_id) or loader.get_loaded(record.effect_id)
+                    loaded = loader.get_by_id(record.effect_id) or loader.get_loaded(record.effect_id)
                 manifest = loaded.manifest if loaded else None
                 if manifest:
                     for key, field in manifest.inputs.items():

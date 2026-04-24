@@ -1,5 +1,4 @@
-namespace: openeffect
-id: orbit-subject
+id: openeffect/orbit-subject
 name: Orbit Subject
 description: >
   A cinematic orbital camera move circles around the subject,

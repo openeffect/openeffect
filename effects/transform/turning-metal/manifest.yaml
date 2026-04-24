@@ -1,5 +1,4 @@
-namespace: openeffect
-id: turning-metal
+id: openeffect/turning-metal
 name: Turning Metal
 description: >
   The subject gradually turns into polished metal, with reflective metallic

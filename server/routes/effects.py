@@ -21,7 +21,7 @@ class InstallUrlRequest(BaseModel):
 class SaveEffectRequest(BaseModel):
     yaml_content: str
     effect_id: str | None = None  # null = new effect
-    fork_from: str | None = None  # namespace/id to copy assets from
+    fork_from: str | None = None  # namespace/slug to copy assets from
 
 
 class RenameAssetRequest(BaseModel):
@@ -63,7 +63,8 @@ def _serialize_effect(loaded) -> dict:
     data["compatible_models"] = compatible
 
     data["source"] = loaded.source
-    data["db_id"] = loaded.db_id
+    data["id"] = loaded.id
+    data["full_id"] = loaded.full_id
     data["is_favorite"] = loaded.is_favorite
     return data
 
@@ -84,10 +85,10 @@ async def get_effect_asset(uuid: str, filename: str, request: Request):
     return FileResponse(asset_path)
 
 
-@router.get("/effects/{namespace}/{effect_id}")
-async def get_effect(namespace: str, effect_id: str, request: Request):
+@router.get("/effects/{namespace}/{slug}")
+async def get_effect(namespace: str, slug: str, request: Request):
     loader = request.app.state.effect_loader
-    full_id = f"{namespace}/{effect_id}"
+    full_id = f"{namespace}/{slug}"
     loaded = loader.get_loaded(full_id)
     if not loaded:
         raise not_found("Effect not found", ErrorCode.EFFECT_NOT_FOUND)
@@ -148,13 +149,13 @@ class EditableRequest(BaseModel):
     editable: bool
 
 
-@router.patch("/effects/{namespace}/{effect_id}/editable")
-async def toggle_editable(namespace: str, effect_id: str, body: EditableRequest, request: Request):
+@router.patch("/effects/{namespace}/{slug}/editable")
+async def toggle_editable(namespace: str, slug: str, body: EditableRequest, request: Request):
     install_service = request.app.state.install_service
     loader = request.app.state.effect_loader
 
     try:
-        await install_service.set_editable(namespace, effect_id, body.editable)
+        await install_service.set_editable(namespace, slug, body.editable)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg:
@@ -165,13 +166,13 @@ async def toggle_editable(namespace: str, effect_id: str, body: EditableRequest,
     return {"ok": True, "editable": body.editable}
 
 
-@router.patch("/effects/{namespace}/{effect_id}/favorite")
-async def toggle_favorite(namespace: str, effect_id: str, body: FavoriteRequest, request: Request):
+@router.patch("/effects/{namespace}/{slug}/favorite")
+async def toggle_favorite(namespace: str, slug: str, body: FavoriteRequest, request: Request):
     install_service = request.app.state.install_service
     loader = request.app.state.effect_loader
 
     try:
-        await install_service.set_favorite(namespace, effect_id, body.favorite)
+        await install_service.set_favorite(namespace, slug, body.favorite)
     except ValueError as e:
         raise not_found(str(e))
 
@@ -179,24 +180,24 @@ async def toggle_favorite(namespace: str, effect_id: str, body: FavoriteRequest,
     return {"ok": True, "is_favorite": body.favorite}
 
 
-@router.delete("/effects/{namespace}/{effect_id}")
-async def uninstall_effect(namespace: str, effect_id: str, request: Request):
+@router.delete("/effects/{namespace}/{slug}")
+async def uninstall_effect(namespace: str, slug: str, request: Request):
     install_service = request.app.state.install_service
     loader = request.app.state.effect_loader
 
     try:
-        await install_service.uninstall(namespace, effect_id)
+        await install_service.uninstall(namespace, slug)
         await loader.reload()
         return {"ok": True}
     except ValueError as e:
         raise bad_request(str(e), ErrorCode.UNINSTALL_ERROR)
 
 
-@router.post("/effects/{namespace}/{effect_id}/update")
-async def update_effect(namespace: str, effect_id: str, request: Request):
+@router.post("/effects/{namespace}/{slug}/update")
+async def update_effect(namespace: str, slug: str, request: Request):
     install_service = request.app.state.install_service
     try:
-        result = await install_service.check_for_update(namespace, effect_id)
+        result = await install_service.check_for_update(namespace, slug)
         return result
     except ValueError as e:
         raise bad_request(str(e), ErrorCode.UPDATE_ERROR)
@@ -218,14 +219,14 @@ async def save_effect(body: SaveEffectRequest, request: Request):
     await loader.reload()
     loaded = loader.get_loaded(full_id)
     manifest_data = _serialize_effect(loaded) if loaded else {}
-    return {"effect_id": full_id, "manifest": manifest_data}
+    return {"full_id": full_id, "manifest": manifest_data}
 
 
-@router.get("/effects/{namespace}/{effect_id}/editor")
-async def get_effect_editor_data(namespace: str, effect_id: str, request: Request):
+@router.get("/effects/{namespace}/{slug}/editor")
+async def get_effect_editor_data(namespace: str, slug: str, request: Request):
     """Get YAML + asset list for the editor in one request."""
     install_service = request.app.state.install_service
-    existing = await install_service.get_effect(namespace, effect_id)
+    existing = await install_service.get_effect(namespace, slug)
     if not existing:
         raise not_found("Effect not found")
 
@@ -249,16 +250,16 @@ async def get_effect_editor_data(namespace: str, effect_id: str, request: Reques
     return {"yaml": yaml_content, "files": files}
 
 
-@router.get("/effects/{namespace}/{effect_id}/export")
-async def export_effect(namespace: str, effect_id: str, request: Request):
+@router.get("/effects/{namespace}/{slug}/export")
+async def export_effect(namespace: str, slug: str, request: Request):
     """Export an effect as a .zip archive."""
     install_service = request.app.state.install_service
-    existing = await install_service.get_effect(namespace, effect_id)
+    existing = await install_service.get_effect(namespace, slug)
     if not existing:
         raise not_found("Effect not found")
 
     assets_dir = Path(existing["assets_dir"])
-    effect_name = f"{namespace}-{effect_id}"
+    effect_name = f"{namespace}-{slug}"
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -285,9 +286,9 @@ async def export_effect(namespace: str, effect_id: str, request: Request):
 
 # ─── Asset CRUD ───
 
-async def _get_assets_dir_async(install_service, namespace: str, effect_id: str) -> tuple[Path, str]:
+async def _get_assets_dir_async(install_service, namespace: str, slug: str) -> tuple[Path, str]:
     """Returns (assets_dir_path, effect_uuid)."""
-    existing = await install_service.get_effect(namespace, effect_id)
+    existing = await install_service.get_effect(namespace, slug)
     if not existing:
         raise not_found("Effect not found")
     effect_dir = Path(existing["assets_dir"])
@@ -317,11 +318,11 @@ def _safe_filename(filename: str) -> str:
 
 
 
-@router.post("/effects/{namespace}/{effect_id}/assets/upload")
-async def upload_asset(namespace: str, effect_id: str, request: Request, file: UploadFile = File(...)):
+@router.post("/effects/{namespace}/{slug}/assets/upload")
+async def upload_asset(namespace: str, slug: str, request: Request, file: UploadFile = File(...)):
     """Upload a file to the effect's assets folder."""
     install_service = request.app.state.install_service
-    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, effect_id)
+    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, slug)
 
     original_name = _safe_filename(file.filename or "upload")
     final_name = _auto_suffix(assets_dir, original_name)
@@ -337,11 +338,11 @@ async def upload_asset(namespace: str, effect_id: str, request: Request, file: U
     }
 
 
-@router.delete("/effects/{namespace}/{effect_id}/assets/file/{filename:path}")
-async def delete_asset(namespace: str, effect_id: str, filename: str, request: Request):
+@router.delete("/effects/{namespace}/{slug}/assets/file/{filename:path}")
+async def delete_asset(namespace: str, slug: str, filename: str, request: Request):
     """Delete an asset file."""
     install_service = request.app.state.install_service
-    assets_dir, _ = await _get_assets_dir_async(install_service, namespace, effect_id)
+    assets_dir, _ = await _get_assets_dir_async(install_service, namespace, slug)
 
     safe_name = _safe_filename(filename)
     file_path = assets_dir / safe_name
@@ -352,11 +353,11 @@ async def delete_asset(namespace: str, effect_id: str, filename: str, request: R
     return {"ok": True}
 
 
-@router.patch("/effects/{namespace}/{effect_id}/assets/file/{filename:path}")
-async def rename_asset(namespace: str, effect_id: str, filename: str, body: RenameAssetRequest, request: Request):
+@router.patch("/effects/{namespace}/{slug}/assets/file/{filename:path}")
+async def rename_asset(namespace: str, slug: str, filename: str, body: RenameAssetRequest, request: Request):
     """Rename an asset file."""
     install_service = request.app.state.install_service
-    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, effect_id)
+    assets_dir, uuid = await _get_assets_dir_async(install_service, namespace, slug)
 
     old_name = _safe_filename(filename)
     new_name = _safe_filename(body.new_name)

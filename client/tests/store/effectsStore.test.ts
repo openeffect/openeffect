@@ -8,9 +8,10 @@ import type { EffectManifest } from '../../src/types/api'
 
 const mockEffects: EffectManifest[] = [
   {
-    db_id: 'uuid-zoom-001',
-    id: 'zoom-from-space',
+    id: 'uuid-zoom-001',
+    slug: 'zoom-from-space',
     namespace: 'openeffect',
+    full_id: 'openeffect/zoom-from-space',
     name: 'Zoom From Space',
     description: 'A dramatic zoom from outer space down to a portrait',
     version: '1.0.0',
@@ -38,9 +39,10 @@ const mockEffects: EffectManifest[] = [
     },
   },
   {
-    db_id: 'uuid-hug-002',
-    id: 'hug-effect',
+    id: 'uuid-hug-002',
+    slug: 'hug-effect',
     namespace: 'openeffect',
+    full_id: 'openeffect/hug-effect',
     name: 'Warm Hug',
     description: 'Two people share a warm embrace',
     version: '1.0.0',
@@ -76,9 +78,10 @@ const mockEffects: EffectManifest[] = [
     },
   },
   {
-    db_id: 'uuid-dance-003',
-    id: 'dance-loop',
+    id: 'uuid-dance-003',
+    slug: 'dance-loop',
     namespace: 'openeffect',
+    full_id: 'openeffect/dance-loop',
     name: 'Dance Loop',
     description: 'A seamless dancing loop animation',
     version: '1.0.0',
@@ -119,7 +122,7 @@ function getSelectedEffect(): EffectManifest | null {
 
 /** Build the by-id Map the store expects. */
 function effectsMap(list: EffectManifest[]): Map<string, EffectManifest> {
-  return new Map(list.map((e) => [e.db_id, e]))
+  return new Map(list.map((e) => [e.id, e]))
 }
 
 // --- Tests ---
@@ -139,8 +142,8 @@ beforeEach(() => {
 describe('effectsStore', () => {
   describe('basic actions', () => {
     it('selectEffect sets selectedId', () => {
-      selectEffect('openeffect/zoom-from-space')
-      expect(useStore.getState().effects.selectedId).toBe('openeffect/zoom-from-space')
+      selectEffect('uuid-zoom-001')
+      expect(useStore.getState().effects.selectedId).toBe('uuid-zoom-001')
     })
 
     it('setSearchQuery updates searchQuery', () => {
@@ -167,7 +170,7 @@ describe('effectsStore', () => {
       setSearchQuery('warm hug')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('hug-effect')
+      expect(filtered[0].slug).toBe('hug-effect')
     })
 
     it('filters by name with mixed case query', () => {
@@ -175,7 +178,7 @@ describe('effectsStore', () => {
       setSearchQuery('ZOOM')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('zoom-from-space')
+      expect(filtered[0].slug).toBe('zoom-from-space')
     })
 
     it('filters by tags', () => {
@@ -183,7 +186,7 @@ describe('effectsStore', () => {
       setSearchQuery('embrace')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('hug-effect')
+      expect(filtered[0].slug).toBe('hug-effect')
     })
 
     it('filters by description', () => {
@@ -191,7 +194,7 @@ describe('effectsStore', () => {
       setSearchQuery('seamless')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('dance-loop')
+      expect(filtered[0].slug).toBe('dance-loop')
     })
 
     it('category "single-image" returns only single-image effects', () => {
@@ -221,7 +224,7 @@ describe('effectsStore', () => {
       setSearchQuery('dance')
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].id).toBe('dance-loop')
+      expect(filtered[0].slug).toBe('dance-loop')
     })
 
     it('returns empty array when no effects match', () => {
@@ -234,14 +237,14 @@ describe('effectsStore', () => {
   })
 
   describe('selectSelectedEffect (selector logic)', () => {
-    it('returns correct effect when db_id matches', () => {
+    it('returns correct effect when id matches', () => {
       useStore.setState((s) => {
         s.effects.items = effectsMap(mockEffects)
         s.effects.selectedId = 'uuid-zoom-001'
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
-      expect(selected!.id).toBe('zoom-from-space')
+      expect(selected!.slug).toBe('zoom-from-space')
       expect(selected!.name).toBe('Zoom From Space')
     })
 
@@ -263,7 +266,7 @@ describe('effectsStore', () => {
       expect(selected).toBeNull()
     })
 
-    it('matches effect using db_id', () => {
+    it('matches effect using the UUID', () => {
       useStore.setState((s) => {
         s.effects.items = effectsMap(mockEffects)
         s.effects.selectedId = 'uuid-hug-002'

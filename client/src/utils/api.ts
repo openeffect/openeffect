@@ -62,8 +62,8 @@ export const api = {
   getEffects: () =>
     request<{ effects: EffectManifest[] }>('/api/effects').then((r) => r.effects),
 
-  getEffect: (effectId: string) =>
-    request<EffectManifest>(`/api/effects/${effectId}`),
+  getEffect: (namespace: string, slug: string) =>
+    request<EffectManifest>(`/api/effects/${namespace}/${slug}`),
 
   installEffectFromUrl: (url: string, overwrite = false) =>
     request<{ installed: string[] }>(`/api/effects/install?overwrite=${overwrite}`, {
@@ -86,17 +86,17 @@ export const api = {
     return res.json() as Promise<{ installed: string[] }>
   },
 
-  uninstallEffect: (namespace: string, effectId: string) =>
-    request<{ ok: boolean }>(`/api/effects/${namespace}/${effectId}`, { method: 'DELETE' }),
+  uninstallEffect: (namespace: string, slug: string) =>
+    request<{ ok: boolean }>(`/api/effects/${namespace}/${slug}`, { method: 'DELETE' }),
 
-  toggleFavorite: (namespace: string, effectId: string, favorite: boolean) =>
-    request<{ ok: boolean; is_favorite: boolean }>(`/api/effects/${namespace}/${effectId}/favorite`, {
+  toggleFavorite: (namespace: string, slug: string, favorite: boolean) =>
+    request<{ ok: boolean; is_favorite: boolean }>(`/api/effects/${namespace}/${slug}/favorite`, {
       method: 'PATCH',
       body: JSON.stringify({ favorite }),
     }),
 
-  setEditable: (namespace: string, effectId: string, editable: boolean) =>
-    request<{ ok: boolean; editable: boolean }>(`/api/effects/${namespace}/${effectId}/editable`, {
+  setEditable: (namespace: string, slug: string, editable: boolean) =>
+    request<{ ok: boolean; editable: boolean }>(`/api/effects/${namespace}/${slug}/editable`, {
       method: 'PATCH',
       body: JSON.stringify({ editable }),
     }),
@@ -162,23 +162,23 @@ export const api = {
 
   // Effect editor
   saveEffect: (yamlContent: string, effectId: string | null, forkFrom?: string) =>
-    request<{ effect_id: string; manifest: EffectManifest }>('/api/effects/save', {
+    request<{ full_id: string; manifest: EffectManifest }>('/api/effects/save', {
       method: 'POST',
       body: JSON.stringify({ yaml_content: yamlContent, effect_id: effectId, fork_from: forkFrom }),
     }),
 
-  getEffectEditorData: (namespace: string, effectId: string) =>
+  getEffectEditorData: (namespace: string, slug: string) =>
     request<{ yaml: string; files: { filename: string; size: number; url: string }[] }>(
-      `/api/effects/${namespace}/${effectId}/editor`,
+      `/api/effects/${namespace}/${slug}/editor`,
     ),
 
-  exportEffect: (namespace: string, effectId: string) =>
-    `/api/effects/${namespace}/${effectId}/export`,
+  exportEffect: (namespace: string, slug: string) =>
+    `/api/effects/${namespace}/${slug}/export`,
 
-  uploadAsset: async (namespace: string, effectId: string, file: File) => {
+  uploadAsset: async (namespace: string, slug: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`/api/effects/${namespace}/${effectId}/assets/upload`, {
+    const res = await fetch(`/api/effects/${namespace}/${slug}/assets/upload`, {
       method: 'POST',
       body: form,
     })
@@ -190,14 +190,14 @@ export const api = {
     return res.json() as Promise<{ filename: string; size: number; url: string }>
   },
 
-  deleteAsset: (namespace: string, effectId: string, filename: string) =>
-    request<{ ok: boolean }>(`/api/effects/${namespace}/${effectId}/assets/file/${encodeURIComponent(filename)}`, {
+  deleteAsset: (namespace: string, slug: string, filename: string) =>
+    request<{ ok: boolean }>(`/api/effects/${namespace}/${slug}/assets/file/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
     }),
 
-  renameAsset: (namespace: string, effectId: string, oldName: string, newName: string) =>
+  renameAsset: (namespace: string, slug: string, oldName: string, newName: string) =>
     request<{ filename: string; size: number; url: string }>(
-      `/api/effects/${namespace}/${effectId}/assets/file/${encodeURIComponent(oldName)}`,
+      `/api/effects/${namespace}/${slug}/assets/file/${encodeURIComponent(oldName)}`,
       { method: 'PATCH', body: JSON.stringify({ new_name: newName }) },
     ),
 }

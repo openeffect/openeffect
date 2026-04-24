@@ -151,8 +151,8 @@ class InstallService:
         manifest: EffectManifest,
     ) -> str:
         """Install one manifest. Updates in place if an effect with the same
-        namespace/id already exists (conflict detection is caller's job)."""
-        existing = await self.get_effect(manifest.namespace, manifest.id)
+        namespace/slug already exists (conflict detection is caller's job)."""
+        existing = await self.get_effect(manifest.namespace, manifest.slug)
         if existing and existing["version"] == manifest.version:
             return manifest.full_id
 
@@ -298,17 +298,17 @@ class InstallService:
         for mp in manifest_paths:
             data = yaml.safe_load(mp.read_text())
             m = EffectManifest(**data)
-            pending_ids.add((m.namespace, m.id))
+            pending_ids.add((m.namespace, m.slug))
 
         installed: list[str] = []
         if manifest_paths:
             installed = await self.install_from_folder(folder, allow_official=True)
 
         orphans = await self._db.fetchall(
-            "SELECT id, namespace, effect_id FROM effects WHERE source = 'official'"
+            "SELECT id, namespace, slug FROM effects WHERE source = 'official'"
         )
         for row in orphans:
-            if (row["namespace"], row["effect_id"]) in pending_ids:
+            if (row["namespace"], row["slug"]) in pending_ids:
                 continue
             async with self._db.transaction() as conn:
                 await conn.execute(
@@ -317,7 +317,7 @@ class InstallService:
                 )
             logger.info(
                 "Demoted dropped bundled effect %s/%s to archive",
-                row["namespace"], row["effect_id"],
+                row["namespace"], row["slug"],
             )
 
         return installed
@@ -336,7 +336,7 @@ class InstallService:
         if not allow_official:
             self._validate_namespace(manifest.namespace)
 
-        existing = await self.get_effect(manifest.namespace, manifest.id)
+        existing = await self.get_effect(manifest.namespace, manifest.slug)
         if existing and existing["version"] == manifest.version:
             return manifest.full_id
 
@@ -393,19 +393,19 @@ class InstallService:
         self,
         manifest: EffectManifest,
         yaml_content: str,
-        existing_effect_id: str | None = None,
+        existing_id: str | None = None,
         fork_from: str | None = None,
     ) -> str:
-        """Save or update a locally created/forked effect. fork_from = namespace/id to copy assets from."""
-        if existing_effect_id:
+        """Save or update a locally created/forked effect. fork_from = namespace/slug to copy assets from."""
+        if existing_id:
             existing: dict[str, Any] | None = None
-            if "/" in existing_effect_id:
-                ns, eid = existing_effect_id.split("/", 1)
+            if "/" in existing_id:
+                ns, eid = existing_id.split("/", 1)
                 existing = await self.get_effect(ns, eid)
             else:
-                existing = await self.get_effect_by_uuid(existing_effect_id)
+                existing = await self.get_effect_by_uuid(existing_id)
             if not existing:
-                raise ValueError(f"Effect {existing_effect_id} not found")
+                raise ValueError(f"Effect {existing_id} not found")
             if existing["source"] not in ("local", "archive"):
                 raise ValueError("Cannot edit non-local effects")
 
@@ -417,15 +417,19 @@ class InstallService:
 
             await self._update_effect(uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content)
         else:
-            base_id = manifest.id
+            base_slug = manifest.slug
             suffix = 1
-            while await self.get_effect(manifest.namespace, manifest.id):
+            while await self.get_effect(manifest.namespace, manifest.slug):
                 suffix += 1
-                new_id = f"{base_id}-{suffix}"
+                new_slug = f"{base_slug}-{suffix}"
                 data = manifest.model_dump()
-                data["id"] = new_id
+                data["slug"] = new_slug
                 manifest = EffectManifest(**data)
-                yaml_content = re.sub(r'^id:\s*.+$', f'id: {new_id}', yaml_content, count=1, flags=re.MULTILINE)
+                yaml_content = re.sub(
+                    r'^id:\s*.+$',
+                    f'id: {manifest.namespace}/{new_slug}',
+                    yaml_content, count=1, flags=re.MULTILINE,
+                )
 
             uuid = str(uuid_utils.uuid7())
             effect_dir = self._effects_dir / uuid
@@ -458,7 +462,7 @@ class InstallService:
     async def save_yaml(
         self,
         yaml_content: str,
-        existing_effect_id: str | None = None,
+        existing_id: str | None = None,
         fork_from: str | None = None,
     ) -> str:
         """Parse + validate manifest YAML and persist via `save_local_effect`.
@@ -481,18 +485,18 @@ class InstallService:
             raise ValueError("; ".join(errors))
 
         return await self.save_local_effect(
-            manifest, yaml_content, existing_effect_id, fork_from=fork_from
+            manifest, yaml_content, existing_id, fork_from=fork_from
         )
 
     # ─── Uninstall ───
 
-    async def uninstall(self, namespace: str, effect_id: str) -> None:
+    async def uninstall(self, namespace: str, slug: str) -> None:
         row = await self._db.fetchone(
-            "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND effect_id=?",
-            (namespace, effect_id),
+            "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND slug=?",
+            (namespace, slug),
         )
         if not row:
-            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+            raise ValueError(f"Effect {namespace}/{slug} not found")
 
         if row["source"] == "official":
             raise ValueError("Cannot uninstall official effects")
@@ -506,40 +510,40 @@ class InstallService:
 
     # ─── Editable / favorite toggles ───
 
-    async def set_editable(self, namespace: str, effect_id: str, editable: bool) -> None:
+    async def set_editable(self, namespace: str, slug: str, editable: bool) -> None:
         """Flip an archive-installed effect into local edit mode (or back)."""
-        existing = await self.get_effect(namespace, effect_id)
+        existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+            raise ValueError(f"Effect {namespace}/{slug} not found")
         if existing["source"] == "official":
             raise ValueError("Cannot modify official effects")
 
         new_source = "local" if editable else "archive"
         async with self._db.transaction() as conn:
             await conn.execute(
-                "UPDATE effects SET source=? WHERE namespace=? AND effect_id=?",
-                (new_source, namespace, effect_id),
+                "UPDATE effects SET source=? WHERE namespace=? AND slug=?",
+                (new_source, namespace, slug),
             )
 
-    async def set_favorite(self, namespace: str, effect_id: str, favorite: bool) -> None:
-        existing = await self.get_effect(namespace, effect_id)
+    async def set_favorite(self, namespace: str, slug: str, favorite: bool) -> None:
+        existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{effect_id} not found")
+            raise ValueError(f"Effect {namespace}/{slug} not found")
 
         async with self._db.transaction() as conn:
             await conn.execute(
-                "UPDATE effects SET is_favorite=? WHERE namespace=? AND effect_id=?",
-                (1 if favorite else 0, namespace, effect_id),
+                "UPDATE effects SET is_favorite=? WHERE namespace=? AND slug=?",
+                (1 if favorite else 0, namespace, slug),
             )
 
     # ─── Update check ───
 
     async def check_for_update(
-        self, namespace: str, effect_id: str
+        self, namespace: str, slug: str
     ) -> dict[str, Any]:
         row = await self._db.fetchone(
-            "SELECT source_url, version FROM effects WHERE namespace=? AND effect_id=?",
-            (namespace, effect_id),
+            "SELECT source_url, version FROM effects WHERE namespace=? AND slug=?",
+            (namespace, slug),
         )
         if not row or not row["source_url"]:
             return {"available": False}
@@ -565,18 +569,18 @@ class InstallService:
 
     async def _detect_conflicts(self, manifests: list[EffectManifest]) -> list[dict]:
         """For each incoming manifest, check if an effect with the same
-        (namespace, id) is already installed at a DIFFERENT version. Same-version
+        (namespace, slug) is already installed at a DIFFERENT version. Same-version
         installs are silent no-ops and aren't reported as conflicts."""
         conflicts: list[dict] = []
         for manifest in manifests:
-            existing = await self.get_effect(manifest.namespace, manifest.id)
+            existing = await self.get_effect(manifest.namespace, manifest.slug)
             if not existing:
                 continue
             if existing["version"] == manifest.version:
                 continue
             conflicts.append({
                 "namespace": manifest.namespace,
-                "id": manifest.id,
+                "slug": manifest.slug,
                 "name": manifest.name,
                 "existing_version": existing["version"],
                 "incoming_version": manifest.version,
@@ -584,10 +588,10 @@ class InstallService:
             })
         return conflicts
 
-    async def get_effect(self, namespace: str, effect_id: str) -> dict | None:
+    async def get_effect(self, namespace: str, slug: str) -> dict | None:
         row = await self._db.fetchone(
-            "SELECT * FROM effects WHERE namespace=? AND effect_id=?",
-            (namespace, effect_id),
+            "SELECT * FROM effects WHERE namespace=? AND slug=?",
+            (namespace, slug),
         )
         return dict(row) if row else None
 
@@ -612,13 +616,13 @@ class InstallService:
         async with self._db.transaction() as conn:
             await conn.execute(
                 """INSERT INTO effects (
-                       id, namespace, effect_id, source, source_url,
+                       id, namespace, slug, source, source_url,
                        manifest_yaml, assets_dir, version, installed_at, updated_at
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     uuid,
                     manifest.namespace,
-                    manifest.id,
+                    manifest.slug,
                     source,
                     manifest.url,
                     yaml_content,
@@ -637,12 +641,12 @@ class InstallService:
             yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         async with self._db.transaction() as conn:
             await conn.execute(
-                """UPDATE effects SET namespace=?, effect_id=?, source=?, source_url=?,
+                """UPDATE effects SET namespace=?, slug=?, source=?, source_url=?,
                    manifest_yaml=?, assets_dir=?, version=?, updated_at=?
                    WHERE id=?""",
                 (
                     manifest.namespace,
-                    manifest.id,
+                    manifest.slug,
                     source,
                     manifest.url,
                     yaml_content,

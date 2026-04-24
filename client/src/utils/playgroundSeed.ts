@@ -122,13 +122,15 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   }
 
   const shortId = record.id.slice(0, 8)
+  const slug = `from-playground-${shortId}`
 
   return {
-    db_id: '',
+    id: '',
+    full_id: `my/${slug}`,
     compatible_models: [],
     is_favorite: false,
     namespace: 'my',
-    id: `from-playground-${shortId}`,
+    slug,
     name: 'My Effect',
     description: 'Created from a playground run.',
     version: '1.0.0',

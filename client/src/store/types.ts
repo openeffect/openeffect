@@ -35,7 +35,7 @@ export interface AssetFile {
 // ─── Slice interfaces ────────────────────────────────────────────────────────
 
 export interface EffectsSlice {
-  // Keyed by db_id. Using Map for O(1) lookup and stable insertion order
+  // Keyed by effect UUID. Using Map for O(1) lookup and stable insertion order
   // (same pattern as RunSlice.jobs). Selectors expose this as an array to
   // components — internals read/write by key.
   items: Map<string, EffectManifest>

@@ -67,6 +67,15 @@ class InputFieldSchema(BaseModel):
             raise ValueError(f"Invalid role '{v}'. Must be one of: {', '.join(VALID_ROLES)}")
         return v
 
+    @model_validator(mode="after")
+    def _reject_image_default(self) -> InputFieldSchema:
+        # Image defaults would require an asset pipeline (pre-packaged file
+        # shipped with the manifest) that doesn't exist yet. Block the field
+        # so authors don't silently get a feature that isn't wired up.
+        if self.type == "image" and self.default is not None:
+            raise ValueError("'default' is not supported on image inputs")
+        return self
+
 
 
 class Assets(BaseModel):

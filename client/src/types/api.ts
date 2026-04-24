@@ -10,7 +10,6 @@ export type InputFieldSchema =
       required: boolean
       label: string
       hint?: string
-      default?: string
       advanced?: boolean
     }
   | {

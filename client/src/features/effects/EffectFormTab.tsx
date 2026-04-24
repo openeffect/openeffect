@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { AlertCircle, ChevronDown, RotateCcw, X as XIcon } from 'lucide-react'
+import { AlertCircle, ChevronDown, X as XIcon } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
 import { selectRestoredParams } from '@/store/selectors/runSelectors'
@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/Button'
 import { Label } from '@/components/ui/Label'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/utils/cn'
-import type { InputFieldSchema, ModelParam } from '@/types/api'
+import type { ModelParam } from '@/types/api'
 
 export function EffectFormTab() {
   const selectedEffect = useStore(selectSelectedEffect)
@@ -65,9 +65,6 @@ export function EffectFormTab() {
     const init: Record<string, unknown> = {}
     for (const [key, schema] of Object.entries(manifest.inputs ?? {})) {
       if (schema.type === 'select' && 'default' in schema) init[key] = schema.default
-      if (schema.type === 'image' && 'default' in schema && schema.default) {
-        init[key] = { __defaultAsset: true, filename: schema.default }
-      }
     }
     return init
   })
@@ -229,7 +226,7 @@ export function EffectFormTab() {
       if (!schema.required) continue
       const val = values[key]
       if (schema.type === 'image') {
-        const hasImage = val instanceof File || (val && typeof val === 'object' && ('__restored' in val || '__defaultAsset' in val))
+        const hasImage = val instanceof File || (val && typeof val === 'object' && '__restored' in val)
         if (!hasImage) errors[key] = `Please upload ${schema.label.toLowerCase()}`
       } else if (schema.type === 'text') {
         if (!val || typeof val !== 'string' || !val.trim()) errors[key] = `${schema.label} is required`
@@ -306,22 +303,8 @@ export function EffectFormTab() {
             values={advancedValues}
             onChange={handleAdvancedChange}
           >
-            {/* Advanced manifest inputs (e.g., hidden start_frame with default asset) */}
             {advancedInputs.map(([key, schema]) => (
-              schema.type === 'image' ? (
-                <div key={key} className="space-y-2">
-                  <Label variant="form">{schema.label}</Label>
-                  <AdvancedImageField
-                    schema={schema}
-                    value={values[key]}
-                    assetUrl={manifest?.assets?.inputs?.[key]}
-                    onChange={(v) => handleChange(key, v)}
-                    onReset={'default' in schema && schema.default ? () => handleChange(key, { __defaultAsset: true, filename: schema.default }) : undefined}
-                  />
-                </div>
-              ) : (
-                <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => handleChange(key, v)} />
-              )
+              <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => handleChange(key, v)} />
             ))}
           </AdvancedSettings>
         )}
@@ -358,64 +341,6 @@ export function EffectFormTab() {
         )}
       </div>
     </>
-  )
-}
-
-/* --- Advanced image field with default asset preview and reset --- */
-function AdvancedImageField({ schema, value, assetUrl, onChange, onReset }: {
-  schema: InputFieldSchema
-  value: unknown
-  assetUrl?: string
-  onChange: (v: unknown) => void
-  onReset?: () => void
-}) {
-  const isDefaultAsset = value && typeof value === 'object' && '__defaultAsset' in (value as Record<string, unknown>)
-  const isFile = value instanceof File
-
-  if (isDefaultAsset && assetUrl) {
-    // Show asset preview with clear button
-    return (
-      <div className="flex items-center gap-2">
-        <div className="h-12 w-12 overflow-hidden rounded border bg-muted">
-          <img src={assetUrl} alt="" className="h-full w-full object-cover" />
-        </div>
-        <span className="text-xs text-muted-foreground">Default asset</span>
-        <Button variant="ghost" size="icon" className="ml-auto h-6 w-6" onClick={() => onChange(null)}>
-          <XIcon size={12} />
-        </Button>
-      </div>
-    )
-  }
-
-  if (isFile) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="truncate text-xs text-secondary-foreground">{(value as File).name}</span>
-        <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onChange(null)}>
-            <XIcon size={12} />
-          </Button>
-          {onReset && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onReset} title="Reset to default">
-              <RotateCcw size={12} />
-            </Button>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // No value — show upload + reset
-  return (
-    <div className="flex items-center gap-2">
-      <EffectFormField schema={schema} value={value} onChange={onChange} />
-      {onReset && (
-        <Button variant="ghost" size="sm" onClick={onReset} className="shrink-0 h-7 text-xs">
-          <RotateCcw size={12} />
-          Reset
-        </Button>
-      )}
-    </div>
   )
 }
 

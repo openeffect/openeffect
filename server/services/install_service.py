@@ -608,11 +608,11 @@ class InstallService:
         return dict(row) if row else None
 
     def _collect_asset_filenames(self, manifest: EffectManifest) -> list[str]:
-        files = []
-        if manifest.assets.preview:
-            files.append(manifest.assets.preview)
-        for filename in manifest.assets.inputs.values():
-            files.append(filename)
+        files: list[str] = []
+        for sc in manifest.showcases:
+            if sc.preview:
+                files.append(sc.preview)
+            files.extend(sc.inputs.values())
         return files
 
     async def _insert_effect(

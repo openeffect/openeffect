@@ -78,7 +78,7 @@ class InputFieldSchema(BaseModel):
 
 
 
-class Assets(BaseModel):
+class Showcase(BaseModel):
     preview: str | None = None        # result video/gif in assets/
     inputs: dict[str, str] = {}       # keyed by input field name → filename in assets/
 
@@ -186,7 +186,7 @@ class EffectManifest(BaseModel):
     url: str | None = None              # self-referencing URL for update checking
     category: str
     tags: list[str] = []
-    assets: Assets = Assets()
+    showcases: list[Showcase] = []
     inputs: dict[str, InputFieldSchema]
     generation: GenerationConfig
 

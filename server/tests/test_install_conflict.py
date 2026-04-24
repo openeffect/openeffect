@@ -18,7 +18,7 @@ MANIFEST_BASE: dict[str, Any] = {
     "author": "tester",
     "category": "transform",
     "tags": [],
-    "assets": {},
+    "showcases": [],
     "inputs": {
         "image": {
             "type": "image",
@@ -38,7 +38,7 @@ def _manifest(**overrides) -> dict:
     """Deep-ish copy of the base manifest with shallow overrides merged in."""
     data = {
         **MANIFEST_BASE,
-        "assets": dict(MANIFEST_BASE["assets"]),
+        "showcases": [dict(s) for s in MANIFEST_BASE["showcases"]],
         "inputs": {k: dict(v) for k, v in MANIFEST_BASE["inputs"].items()},
         "generation": dict(MANIFEST_BASE["generation"]),
         "tags": list(MANIFEST_BASE["tags"]),
@@ -253,13 +253,13 @@ class TestArchiveSymlinkGuard:
 
 
 class TestArchiveAssetWhitelist:
-    """Install only copies files listed in manifest.assets (preview +
+    """Install only copies files listed in manifest.showcases (preview +
     inputs.*) — extras in the zip's assets/ folder are ignored. Matches
     the URL install path, which fetches only declared assets."""
 
     async def test_extra_asset_in_zip_not_copied(self, install_service):
         m = _manifest(
-            assets={"preview": "preview.mp4", "inputs": {"image": "in.jpg"}},
+            showcases=[{"preview": "preview.mp4", "inputs": {"image": "in.jpg"}}],
         )
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -278,7 +278,7 @@ class TestArchiveAssetWhitelist:
         assert declared == {"preview.mp4", "in.jpg"}
 
     async def test_missing_declared_asset_raises(self, install_service):
-        m = _manifest(assets={"preview": "preview.mp4", "inputs": {}})
+        m = _manifest(showcases=[{"preview": "preview.mp4", "inputs": {}}])
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(f"{m['id']}/manifest.yaml", yaml.dump(m))

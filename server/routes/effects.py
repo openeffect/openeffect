@@ -34,20 +34,21 @@ def _serialize_effect(loaded) -> dict:
     data = loaded.manifest.model_dump()
     uuid = Path(loaded.assets_dir).name
 
-    # Pre-resolve asset URLs. Only image-typed inputs get URL-prefixed —
-    # text inputs carry literal sample content, not a filename.
-    if data.get("assets"):
-        if data["assets"].get("preview"):
-            data["assets"]["preview"] = f"/api/effects/assets/{uuid}/{data['assets']['preview']}"
-        if data["assets"].get("inputs"):
+    # Pre-resolve asset URLs per showcase. Only image-typed inputs get
+    # URL-prefixed — text inputs carry literal sample content, not a
+    # filename.
+    for sc in data.get("showcases", []):
+        if sc.get("preview"):
+            sc["preview"] = f"/api/effects/assets/{uuid}/{sc['preview']}"
+        if sc.get("inputs"):
             resolved: dict[str, str] = {}
-            for key, value in data["assets"]["inputs"].items():
+            for key, value in sc["inputs"].items():
                 schema = loaded.manifest.inputs.get(key)
                 if schema and schema.type == "image":
                     resolved[key] = f"/api/effects/assets/{uuid}/{value}"
                 else:
                     resolved[key] = value
-            data["assets"]["inputs"] = resolved
+            sc["inputs"] = resolved
 
     # Compute compatible models from input roles
     input_roles = set()

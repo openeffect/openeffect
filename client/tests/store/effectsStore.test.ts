@@ -19,9 +19,7 @@ const mockEffects: EffectManifest[] = [
     category: 'single-image',
     source: 'official',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
-    assets: {
-
-    },
+    showcases: [],
     inputs: {
       image: {
         type: 'image',
@@ -50,10 +48,7 @@ const mockEffects: EffectManifest[] = [
     category: 'image-transition',
     source: 'official',
     tags: ['hug', 'embrace', 'love'],
-    assets: {
-
-      preview: 'preview.mp4',
-    },
+    showcases: [{ preview: 'preview.mp4' }],
     inputs: {
       image_a: {
         type: 'image',
@@ -89,9 +84,7 @@ const mockEffects: EffectManifest[] = [
     category: 'single-image',
     source: 'official',
     tags: ['dance', 'loop', 'animation'],
-    assets: {
-
-    },
+    showcases: [],
     inputs: {
       image: {
         type: 'image',

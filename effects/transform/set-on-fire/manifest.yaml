@@ -14,10 +14,10 @@ tags:
   - transformation
   - viral
 
-assets:
-  preview: preview.mp4
-  inputs:
-    image: input-image.jpg
+showcases:
+  - preview: preview.mp4
+    inputs:
+      image: input-image.jpg
 
 inputs:
   image:

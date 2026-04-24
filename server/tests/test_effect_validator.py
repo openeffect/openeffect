@@ -21,7 +21,7 @@ def make_valid_manifest(**overrides) -> dict:
         "author": "test",
         "category": "animation",
         "tags": [],
-        "assets": {},
+        "showcases": [],
         "inputs": {
             "image": {
                 "type": "image", "role": "start_frame", "required": True, "label": "Photo",

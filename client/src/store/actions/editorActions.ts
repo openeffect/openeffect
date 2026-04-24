@@ -22,10 +22,7 @@ category: transform
 tags:
   - custom
 
-assets:
-  preview: preview.mp4
-  inputs:
-    image: input-image.jpg
+showcases: []
 
 inputs:
   image:
@@ -74,7 +71,7 @@ const BLANK_MANIFEST: EffectManifest = {
   author: 'me',
   category: 'transform',
   tags: ['custom'],
-  assets: {},
+  showcases: [],
   inputs: {
     image: {
       type: 'image',
@@ -287,7 +284,7 @@ export async function forkFromManifest(manifest: EffectManifest): Promise<void> 
       namespace: 'my',
       slug: forkSlug,
       name: `${manifest.name} (Copy)`,
-      assets: {},
+      showcases: [],
     }
     const yamlContent = manifestToYaml(forkData as unknown as Record<string, unknown>)
 

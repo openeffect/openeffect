@@ -41,7 +41,7 @@ const mockManifest: EffectManifest = {
   compatible_models: [],
   is_favorite: false,
   tags: [],
-  assets: {},
+  showcases: [],
   inputs: {},
   generation: {
     prompt: 'test',

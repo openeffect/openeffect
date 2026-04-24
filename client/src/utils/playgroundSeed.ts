@@ -137,7 +137,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
     author: 'me',
     category: 'transform',
     tags: ['custom'],
-    assets: {},
+    showcases: [],
     inputs,
     generation: {
       prompt,

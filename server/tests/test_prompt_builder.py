@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from effects.prompt_builder import PromptBuilder
 from effects.validator import (
-    Assets,
     EffectManifest,
     GenerationConfig,
     InputFieldSchema,
@@ -38,7 +37,7 @@ def make_manifest(**overrides) -> EffectManifest:
         "author": "test",
         "category": "animation",
         "tags": [],
-        "assets": Assets(),
+        "showcases": [],
         "inputs": {
             "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
             "prompt": InputFieldSchema(

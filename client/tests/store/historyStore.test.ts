@@ -244,7 +244,7 @@ describe('historyStore', () => {
           author: 'test',
           category: 'transform',
           tags: [],
-          assets: {},
+          showcases: [],
           source: 'local',
           compatible_models: [],
           is_favorite: false,

@@ -1,21 +1,26 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, Plus, Type, Sparkles } from 'lucide-react'
-import type { EffectManifest } from '@/types/api'
+import type { EffectManifest, Showcase } from '@/types/api'
 import { isVideoUrl } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
+import { cn } from '@/utils/cn'
 
 interface EffectHeroProps {
   effect: EffectManifest
 }
 
 export function EffectHero({ effect }: EffectHeroProps) {
-  const previewUrl = effect.assets.preview ?? null
+  const [activeIdx, setActiveIdx] = useState(0)
+  const showcases = effect.showcases
+  const showcase: Showcase | null = showcases[activeIdx] ?? showcases[0] ?? null
 
-  // Build input assets — match assets.inputs keys to manifest.inputs
+  const previewUrl = showcase?.preview ?? null
+
+  // Build input assets — match showcase.inputs keys to manifest.inputs
   const inputBlocks: { key: string; type: string; assetUrl: string | null; assetText: string | null }[] = []
   for (const [key, schema] of Object.entries(effect.inputs)) {
-    const assetValue = effect.assets.inputs?.[key]
+    const assetValue = showcase?.inputs?.[key]
     if (!assetValue) continue
     if (schema.type === 'image') {
       inputBlocks.push({ key, type: 'image', assetUrl: assetValue, assetText: null })
@@ -24,7 +29,7 @@ export function EffectHero({ effect }: EffectHeroProps) {
     }
   }
 
-  // Skip hero entirely if no assets at all
+  // Skip hero entirely if nothing to show in any showcase
   if (!previewUrl && inputBlocks.length === 0) return null
 
   return (
@@ -35,24 +40,33 @@ export function EffectHero({ effect }: EffectHeroProps) {
         animate={{ opacity: 1, transition: { duration: 0.2 } }}
         exit={{ opacity: 0, transition: { duration: 0.12 } }}
       >
-        <div className="overflow-x-auto py-1">
-          <div className="mx-auto flex w-max items-center gap-3 px-6">
-          {inputBlocks.map((block, i) => (
-            <Fragment key={block.key}>
-              {i > 0 && <PipelineGlyph delay={0.1 + i * 0.08 - 0.04} icon="plus" />}
-              <InputBlock block={block} delay={0.1 + i * 0.08} />
-            </Fragment>
-          ))}
-          {inputBlocks.length > 0 && previewUrl && <PipelineGlyph delay={0.1 + inputBlocks.length * 0.08} icon="arrow" />}
-          {previewUrl && (
-            <MediaBlock delay={0.1 + inputBlocks.length * 0.08 + 0.05}>
-              {isVideoUrl(previewUrl) ? (
-                <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-              ) : (
-                <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-              )}
-            </MediaBlock>
+        <div className="flex items-center gap-3">
+          {showcases.length > 1 && (
+            <ShowcaseColumn
+              showcases={showcases}
+              activeIdx={activeIdx}
+              onSelect={setActiveIdx}
+            />
           )}
+          <div className="min-w-0 flex-1 overflow-x-auto py-1">
+            <div className="mx-auto flex w-max items-center gap-3 px-6">
+              {inputBlocks.map((block, i) => (
+                <Fragment key={block.key}>
+                  {i > 0 && <PipelineGlyph delay={0.1 + i * 0.08 - 0.04} icon="plus" />}
+                  <InputBlock block={block} delay={0.1 + i * 0.08} />
+                </Fragment>
+              ))}
+              {inputBlocks.length > 0 && previewUrl && <PipelineGlyph delay={0.1 + inputBlocks.length * 0.08} icon="arrow" />}
+              {previewUrl && (
+                <MediaBlock delay={0.1 + inputBlocks.length * 0.08 + 0.05}>
+                  {isVideoUrl(previewUrl) ? (
+                    <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                  ) : (
+                    <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                  )}
+                </MediaBlock>
+              )}
+            </div>
           </div>
         </div>
 
@@ -72,6 +86,82 @@ export function EffectHero({ effect }: EffectHeroProps) {
         )}
       </motion.div>
     </div>
+  )
+}
+
+/* --- Showcase picker: vertical column to the left of the pipeline.
+       Height is capped to the MediaBlock height (340px) so it aligns with
+       the preview tile and scrolls internally when an effect ships many
+       showcases. --- */
+function ShowcaseColumn({
+  showcases,
+  activeIdx,
+  onSelect,
+}: {
+  showcases: Showcase[]
+  activeIdx: number
+  onSelect: (idx: number) => void
+}) {
+  return (
+    <motion.aside
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 0.1, duration: 0.25 }}
+      className="flex max-h-[340px] shrink-0 flex-col items-center gap-2 self-center overflow-y-auto py-1 pl-6 pr-1"
+    >
+      {showcases.map((sc, i) => (
+        <ShowcaseThumb
+          key={i}
+          showcase={sc}
+          isActive={i === activeIdx}
+          onClick={() => onSelect(i)}
+        />
+      ))}
+    </motion.aside>
+  )
+}
+
+function ShowcaseThumb({
+  showcase,
+  isActive,
+  onClick,
+}: {
+  showcase: Showcase
+  isActive: boolean
+  onClick: () => void
+}) {
+  const preview = showcase.preview ?? null
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-all',
+        isActive
+          ? 'border-primary'
+          : 'border-transparent opacity-70 hover:border-border hover:opacity-100',
+      )}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Sparkles size={14} className="text-muted-foreground opacity-40" />
+      </div>
+      {preview && (isVideoUrl(preview) ? (
+        <video
+          src={preview}
+          muted
+          playsInline
+          preload="metadata"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+      ) : (
+        <img
+          src={preview}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+      ))}
+    </button>
   )
 }
 

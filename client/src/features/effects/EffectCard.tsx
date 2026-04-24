@@ -16,10 +16,14 @@ export function EffectCard({ effect }: EffectCardProps) {
   const selectedId = useStore(selectSelectedId)
 
   const isSelected = selectedId === effect.id
-  // Assets are pre-resolved URLs from the server
-  const firstInputUrl = effect.assets.inputs ? Object.values(effect.assets.inputs).find((v) => v.includes('.jpg') || v.includes('.jpeg') || v.includes('.png') || v.includes('.webp')) : null
+  // Showcase URLs are pre-resolved by the server. Card always shows the
+  // first showcase; the detail page has a picker for the rest.
+  const first = effect.showcases[0]
+  const firstInputUrl = first?.inputs
+    ? Object.values(first.inputs).find((v) => /\.(jpg|jpeg|png|webp|gif)$/i.test(v))
+    : null
   const posterUrl = firstInputUrl ?? null
-  const previewUrl = effect.assets.preview ?? null
+  const previewUrl = first?.preview ?? null
 
   return (
     <motion.div

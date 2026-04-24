@@ -64,7 +64,7 @@ export type InputFieldSchema =
       advanced?: boolean
     }
 
-export interface Assets {
+export interface Showcase {
   preview?: string
   inputs?: Record<string, string>
 }
@@ -100,7 +100,7 @@ export interface EffectManifest {
   url?: string
   category: string
   tags: string[]
-  assets: Assets
+  showcases: Showcase[]
   inputs: Record<string, InputFieldSchema>
   generation: GenerationConfig
   source: 'official' | 'installed' | 'local'

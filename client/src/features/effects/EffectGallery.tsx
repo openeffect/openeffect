@@ -62,9 +62,8 @@ export function EffectGallery() {
   const grouped =
     activeCategory === 'all' ? groupByCategory(filteredEffects) : { [activeCategory]: filteredEffects }
 
-  const showHero = selectedEffect && !!(
-    selectedEffect.assets.preview ||
-    (selectedEffect.assets.inputs && Object.keys(selectedEffect.assets.inputs).length > 0)
+  const showHero = selectedEffect && selectedEffect.showcases.some(
+    (sc) => sc.preview || (sc.inputs && Object.keys(sc.inputs).length > 0),
   )
 
   return (

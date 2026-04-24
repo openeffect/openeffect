@@ -105,7 +105,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
 
           {/* Upload — pinned to top */}
           <div className="shrink-0 border-b p-3">
-            <FileDropzone onFile={handleUpload} label="Drop or click to upload asset" />
+            <FileDropzone onFile={handleUpload} label="Click or drag to upload asset" />
           </div>
 
           {/* File list — only this scrolls */}

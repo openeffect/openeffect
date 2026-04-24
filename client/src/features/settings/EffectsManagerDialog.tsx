@@ -219,7 +219,7 @@ function InstallEffectSection({ onInstalled }: { onInstalled: () => void }) {
       {/* ZIP upload */}
       <FileDropzone
         accept=".zip"
-        label="Drop or click to upload .zip archive"
+        label="Click or drag to upload .zip archive"
         disabled={installing}
         onFile={handleInstallFile}
       />

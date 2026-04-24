@@ -95,24 +95,43 @@ async def get_effect(namespace: str, effect_id: str, request: Request):
 
 
 @router.post("/effects/install")
-async def install_effect(
+async def install_effect_from_url(
     request: Request,
+    body: InstallUrlRequest,
     overwrite: bool = False,
-    body: InstallUrlRequest | None = None,
-    file: UploadFile | None = File(None),
 ):
+    """JSON body: `{url}`. ZIP uploads use /effects/install/upload —
+    mixing a Pydantic body with an UploadFile on one handler breaks
+    FastAPI's content-type routing (body silently arrives as None)."""
     install_service = request.app.state.install_service
     loader = request.app.state.effect_loader
 
     try:
-        if body and body.url:
-            installed = await install_service.install_from_url(body.url, overwrite=overwrite)
-        elif file and file.filename:
-            content = await file.read()
-            installed = await install_service.install_from_archive(content, overwrite=overwrite)
-        else:
-            raise bad_request("Provide url or file", ErrorCode.INVALID_REQUEST)
+        installed = await install_service.install_from_url(body.url, overwrite=overwrite)
+        await loader.reload()
+        return {"installed": installed}
+    except InstallConflictError as e:
+        raise conflict("Already installed", ErrorCode.INSTALL_CONFLICT, conflicts=e.conflicts)
+    except ValueError as e:
+        raise bad_request(str(e), ErrorCode.INSTALL_ERROR)
 
+
+@router.post("/effects/install/upload")
+async def install_effect_from_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    overwrite: bool = False,
+):
+    """Multipart upload: `file=<zip>`."""
+    install_service = request.app.state.install_service
+    loader = request.app.state.effect_loader
+
+    if not file.filename:
+        raise bad_request("Empty upload", ErrorCode.INVALID_REQUEST)
+
+    try:
+        content = await file.read()
+        installed = await install_service.install_from_archive(content, overwrite=overwrite)
         await loader.reload()
         return {"installed": installed}
     except InstallConflictError as e:

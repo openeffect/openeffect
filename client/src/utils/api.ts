@@ -74,7 +74,7 @@ export const api = {
   installEffectFromFile: async (file: File, overwrite = false): Promise<{ installed: string[] }> => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`/api/effects/install?overwrite=${overwrite}`, { method: 'POST', body: form })
+    const res = await fetch(`/api/effects/install/upload?overwrite=${overwrite}`, { method: 'POST', body: form })
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText }))
       const detail = body.detail ?? body

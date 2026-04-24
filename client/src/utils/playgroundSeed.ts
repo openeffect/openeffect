@@ -15,8 +15,8 @@ function humanizeRole(role: string): string {
 
 /**
  * Build a RestoredParams shape for "Try in playground" from an effect that
- * has never been run. The raw template (with `{placeholder}` tokens intact)
- * becomes the prompt. The manifest's `params` for the default model
+ * has never been run. The raw Jinja template (with `{{ placeholder }}` tags
+ * intact) becomes the prompt. The manifest's `params` for the default model
  * are unwrapped to their effective values and split between output_params
  * and advanced_params based on the model's param definitions.
  */

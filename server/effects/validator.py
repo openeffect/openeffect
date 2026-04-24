@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import jinja2
 from pydantic import BaseModel, field_validator, model_serializer, model_validator
+
+from effects.jinja_env import env
 
 VALID_ROLES = ("start_frame", "end_frame", "reference", "prompt_input")
 
@@ -173,6 +176,25 @@ class EffectManifest(BaseModel):
         for field in self.inputs.values():
             if field.role == "start_frame" and not field.required:
                 raise ValueError("Input with role 'start_frame' must have required: true")
+        return self
+
+    @model_validator(mode="after")
+    def validate_prompt_templates(self) -> EffectManifest:
+        """Parse-check every Jinja template string at manifest-load time so
+        syntax errors surface to the author immediately, not at run time."""
+        sources: list[tuple[str, str]] = [
+            ("prompt", self.generation.prompt),
+            ("negative_prompt", self.generation.negative_prompt),
+        ]
+        for mid, override in self.generation.model_overrides.items():
+            if override.prompt:
+                sources.append((f"model_overrides.{mid}.prompt", override.prompt))
+
+        for label, src in sources:
+            try:
+                env.parse(src)
+            except jinja2.exceptions.TemplateSyntaxError as e:
+                raise ValueError(f"Invalid template in {label}: {e.message}") from e
         return self
 
     @model_validator(mode="after")

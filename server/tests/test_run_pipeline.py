@@ -29,7 +29,7 @@ def _make_manifest() -> EffectManifest:
                 label="Prompt", multiline=False,
             ),
         },
-        generation=GenerationConfig(prompt="Test {prompt}"),
+        generation=GenerationConfig(prompt="Test {{ prompt }}"),
     )
 
 
@@ -141,7 +141,7 @@ class TestStartRun:
         assert data["user_params"]["guidance_scale"] == 3.5
         # model_inputs holds the normalized, resolved shape (prompt templates expanded)
         assert "model_inputs" in data
-        assert data["model_inputs"]["prompt"] == "Test city night"  # template "Test {prompt}" resolved
+        assert data["model_inputs"]["prompt"] == "Test city night"  # template "Test {{ prompt }}" resolved
         assert "negative_prompt" in data["model_inputs"]
 
     async def test_rejects_unknown_effect(self, run_service):

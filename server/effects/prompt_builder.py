@@ -1,8 +1,44 @@
 import re
 from typing import Any
 
+import jinja2
+
+from effects.jinja_env import env
 from effects.validator import EffectManifest, ModelParam
 from services.model_service import get_provider
+
+
+def _build_context(
+    manifest: EffectManifest,
+    user_inputs: dict[str, str],
+) -> dict[str, str]:
+    """All declared inputs seeded empty, then overlaid with user values.
+    Select fields resolve to the chosen option's `label` (not `value`) so
+    authors write `{{ mood }}` and get "Joyful", not "happy"."""
+    ctx: dict[str, str] = {key: "" for key in manifest.inputs}
+    for key, field in manifest.inputs.items():
+        raw = user_inputs.get(key, "")
+        if field.type == "select" and field.options and raw:
+            for opt in field.options:
+                if opt.value == raw:
+                    raw = opt.label
+                    break
+        ctx[key] = raw
+    return ctx
+
+
+def _render(template_src: str, context: dict[str, str]) -> str:
+    """Render through the sandboxed env and normalize whitespace. Any Jinja
+    error — SyntaxError, UndefinedError, SecurityError — surfaces as a
+    ValueError so the run-submission path can return a 422."""
+    try:
+        template = env.from_string(template_src)
+        rendered = template.render(**context)
+    except jinja2.exceptions.TemplateError as e:
+        raise ValueError(f"Prompt template error: {e}") from e
+    # Collapse runs of 2+ spaces (rendering can leave gaps where optional
+    # placeholders went empty). Strip leading/trailing whitespace last.
+    return re.sub(r"  +", " ", rendered).strip()
 
 
 class PromptBuilder:
@@ -12,36 +48,25 @@ class PromptBuilder:
         model_id: str,
         user_inputs: dict[str, str],
     ) -> str:
-        # Select template: model override > manifest default
-        template = manifest.generation.prompt
+        template_src = manifest.generation.prompt
         override = manifest.generation.model_overrides.get(model_id)
         if override and override.prompt:
-            template = override.prompt
+            template_src = override.prompt
+        return _render(template_src, _build_context(manifest, user_inputs))
 
-        # Replace {field_id} for each input
-        for field_key, field_schema in manifest.inputs.items():
-            placeholder = "{" + field_key + "}"
-            if placeholder not in template:
-                continue
-
-            value = user_inputs.get(field_key, "")
-
-            # For select fields, use label not value
-            if field_schema.type == "select" and field_schema.options and value:
-                for opt in field_schema.options:
-                    if opt.value == value:
-                        value = opt.label
-                        break
-
-            template = template.replace(placeholder, value)
-
-        # Replace any remaining unknown placeholders with empty string
-        template = re.sub(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}", "", template)
-
-        # Collapse multiple spaces
-        template = re.sub(r"  +", " ", template).strip()
-
-        return template
+    @staticmethod
+    def build_negative_prompt(
+        manifest: EffectManifest,
+        model_id: str,
+        user_inputs: dict[str, str],
+    ) -> str:
+        """Same template engine for the negative prompt. Schema doesn't yet
+        allow a per-model override here (no bundled effect needed one), so we
+        always render the top-level string."""
+        return _render(
+            manifest.generation.negative_prompt,
+            _build_context(manifest, user_inputs),
+        )
 
     @staticmethod
     def build_provider_io(

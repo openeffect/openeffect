@@ -60,7 +60,7 @@ generation:
     The transformation should feel elegant, futuristic, and controlled,
     not grotesque or destructive.
     No cut, no scene replacement, no duplicate subject.
-    {scene_prompt}
+    {{ scene_prompt }}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -84,7 +84,7 @@ generation:
         not grotesque, not bulky, and not like the human face disappears.
         Only slight blink, breathing, or micro-expression is allowed.
         Clean continuity, no cut, no scene replacement.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4
         generate_audio: false
@@ -101,6 +101,6 @@ generation:
         The effect should feel futuristic and stylish,
         not like body horror and not like a full robot replacement.
         No cut, no scene replacement, no duplicate subject.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4

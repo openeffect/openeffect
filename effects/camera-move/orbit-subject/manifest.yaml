@@ -54,7 +54,7 @@ generation:
     Only subtle natural micro-motion is allowed.
     Background depth and parallax shift naturally during the orbit.
     No cut, no scene replacement, no duplicate subject, no walking motion.
-    {scene_prompt}
+    {{ scene_prompt }}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -70,7 +70,7 @@ generation:
         No walking, no body translation, only slight blink, breathing,
         or subtle hair movement.
         Strong natural parallax, realistic depth, clean continuity, no cut.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4
         generate_audio: false
@@ -84,6 +84,6 @@ generation:
         The subject stays planted; no walking or body translation.
         Allow only subtle natural micro-motion while the background shifts with clear parallax.
         Cinematic depth, realistic motion, no scene replacement, no cut.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4

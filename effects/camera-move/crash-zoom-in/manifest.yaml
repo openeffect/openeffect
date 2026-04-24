@@ -54,7 +54,7 @@ generation:
     Only subtle natural micro-motion is allowed.
     Background depth and parallax increase naturally during the push-in.
     No cut, no scene replacement, no duplicate subject, no walking motion.
-    {scene_prompt}
+    {{ scene_prompt }}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -71,7 +71,7 @@ generation:
         or subtle hair movement.
         Strong forward camera momentum, realistic depth, clean continuity,
         no cut.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4
         generate_audio: false
@@ -86,6 +86,6 @@ generation:
         Allow only subtle natural micro-motion while the face grows larger in frame
         and the background shows increasing parallax.
         Strong cinematic impact, realistic depth, no scene replacement, no cut.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4

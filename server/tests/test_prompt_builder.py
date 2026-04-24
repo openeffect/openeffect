@@ -47,7 +47,7 @@ def make_manifest(**overrides) -> EffectManifest:
             ),
         },
         "generation": GenerationConfig(
-            prompt="A cinematic shot. {prompt} High quality.",
+            prompt="A cinematic shot. {{ prompt }} High quality.",
             negative_prompt="low quality, blurry",
             models=["kling-3.0", "wan-2.7"],
             default_model="kling-3.0",
@@ -71,19 +71,19 @@ class TestBuildPrompt:
         manifest = make_manifest()
         result = PromptBuilder.build_prompt(manifest, "wan-2.7", {"prompt": "epic sunset"})
         assert "epic sunset" in result
-        assert "{prompt}" not in result
+        assert "{{" not in result
 
     def test_empty_prompt_no_double_spaces(self):
         manifest = make_manifest()
         result = PromptBuilder.build_prompt(manifest, "wan-2.7", {"prompt": ""})
         assert "  " not in result
-        assert "{prompt}" not in result
+        assert "{{" not in result
 
     def test_missing_prompt_field(self):
         manifest = make_manifest()
         result = PromptBuilder.build_prompt(manifest, "wan-2.7", {})
         assert "  " not in result
-        assert "{prompt}" not in result
+        assert "{{" not in result
 
     def test_text_field_substitution(self):
         manifest = make_manifest(
@@ -95,7 +95,7 @@ class TestBuildPrompt:
                 ),
             },
             generation=GenerationConfig(
-                prompt="Shot with {mood} mood. High quality.",
+                prompt="Shot with {{ mood }} mood. High quality.",
                 models=["kling-3.0"],
                 default_model="kling-3.0",
                 params={},
@@ -103,7 +103,7 @@ class TestBuildPrompt:
         )
         result = PromptBuilder.build_prompt(manifest, "kling-3.0", {"mood": "dramatic"})
         assert "dramatic" in result
-        assert "{mood}" not in result
+        assert "{{" not in result
 
     def test_select_field_uses_label_not_value(self):
         manifest = make_manifest(
@@ -122,7 +122,7 @@ class TestBuildPrompt:
                 ),
             },
             generation=GenerationConfig(
-                prompt="Cinematic {style} transition.",
+                prompt="Cinematic {{ style }} transition.",
                 models=["kling-3.0"],
                 default_model="kling-3.0",
                 params={},
@@ -135,12 +135,12 @@ class TestBuildPrompt:
     def test_model_override_uses_different_template(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt="Default template. {prompt}",
+                prompt="Default template. {{ prompt }}",
                 models=["kling-3.0", "wan-2.7"],
                 default_model="kling-3.0",
                 params={},
                 model_overrides={
-                    "kling-3.0": ModelOverride(prompt="Kling template. {prompt}"),
+                    "kling-3.0": ModelOverride(prompt="Kling template. {{ prompt }}"),
                 },
             ),
         )
@@ -149,23 +149,24 @@ class TestBuildPrompt:
         assert "Default template" in result_wan
         assert "Kling template" in result_kling
 
-    def test_unknown_placeholder_becomes_empty(self):
+    def test_undeclared_variable_raises(self):
+        """StrictUndefined turns author typos into explicit errors rather
+        than silently stripping them (old regex behavior)."""
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt="Shot with {unknown_field} effect.",
+                prompt="Shot with {{ typo_field }} effect.",
                 models=["kling-3.0"],
                 default_model="kling-3.0",
                 params={},
             ),
         )
-        result = PromptBuilder.build_prompt(manifest, "kling-3.0", {})
-        assert "{unknown_field}" not in result
-        assert "  " not in result
+        with pytest.raises(ValueError, match="Prompt template error"):
+            PromptBuilder.build_prompt(manifest, "kling-3.0", {})
 
     def test_multiple_consecutive_spaces_collapsed(self):
         manifest = make_manifest(
             generation=GenerationConfig(
-                prompt="Start  {prompt}   end.",
+                prompt="Start  {{ prompt }}   end.",
                 models=["kling-3.0"],
                 default_model="kling-3.0",
                 params={},
@@ -173,6 +174,92 @@ class TestBuildPrompt:
         )
         result = PromptBuilder.build_prompt(manifest, "kling-3.0", {"prompt": ""})
         assert "  " not in result
+
+
+# -----------------------------------------
+# Jinja-specific: conditionals, sandbox, negative_prompt
+# -----------------------------------------
+
+class TestJinjaConditionals:
+    def test_if_block_omitted_when_var_empty(self):
+        manifest = make_manifest(
+            inputs={
+                "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+                "scene": InputFieldSchema(
+                    type="text", role="prompt_input", required=False, label="Scene",
+                ),
+            },
+            generation=GenerationConfig(
+                prompt="Cinematic shot.{% if scene %} Scene: {{ scene }}.{% endif %} High quality.",
+                models=["kling-3.0"],
+                default_model="kling-3.0",
+                params={},
+            ),
+        )
+        result = PromptBuilder.build_prompt(manifest, "kling-3.0", {})
+        assert result == "Cinematic shot. High quality."
+
+    def test_if_block_rendered_when_var_set(self):
+        manifest = make_manifest(
+            inputs={
+                "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+                "scene": InputFieldSchema(
+                    type="text", role="prompt_input", required=False, label="Scene",
+                ),
+            },
+            generation=GenerationConfig(
+                prompt="Cinematic shot.{% if scene %} Scene: {{ scene }}.{% endif %} High quality.",
+                models=["kling-3.0"],
+                default_model="kling-3.0",
+                params={},
+            ),
+        )
+        result = PromptBuilder.build_prompt(manifest, "kling-3.0", {"scene": "dawn in Tokyo"})
+        assert "Scene: dawn in Tokyo." in result
+
+
+class TestSandbox:
+    def test_object_graph_escape_rejected(self):
+        """SandboxedEnvironment blocks the classic `__class__.__mro__[1]…`
+        escape; errors surface as ValueError from build_prompt."""
+        manifest = make_manifest(
+            generation=GenerationConfig(
+                prompt="{{ ''.__class__.__mro__[1].__subclasses__() }}",
+                models=["kling-3.0"],
+                default_model="kling-3.0",
+                params={},
+            ),
+        )
+        with pytest.raises(ValueError, match="Prompt template error"):
+            PromptBuilder.build_prompt(manifest, "kling-3.0", {})
+
+
+class TestBuildNegativePrompt:
+    def test_flat_string_passes_through(self):
+        manifest = make_manifest()  # negative_prompt="low quality, blurry"
+        result = PromptBuilder.build_negative_prompt(manifest, "wan-2.7", {})
+        assert result == "low quality, blurry"
+
+    def test_conditional_block_works(self):
+        manifest = make_manifest(
+            inputs={
+                "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+                "avoid": InputFieldSchema(
+                    type="text", role="prompt_input", required=False, label="Avoid",
+                ),
+            },
+            generation=GenerationConfig(
+                prompt="go",
+                negative_prompt="low quality{% if avoid %}, {{ avoid }}{% endif %}",
+                models=["kling-3.0"],
+                default_model="kling-3.0",
+                params={},
+            ),
+        )
+        empty = PromptBuilder.build_negative_prompt(manifest, "kling-3.0", {})
+        withvar = PromptBuilder.build_negative_prompt(manifest, "kling-3.0", {"avoid": "blur"})
+        assert empty == "low quality"
+        assert withvar == "low quality, blur"
 
 
 # -----------------------------------------

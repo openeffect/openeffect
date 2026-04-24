@@ -165,7 +165,9 @@ class RunService:
             raw_params=raw_params,
             manifest=manifest,
         )
-        negative_prompt = manifest.generation.negative_prompt
+        negative_prompt = PromptBuilder.build_negative_prompt(
+            manifest, request.model_id, request.inputs,
+        )
         if "negative_prompt" in params:
             negative_prompt = str(params.pop("negative_prompt"))
 

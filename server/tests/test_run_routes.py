@@ -55,7 +55,7 @@ def _make_manifest() -> EffectManifest:
                 label="Prompt", multiline=False, max_length=500,
             ),
         },
-        generation=GenerationConfig(prompt="Make {prompt}"),
+        generation=GenerationConfig(prompt="Make {{ prompt }}"),
     )
 
 

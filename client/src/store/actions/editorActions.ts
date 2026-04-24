@@ -36,7 +36,7 @@ inputs:
     label: "Your photo"
     hint: "Upload a photo to use"
 
-  prompt:
+  scene_prompt:
     type: text
     role: prompt_input
     required: false
@@ -52,7 +52,7 @@ generation:
   default_model: kling-3.0
 
   prompt: >
-    Cinematic effect on the subject. {prompt}
+    Cinematic effect on the subject. {{ scene_prompt }}
     High quality, 4K resolution.
 
   negative_prompt: >
@@ -84,7 +84,7 @@ const BLANK_MANIFEST: EffectManifest = {
       label: 'Your photo',
       hint: 'Upload a photo to use',
     },
-    prompt: {
+    scene_prompt: {
       type: 'text',
       role: 'prompt_input',
       required: false,
@@ -95,7 +95,7 @@ const BLANK_MANIFEST: EffectManifest = {
     },
   },
   generation: {
-    prompt: 'Cinematic effect on the subject. {prompt} High quality, 4K resolution.',
+    prompt: 'Cinematic effect on the subject. {{ scene_prompt }} High quality, 4K resolution.',
     negative_prompt: 'low quality, blurry, watermark',
     models: ['kling-3.0', 'wan-2.7'],
     default_model: 'kling-3.0',

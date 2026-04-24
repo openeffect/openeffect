@@ -28,7 +28,7 @@ def make_valid_manifest(**overrides) -> dict:
             },
         },
         "generation": {
-            "prompt": "A test prompt. {prompt}",
+            "prompt": "A test prompt. {{ prompt }}",
             "models": ["kling-3.0"],
             "default_model": "kling-3.0",
             "params": {},
@@ -189,6 +189,30 @@ class TestEffectValidator:
         )
         manifest = EffectManifest(**data)
         assert manifest.inputs["ref_image"].role == "reference"
+
+    def test_invalid_jinja_in_prompt_rejected(self):
+        """Parse-time Jinja syntax check — unclosed tag fails manifest load."""
+        data = make_valid_manifest()
+        data["generation"]["prompt"] = "A shot. {% if scene %}unclosed"
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "Invalid template in prompt" in str(exc_info.value)
+
+    def test_invalid_jinja_in_negative_prompt_rejected(self):
+        data = make_valid_manifest()
+        data["generation"]["negative_prompt"] = "{{ dangling"
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "Invalid template in negative_prompt" in str(exc_info.value)
+
+    def test_invalid_jinja_in_model_override_rejected(self):
+        data = make_valid_manifest()
+        data["generation"]["model_overrides"] = {
+            "kling-3.0": {"prompt": "Kling {% for %}"},
+        }
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "model_overrides.kling-3.0.prompt" in str(exc_info.value)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

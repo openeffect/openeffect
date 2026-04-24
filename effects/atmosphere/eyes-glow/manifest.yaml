@@ -56,7 +56,7 @@ generation:
     The subject remains planted in the same scene.
     Only subtle natural micro-motion is allowed.
     No cut, no scene replacement, no duplicate subject.
-    {scene_prompt}
+    {{ scene_prompt }}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -77,7 +77,7 @@ generation:
         The same subject remains planted and recognizable throughout.
         Only slight blink, breathing, or micro-expression is allowed.
         Clean continuity, no cut, no scene replacement, no laser beams.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4
         generate_audio: false
@@ -94,6 +94,6 @@ generation:
         It should not feel like heat vision, beams, fire, or destructive power.
         The subject stays planted with only subtle natural micro-motion.
         No cut, no scene replacement, no duplicate subject.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4

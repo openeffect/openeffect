@@ -55,7 +55,7 @@ generation:
     The subject remains planted in the same scene.
     Only subtle natural micro-motion is allowed.
     No cut, no scene replacement, no duplicate subject.
-    {scene_prompt}
+    {{ scene_prompt }}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -76,7 +76,7 @@ generation:
         Only subtle blink, breathing, or slight hair movement is allowed.
         Stylish celebrity photo-call energy, clean continuity, no cut,
         no scene replacement.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4
         generate_audio: false
@@ -91,6 +91,6 @@ generation:
         The subject stays planted with only subtle natural micro-motion.
         Stylish celebrity photo-call atmosphere, no cut, no scene replacement,
         no duplicate subject.
-        {scene_prompt}
+        {{ scene_prompt }}
       params:
         duration: 4

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Save, Plus, Download, AlertCircle, Loader2, ChevronDown, Film, Trash2, Pencil, Check, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Save, Plus, Download, AlertCircle, Loader2, X } from 'lucide-react'
 import { EditorView, keymap } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
@@ -15,7 +15,6 @@ import {
   selectIsSaving,
   selectSavedManifest,
   selectEditorLastSavedYaml,
-  selectAssetFiles,
 } from '@/store/selectors/editorSelectors'
 import {
   updateYaml,
@@ -27,11 +26,7 @@ import { selectEffect } from '@/store/actions/effectsActions'
 import { api } from '@/utils/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
-import { FileDropzone } from '@/components/FileDropzone'
-import { cn } from '@/utils/cn'
-
-const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
+import { AssetSidePanel } from './AssetSidePanel'
 
 const darkTheme = EditorView.theme({
   '&': {
@@ -212,11 +207,11 @@ export function EffectEditor() {
         </div>
       </div>
 
-      {/* CodeMirror editor */}
-      <div ref={editorRef} className="min-h-0 flex-1 overflow-hidden" />
-
-      {/* Asset panel */}
-      {editingEffectId && <AssetPanel effectId={editingEffectId} />}
+      {/* Editor body — CodeMirror + right-side assets rail */}
+      <div className="flex min-h-0 flex-1">
+        <div ref={editorRef} className="min-w-0 flex-1 overflow-hidden" />
+        {editingEffectId && <AssetSidePanel effectId={editingEffectId} />}
+      </div>
 
       {/* Save error */}
       {saveError && (
@@ -231,163 +226,3 @@ export function EffectEditor() {
   )
 }
 
-/* ─── Asset Panel ─── */
-
-function AssetPanel({ effectId }: { effectId: string }) {
-  const [isOpen, setIsOpen] = useState(true)
-  const storeFiles = useStore(selectAssetFiles)
-  const [files, setFiles] = useState(storeFiles)
-  // Sync from store when it changes (e.g. on open) — React's "storing info
-  // from previous renders" pattern. setState-in-effect would cascade renders.
-  const [prevStoreFiles, setPrevStoreFiles] = useState(storeFiles)
-  if (storeFiles !== prevStoreFiles) {
-    setPrevStoreFiles(storeFiles)
-    setFiles(storeFiles)
-  }
-  const [renamingFile, setRenamingFile] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-
-  // effectId is a UUID — resolve to namespace/slug for API calls.
-  const effect = useStore((s) => (effectId ? s.effects.items.get(effectId) : undefined))
-  const ns = effect?.namespace
-  const slug = effect?.slug
-
-  const handleUpload = async (file: File) => {
-    if (!ns || !slug) return
-    try {
-      const result = await api.uploadAsset(ns, slug, file)
-      setFiles((prev) => [...prev, result])
-    } catch {
-      // ignore
-    }
-  }
-
-  const handleDelete = async (filename: string) => {
-    if (!ns || !slug) return
-    try {
-      await api.deleteAsset(ns, slug, filename)
-      setFiles((prev) => prev.filter((f) => f.filename !== filename))
-    } catch {
-      // ignore
-    }
-  }
-
-  const startRename = (filename: string) => {
-    setRenamingFile(filename)
-    setRenameValue(filename)
-  }
-
-  const handleRename = async () => {
-    if (!ns || !slug || !renamingFile || !renameValue.trim()) return
-    if (renameValue === renamingFile) {
-      setRenamingFile(null)
-      return
-    }
-    try {
-      const result = await api.renameAsset(ns, slug, renamingFile, renameValue.trim())
-      setFiles((prev) =>
-        prev.map((f) => f.filename === renamingFile ? { ...f, filename: result.filename, url: result.url } : f),
-      )
-      setRenamingFile(null)
-    } catch {
-      // ignore
-    }
-  }
-
-  const ext = (filename: string) => filename.split('.').pop()?.toLowerCase() ?? ''
-  const isImage = (filename: string) => IMAGE_EXTS.has(ext(filename))
-
-  return (
-    <div className="shrink-0 border-t">
-      {/* Header */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center gap-2 px-4 py-2 text-xs font-semibold text-secondary-foreground hover:text-foreground"
-      >
-        <ChevronDown size={14} className={cn('transition-transform', !isOpen && '-rotate-90')} />
-        Assets
-        {files.length > 0 && (
-          <Badge className="ml-1">{files.length}</Badge>
-        )}
-      </button>
-
-      {/* Content */}
-      {isOpen && (
-        <div className="space-y-2 px-4 pb-3">
-          {/* File list */}
-          {files.length > 0 && (
-            <div className="space-y-1">
-              {files.map((f) => (
-                <div key={f.filename} className="flex items-center gap-2 rounded-lg border p-2">
-                  {/* Thumbnail */}
-                  {isImage(f.filename) ? (
-                    <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0">
-                      <img
-                        src={f.url}
-                        alt={f.filename}
-                        className="h-8 w-8 rounded object-cover"
-                      />
-                    </a>
-                  ) : (
-                    <a href={f.url} target="_blank" rel="noreferrer" className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted">
-                      <Film size={14} className="text-muted-foreground" />
-                    </a>
-                  )}
-
-                  {/* Filename or rename input */}
-                  {renamingFile === f.filename ? (
-                    <div className="flex flex-1 items-center gap-1">
-                      <Input
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenamingFile(null) }}
-                        className="h-6 py-0 text-xs"
-                        autoFocus
-                      />
-                      <button onClick={handleRename} className="shrink-0 text-success hover:text-success/80">
-                        <Check size={12} />
-                      </button>
-                      <button onClick={() => setRenamingFile(null)} className="shrink-0 text-muted-foreground hover:text-foreground">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="flex-1 truncate text-xs text-foreground">{f.filename}</span>
-                  )}
-
-                  {/* Actions */}
-                  {renamingFile !== f.filename && (
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <button
-                        onClick={() => startRename(f.filename)}
-                        className="rounded p-1 text-muted-foreground hover:text-foreground"
-                        title="Rename"
-                      >
-                        <Pencil size={11} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(f.filename)}
-                        className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-                        title="Delete"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Upload */}
-          <FileDropzone
-            onFile={handleUpload}
-            label="Drop or click to upload asset"
-            className="py-3"
-          />
-
-        </div>
-      )}
-    </div>
-  )
-}

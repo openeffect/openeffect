@@ -336,7 +336,7 @@ function ManagedEffectRow({ effect }: { effect: EffectManifest }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-destructive hover:bg-destructive/15"
+              className="h-7 w-7 text-destructive hover:bg-destructive/15 hover:text-destructive"
               onClick={handleUninstall}
               disabled={uninstalling}
               title="Confirm uninstall"

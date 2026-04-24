@@ -151,7 +151,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
                 ) : (
                   <button
                     onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                    className="rounded-md p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
                     title="Delete"
                   >
                     <Trash2 size={12} />

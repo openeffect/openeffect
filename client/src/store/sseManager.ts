@@ -133,7 +133,6 @@ export async function bootstrap(): Promise<void> {
       trackJob(record.id)
     }
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.warn('sseManager.bootstrap failed:', e)
   }
 }

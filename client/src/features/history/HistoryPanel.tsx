@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
@@ -47,22 +47,17 @@ export function HistoryPanel() {
   }, [isOpen])
 
   // Lazy loading
-  const handleIntersect = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      if (entries[0]?.isIntersecting && items.length < total && status !== 'loading') {
-        loadHistory(items.length)
-      }
-    },
-    [items.length, total, status],
-  )
-
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel || !isOpen) return
-    const observer = new IntersectionObserver(handleIntersect, { threshold: 0.1 })
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && items.length < total && status !== 'loading') {
+        loadHistory(items.length)
+      }
+    }, { threshold: 0.1 })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [handleIntersect, isOpen])
+  }, [isOpen, items.length, total, status])
 
   return (
     <AnimatePresence>

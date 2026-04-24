@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { AlertCircle, X as XIcon } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
@@ -60,7 +60,7 @@ export function PlaygroundForm() {
   const supportedRoles = imageSlots.map((p) => p.key)
   const outputParams: ModelParam[] = mainParams(variant)
   const advancedParams: ModelParam[] = advancedParamsOf(variant)
-  const compatibleModels = useMemo(() => availableModels.map((m) => m.id), [availableModels])
+  const compatibleModels = availableModels.map((m) => m.id)
 
   // Models may load AFTER the form mounts (loadConfig runs async). When they
   // arrive, fall back to a sensible default if the locally-held selectedModel

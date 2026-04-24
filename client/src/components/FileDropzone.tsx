@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { cn } from '@/utils/cn'
 
@@ -14,24 +14,18 @@ export function FileDropzone({ accept, label = 'Click or drag to upload', disabl
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      setDragActive(false)
-      const file = e.dataTransfer.files[0]
-      if (file) onFile(file)
-    },
-    [onFile],
-  )
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragActive(false)
+    const file = e.dataTransfer.files[0]
+    if (file) onFile(file)
+  }
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (file) onFile(file)
-      e.target.value = ''
-    },
-    [onFile],
-  )
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) onFile(file)
+    e.target.value = ''
+  }
 
   return (
     <div

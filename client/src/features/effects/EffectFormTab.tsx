@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AlertCircle, ChevronDown, RotateCcw, X as XIcon } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
@@ -85,10 +85,7 @@ export function EffectFormTab() {
   const modelInfo = availableModels.find((m) => m.id === selectedModel)
   const variant = providerVariant(modelInfo, selectedProvider, variantKey)
 
-  const locked = useMemo(
-    () => manifest ? lockedKeys(manifest, selectedModel) : new Set<string>(),
-    [manifest, selectedModel],
-  )
+  const locked = manifest ? lockedKeys(manifest, selectedModel) : new Set<string>()
   const outputParams = effectMainParams(variant).filter((p) => !locked.has(p.key))
   const advancedParams = effectAdvancedParams(variant)
     .filter((p) => !locked.has(p.key))
@@ -173,10 +170,10 @@ export function EffectFormTab() {
     }
   }
 
-  const handleChange = useCallback((key: string, value: unknown) => {
+  const handleChange = (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }))
     setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: null } : prev))
-  }, [])
+  }
 
   // Auto-detect aspect ratio from uploaded image
   const hasAspectRatioParam = outputParams.some((p) => p.key === 'aspect_ratio')
@@ -202,12 +199,12 @@ export function EffectFormTab() {
     }
   }, [values, manifest, hasAspectRatioParam])
 
-  const handleAdvancedChange = useCallback((key: string, value: unknown) => {
+  const handleAdvancedChange = (key: string, value: unknown) => {
     setAdvancedValues((prev) => ({ ...prev, [key]: value }))
-  }, [])
+  }
 
   // Compute unmatched restored inputs
-  const unmatchedInputs = useMemo(() => {
+  const unmatchedInputs = (() => {
     if (!restoredParams?.inputs || !manifest) return []
     const currentKeys = new Set(Object.keys(manifest.inputs ?? {}))
     return Object.entries(restoredParams.inputs)
@@ -218,7 +215,7 @@ export function EffectFormTab() {
         label: key,
         type: 'text' as const,
       }))
-  }, [restoredParams, manifest])
+  })()
 
   // Advanced manifest inputs (hidden from main form, shown in advanced section)
   const advancedInputs = Object.entries(manifest?.inputs ?? {}).filter(([_, s]) => s.advanced)

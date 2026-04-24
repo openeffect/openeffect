@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { Cloud, ChevronDown, Check, ArrowRight } from 'lucide-react'
 import type { ModelInfo } from '@/types/api'
 import {
@@ -28,34 +28,33 @@ export function ModelSelector({
   onProviderChange,
 }: ModelSelectorProps) {
   const currentModelInfo = availableModels.find((m) => m.id === selectedModel)
-  const providers = useMemo(() => currentModelInfo?.providers ?? [], [currentModelInfo])
+  const providers = currentModelInfo?.providers ?? []
   const selectedProviderInfo = providers.find((p) => p.id === selectedProvider)
   const hasMultipleProviders = providers.filter((p) => p.is_available).length > 1
 
   // Group compatible models by family (Wan / Kling / PixVerse …) and preserve
   // registry order within each family.
-  const groups = useMemo(() => {
-    const filtered = availableModels.filter((m) => compatibleModels.includes(m.id))
-    const byGroup = new Map<string, ModelInfo[]>()
-    for (const model of filtered) {
-      const name = model.group || 'Other'
-      if (!byGroup.has(name)) byGroup.set(name, [])
-      byGroup.get(name)!.push(model)
-    }
-    return Array.from(byGroup.entries())
-  }, [availableModels, compatibleModels])
+  const filtered = availableModels.filter((m) => compatibleModels.includes(m.id))
+  const byGroup = new Map<string, ModelInfo[]>()
+  for (const model of filtered) {
+    const name = model.group || 'Other'
+    if (!byGroup.has(name)) byGroup.set(name, [])
+    byGroup.get(name)!.push(model)
+  }
+  const groups = Array.from(byGroup.entries())
 
   // Auto-pick the first available provider when the selected model changes
   // or when the current provider becomes invalid (unlikely today, but cheap).
   useEffect(() => {
     if (!currentModelInfo) return
-    const stillValid = providers.some((p) => p.id === selectedProvider && p.is_available)
+    const ps = currentModelInfo.providers
+    const stillValid = ps.some((p) => p.id === selectedProvider && p.is_available)
     if (!stillValid) {
-      const first = providers.find((p) => p.is_available)
+      const first = ps.find((p) => p.is_available)
       if (first) onProviderChange(first.id)
-      else if (providers.length > 0) onProviderChange(providers[0]!.id)
+      else if (ps.length > 0) onProviderChange(ps[0]!.id)
     }
-  }, [selectedModel, currentModelInfo, providers, selectedProvider, onProviderChange])
+  }, [currentModelInfo, selectedProvider, onProviderChange])
 
   return (
     <div className="flex items-center gap-2">

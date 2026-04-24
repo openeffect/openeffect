@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Upload, X, ImageIcon } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Label } from '@/components/ui/Label'
@@ -29,39 +29,30 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
     }
   }, [preview])
 
-  const handleFile = useCallback(
-    (file: File) => {
-      onChange(file)
-      const url = URL.createObjectURL(file)
-      setPreview(url)
-    },
-    [onChange],
-  )
+  const handleFile = (file: File) => {
+    onChange(file)
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+  }
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      setDragActive(false)
-      const file = e.dataTransfer.files[0]
-      if (file) handleFile(file)
-    },
-    [handleFile],
-  )
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragActive(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (file) handleFile(file)
-    },
-    [handleFile],
-  )
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleFile(file)
+  }
 
-  const clear = useCallback(() => {
+  const clear = () => {
     onChange(null)
     if (preview) URL.revokeObjectURL(preview)
     setPreview(null)
     if (inputRef.current) inputRef.current.value = ''
-  }, [onChange, preview])
+  }
 
   return (
     <div className="space-y-2">

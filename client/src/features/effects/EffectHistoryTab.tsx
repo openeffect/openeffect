@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
 import {
@@ -25,25 +25,20 @@ export function EffectHistoryTab({ effectId }: EffectHistoryTabProps) {
     loadEffectHistory(effectId)
   }, [effectId])
 
-  const handleIntersect = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver((entries) => {
       const s = useStore.getState()
       if (entries[0]?.isIntersecting && s.history.effectId === effectId
           && s.history.effectItems.size < s.history.effectTotal
           && s.history.effectStatus !== 'loading') {
         loadEffectHistory(effectId, s.history.effectItems.size)
       }
-    },
-    [effectId],
-  )
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(handleIntersect, { threshold: 0.1 })
+    }, { threshold: 0.1 })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [handleIntersect])
+  }, [effectId])
 
   if (status === 'loading' && items.length === 0) {
     return (

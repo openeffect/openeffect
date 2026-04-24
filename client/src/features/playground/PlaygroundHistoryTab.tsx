@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
 import {
@@ -22,24 +22,22 @@ export function PlaygroundHistoryTab() {
     loadPlaygroundHistory()
   }, [])
 
-  const handleIntersect = useCallback((entries: IntersectionObserverEntry[]) => {
-    const s = useStore.getState()
-    if (
-      entries[0]?.isIntersecting &&
-      s.history.playgroundItems.size < s.history.playgroundTotal &&
-      s.history.playgroundStatus !== 'loading'
-    ) {
-      loadPlaygroundHistory(s.history.playgroundItems.size)
-    }
-  }, [])
-
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
-    const observer = new IntersectionObserver(handleIntersect, { threshold: 0.1 })
+    const observer = new IntersectionObserver((entries) => {
+      const s = useStore.getState()
+      if (
+        entries[0]?.isIntersecting &&
+        s.history.playgroundItems.size < s.history.playgroundTotal &&
+        s.history.playgroundStatus !== 'loading'
+      ) {
+        loadPlaygroundHistory(s.history.playgroundItems.size)
+      }
+    }, { threshold: 0.1 })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [handleIntersect])
+  }, [])
 
   // Open a historical playground run on the left without remounting the form.
   // We push to history directly (bypassing navigate()) so popstate doesn't fire

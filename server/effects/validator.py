@@ -202,3 +202,55 @@ class EffectManifest(BaseModel):
                         f"user preference — cannot be set in manifest"
                     )
         return self
+
+
+def validate_run_inputs(
+    manifest: EffectManifest,
+    inputs: dict[str, str],
+) -> None:
+    """Enforce manifest-declared input constraints at run-submission time.
+
+    Raises ValueError with a user-facing message on the first violation.
+    Image fields are skipped here: the value we receive is a ref_id
+    (validated at /api/upload when the file lands), and start_frame
+    required-ness is an author-time invariant enforced by `validate_roles`
+    on the manifest itself."""
+    for key, field in manifest.inputs.items():
+        if field.type == "image":
+            continue
+
+        present = key in inputs and str(inputs[key]).strip() != ""
+        if field.required and not present:
+            raise ValueError(f"Required input '{field.label}' is missing")
+        if not present:
+            continue
+
+        value = inputs[key]
+
+        if field.type == "text":
+            if field.max_length is not None and len(value) > field.max_length:
+                raise ValueError(
+                    f"'{field.label}' must be at most {field.max_length} characters"
+                )
+
+        elif field.type == "select":
+            if field.options is not None:
+                allowed = {opt.value for opt in field.options}
+                if value not in allowed:
+                    raise ValueError(
+                        f"'{field.label}' must be one of: {', '.join(sorted(allowed))}"
+                    )
+
+        elif field.type in ("slider", "number"):
+            try:
+                num = float(value)
+            except ValueError:
+                raise ValueError(f"'{field.label}' must be a number") from None
+            if field.min is not None and num < field.min:
+                raise ValueError(
+                    f"'{field.label}' must be at least {field.min:g}"
+                )
+            if field.max is not None and num > field.max:
+                raise ValueError(
+                    f"'{field.label}' must be at most {field.max:g}"
+                )

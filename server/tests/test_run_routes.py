@@ -52,7 +52,7 @@ def _make_manifest() -> EffectManifest:
             ),
             "prompt": InputFieldSchema(
                 type="text", role="prompt_input", required=True,
-                label="Prompt", multiline=False,
+                label="Prompt", multiline=False, max_length=500,
             ),
         },
         generation=GenerationConfig(prompt="Make {prompt}"),
@@ -196,15 +196,43 @@ class TestStartRun:
         assert "Effect not found" in body["detail"]["error"]
 
     def test_incompatible_model_returns_422(self, client):
+        # Inputs satisfy the manifest — we want the model check to fire, not
+        # our required-field check (which would shadow it if inputs were empty).
         resp = client.post("/api/run", json={
             "effect_id": "test-uuid-001",
             "model_id": "not-a-real-model",
             "provider_id": "fal",
-            "inputs": {},
+            "inputs": {"prompt": "a cat"},
             "output": {},
         })
         assert resp.status_code == 422
         assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
+
+    def test_text_exceeds_max_length_returns_422(self, client):
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.7",
+            "provider_id": "fal",
+            "inputs": {"prompt": "x" * 501},
+            "output": {},
+        })
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["detail"]["code"] == "INVALID_REQUEST"
+        assert "at most 500 characters" in body["detail"]["error"]
+
+    def test_missing_required_input_returns_422(self, client):
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.7",
+            "provider_id": "fal",
+            "inputs": {},  # 'prompt' is required
+            "output": {},
+        })
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["detail"]["code"] == "INVALID_REQUEST"
+        assert "Required input 'Prompt'" in body["detail"]["error"]
 
 
 # ─── POST /api/playground/run ────────────────────────────────────────────────

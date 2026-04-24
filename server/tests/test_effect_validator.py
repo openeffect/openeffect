@@ -4,6 +4,10 @@ from pydantic import ValidationError
 
 from effects.validator import (
     EffectManifest,
+    GenerationConfig,
+    InputFieldSchema,
+    SelectOption,
+    validate_run_inputs,
 )
 
 
@@ -185,3 +189,164 @@ class TestEffectValidator:
         )
         manifest = EffectManifest(**data)
         assert manifest.inputs["ref_image"].role == "reference"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# `validate_run_inputs` — runtime gate that rejects values that violate the
+# manifest's per-field constraints before we hand them to the provider.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
+    """Build a minimal valid manifest — start_frame image is mandated by
+    the manifest-level validator, so every case carries it."""
+    inputs = {
+        "photo": InputFieldSchema(
+            type="image", role="start_frame", required=True, label="Photo",
+        ),
+        **extra_inputs,
+    }
+    return EffectManifest(
+        id="t",
+        name="T",
+        description="T",
+        type="test",
+        inputs=inputs,
+        generation=GenerationConfig(prompt="go"),
+    )
+
+
+class TestValidateRunInputsRequired:
+    def test_missing_required_text_raises(self):
+        m = _run_input_manifest(prompt=InputFieldSchema(
+            type="text", required=True, label="Prompt",
+        ))
+        with pytest.raises(ValueError, match="Required input 'Prompt'"):
+            validate_run_inputs(m, {})
+
+    def test_empty_string_counts_as_missing(self):
+        m = _run_input_manifest(prompt=InputFieldSchema(
+            type="text", required=True, label="Prompt",
+        ))
+        with pytest.raises(ValueError, match="Required input 'Prompt'"):
+            validate_run_inputs(m, {"prompt": "   "})
+
+    def test_optional_field_absent_passes(self):
+        m = _run_input_manifest(extra=InputFieldSchema(
+            type="text", required=False, label="Extra",
+        ))
+        validate_run_inputs(m, {})  # no raise
+
+    def test_required_select_missing_raises(self):
+        m = _run_input_manifest(style=InputFieldSchema(
+            type="select", required=True, label="Style",
+            options=[SelectOption(value="a", label="A")],
+        ))
+        with pytest.raises(ValueError, match="Required input 'Style'"):
+            validate_run_inputs(m, {})
+
+    def test_image_required_is_not_enforced_here(self):
+        """start_frame required-ness is an author-time invariant; at run
+        time we receive a ref_id and can't meaningfully 'require' one
+        without a separate request-shape check."""
+        m = _run_input_manifest()
+        validate_run_inputs(m, {})  # no raise, despite required image
+
+
+class TestValidateRunInputsText:
+    def test_within_max_length_passes(self):
+        m = _run_input_manifest(prompt=InputFieldSchema(
+            type="text", label="Prompt", max_length=10,
+        ))
+        validate_run_inputs(m, {"prompt": "short"})
+
+    def test_exceeds_max_length_raises(self):
+        m = _run_input_manifest(prompt=InputFieldSchema(
+            type="text", label="Prompt", max_length=10,
+        ))
+        with pytest.raises(ValueError, match="at most 10 characters"):
+            validate_run_inputs(m, {"prompt": "x" * 11})
+
+    def test_no_max_length_means_no_limit(self):
+        m = _run_input_manifest(prompt=InputFieldSchema(type="text", label="Prompt"))
+        validate_run_inputs(m, {"prompt": "x" * 100_000})
+
+
+class TestValidateRunInputsSelect:
+    def test_valid_option_passes(self):
+        m = _run_input_manifest(mood=InputFieldSchema(
+            type="select", label="Mood",
+            options=[SelectOption(value="happy", label="Happy"),
+                     SelectOption(value="sad", label="Sad")],
+        ))
+        validate_run_inputs(m, {"mood": "happy"})
+
+    def test_invalid_option_raises(self):
+        m = _run_input_manifest(mood=InputFieldSchema(
+            type="select", label="Mood",
+            options=[SelectOption(value="happy", label="Happy"),
+                     SelectOption(value="sad", label="Sad")],
+        ))
+        with pytest.raises(ValueError, match="must be one of: happy, sad"):
+            validate_run_inputs(m, {"mood": "angry"})
+
+
+class TestValidateRunInputsSlider:
+    def test_in_range_passes(self):
+        m = _run_input_manifest(intensity=InputFieldSchema(
+            type="slider", label="Intensity", min=0, max=100,
+        ))
+        validate_run_inputs(m, {"intensity": "50"})
+
+    def test_below_min_raises(self):
+        m = _run_input_manifest(intensity=InputFieldSchema(
+            type="slider", label="Intensity", min=0, max=100,
+        ))
+        with pytest.raises(ValueError, match="at least 0"):
+            validate_run_inputs(m, {"intensity": "-5"})
+
+    def test_above_max_raises(self):
+        m = _run_input_manifest(intensity=InputFieldSchema(
+            type="slider", label="Intensity", min=0, max=100,
+        ))
+        with pytest.raises(ValueError, match="at most 100"):
+            validate_run_inputs(m, {"intensity": "150"})
+
+    def test_non_numeric_raises(self):
+        m = _run_input_manifest(intensity=InputFieldSchema(
+            type="slider", label="Intensity", min=0, max=100,
+        ))
+        with pytest.raises(ValueError, match="must be a number"):
+            validate_run_inputs(m, {"intensity": "pretty high"})
+
+
+class TestValidateRunInputsNumber:
+    def test_only_min_below_raises(self):
+        m = _run_input_manifest(count=InputFieldSchema(
+            type="number", label="Count", min=1,
+        ))
+        with pytest.raises(ValueError, match="at least 1"):
+            validate_run_inputs(m, {"count": "0"})
+
+    def test_only_max_above_raises(self):
+        m = _run_input_manifest(count=InputFieldSchema(
+            type="number", label="Count", max=10,
+        ))
+        with pytest.raises(ValueError, match="at most 10"):
+            validate_run_inputs(m, {"count": "11"})
+
+    def test_no_bounds_means_anything_goes(self):
+        m = _run_input_manifest(count=InputFieldSchema(type="number", label="Count"))
+        validate_run_inputs(m, {"count": "999999"})
+        validate_run_inputs(m, {"count": "-500"})
+
+    def test_float_formatting_drops_trailing_zero(self):
+        """0.5 renders as '0.5', 1.0 as '1' — the :g formatter keeps
+        error labels readable for mixed float/int bounds."""
+        m = _run_input_manifest(weight=InputFieldSchema(
+            type="number", label="Weight", min=0.5, max=1.0,
+        ))
+        with pytest.raises(ValueError, match="at least 0.5"):
+            validate_run_inputs(m, {"weight": "0.1"})
+        with pytest.raises(ValueError, match="at most 1$"):
+            validate_run_inputs(m, {"weight": "2"})

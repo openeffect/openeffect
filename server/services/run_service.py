@@ -15,6 +15,7 @@ import uuid_utils
 from config.config_service import ConfigService
 from core.limits import MAX_RESULT_VIDEO_SIZE
 from effects.prompt_builder import PromptBuilder
+from effects.validator import validate_run_inputs
 from providers.base import ProviderInput
 from providers.factory import ModelProviderFactory
 from providers.fal_provider import FalProvider
@@ -105,6 +106,11 @@ class RunService:
 
         manifest = loaded.manifest
         db_id = loaded.db_id
+
+        # Reject out-of-range / too-long / unknown-option values before we
+        # spend any more work on the run. Images skipped — ref_ids were
+        # validated at /api/upload.
+        validate_run_inputs(manifest, request.inputs)
 
         # Validate model compatibility based on input roles. Split by required
         # vs optional — an optional end_frame means the effect can run on

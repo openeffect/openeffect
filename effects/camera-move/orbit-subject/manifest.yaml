@@ -32,7 +32,6 @@ inputs:
 
   scene_prompt:
     type: text
-    role: prompt_input
     required: false
     label: "Describe the scene"
     placeholder: "A stylish woman sitting on city steps at dusk"

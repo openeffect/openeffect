@@ -32,7 +32,6 @@ inputs:
 
   scene_prompt:
     type: text
-    role: prompt_input
     required: false
     label: "Describe the scene"
     placeholder: "A stylish man standing in a dark city street at night"

@@ -12,8 +12,8 @@ export function EffectFormRenderer({ manifest, values, errors, onChange }: Effec
   // Separate inputs by role for smart layout, skip advanced inputs
   const nonAdvanced = Object.entries(manifest.inputs ?? {}).filter(([_, s]) => !s.advanced)
   const imageInputs = nonAdvanced.filter(([_, s]) => s.type === 'image')
-  const promptInputs = nonAdvanced.filter(([_, s]) => s.type === 'text' && (s.role === 'prompt_input' || (!s.role)))
-  const otherInputs = nonAdvanced.filter(([_, s]) => s.type !== 'image' && !(s.type === 'text' && (s.role === 'prompt_input' || (!s.role))))
+  const promptInputs = nonAdvanced.filter(([_, s]) => s.type === 'text')
+  const otherInputs = nonAdvanced.filter(([_, s]) => s.type !== 'image' && s.type !== 'text')
 
   const renderField = (key: string, schema: typeof nonAdvanced[number][1]) => (
     <div key={key} data-field-key={key}>

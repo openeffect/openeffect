@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/Label'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
+import { Checkbox } from '@/components/ui/Checkbox'
 
 interface EffectFormFieldProps {
   schema: InputFieldSchema
@@ -62,6 +63,24 @@ export function EffectFormField({ schema, value, error, onChange }: EffectFormFi
               error={!!error}
             />
           )}
+          {schema.hint && <p className="mt-1.5 text-[11px] text-muted-foreground">{schema.hint}</p>}
+        </div>
+      )
+
+    case 'boolean':
+      // Value is stored as the string "true" / "false" so round-tripping
+      // through the JSON request matches what the server expects for
+      // dict[str, str] inputs.
+      return (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={value === 'true' || value === true}
+            onCheckedChange={(v) => onChange(v ? 'true' : 'false')}
+          />
+          <Label variant="form" className="mb-0 cursor-pointer"
+                 onClick={() => onChange(value === 'true' || value === true ? 'false' : 'true')}>
+            {schema.label}
+          </Label>
           {schema.hint && <p className="mt-1.5 text-[11px] text-muted-foreground">{schema.hint}</p>}
         </div>
       )

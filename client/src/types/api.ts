@@ -6,7 +6,7 @@ export interface SelectOption {
 export type InputFieldSchema =
   | {
       type: 'image'
-      role?: string
+      role?: 'start_frame' | 'end_frame'
       required: boolean
       label: string
       hint?: string
@@ -15,7 +15,6 @@ export type InputFieldSchema =
     }
   | {
       type: 'text'
-      role?: string
       required: boolean
       label: string
       placeholder?: string
@@ -25,8 +24,15 @@ export type InputFieldSchema =
       advanced?: boolean
     }
   | {
+      type: 'boolean'
+      required: boolean
+      label: string
+      default?: boolean
+      hint?: string
+      advanced?: boolean
+    }
+  | {
       type: 'select'
-      role?: string
       required: boolean
       label: string
       options: SelectOption[]
@@ -37,7 +43,6 @@ export type InputFieldSchema =
     }
   | {
       type: 'slider'
-      role?: string
       required: boolean
       label: string
       min: number
@@ -50,7 +55,6 @@ export type InputFieldSchema =
     }
   | {
       type: 'number'
-      role?: string
       required: boolean
       label: string
       min?: number

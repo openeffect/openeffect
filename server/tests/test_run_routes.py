@@ -51,7 +51,7 @@ def _make_manifest() -> EffectManifest:
                 type="image", role="start_frame", required=True, label="Photo",
             ),
             "prompt": InputFieldSchema(
-                type="text", role="prompt_input", required=True,
+                type="text", required=True,
                 label="Prompt", multiline=False, max_length=500,
             ),
         },

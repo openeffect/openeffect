@@ -38,7 +38,6 @@ inputs:
 
   scene_prompt:
     type: text
-    role: prompt_input
     required: false
     label: "Describe the scene"
     placeholder: "A cinematic shot..."
@@ -86,7 +85,6 @@ const BLANK_MANIFEST: EffectManifest = {
     },
     scene_prompt: {
       type: 'text',
-      role: 'prompt_input',
       required: false,
       label: 'Describe the scene',
       placeholder: 'A cinematic shot...',

@@ -25,7 +25,7 @@ def _make_manifest() -> EffectManifest:
         inputs={
             "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
             "prompt": InputFieldSchema(
-                type="text", role="prompt_input", required=False,
+                type="text", required=False,
                 label="Prompt", multiline=False,
             ),
         },
@@ -158,10 +158,8 @@ class TestStartRun:
             ))
 
     async def test_rejects_incompatible_model(self, run_service):
-        # kling-3.0 doesn't support end_frame, but our test manifest only has start_frame
-        # so all models are compatible. Let's test with a truly incompatible scenario.
-        # Create a manifest with only prompt_input (no image) — all models work.
-        # Instead, test with a model ID that doesn't exist at all.
+        # Our test manifest has start_frame only, so every real model is
+        # compatible — test with a model ID that doesn't exist at all.
         with pytest.raises(ValueError, match="not compatible"):
             await run_service.start(RunRequest(
                 effect_id="test-uuid-001",

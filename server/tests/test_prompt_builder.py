@@ -42,7 +42,7 @@ def make_manifest(**overrides) -> EffectManifest:
         "inputs": {
             "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
             "prompt": InputFieldSchema(
-                type="text", role="prompt_input", required=False, label="Prompt",
+                type="text", required=False, label="Prompt",
                 placeholder="Describe...", max_length=300, multiline=False,
             ),
         },
@@ -90,7 +90,7 @@ class TestBuildPrompt:
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "mood": InputFieldSchema(
-                    type="text", role="prompt_input", required=False, label="Mood",
+                    type="text", required=False, label="Mood",
                     max_length=100, multiline=False,
                 ),
             },
@@ -111,7 +111,6 @@ class TestBuildPrompt:
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "style": InputFieldSchema(
                     type="select",
-                    role="prompt_input",
                     required=False,
                     label="Style",
                     options=[
@@ -186,7 +185,7 @@ class TestJinjaConditionals:
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "scene": InputFieldSchema(
-                    type="text", role="prompt_input", required=False, label="Scene",
+                    type="text", required=False, label="Scene",
                 ),
             },
             generation=GenerationConfig(
@@ -204,7 +203,7 @@ class TestJinjaConditionals:
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "scene": InputFieldSchema(
-                    type="text", role="prompt_input", required=False, label="Scene",
+                    type="text", required=False, label="Scene",
                 ),
             },
             generation=GenerationConfig(
@@ -245,7 +244,7 @@ class TestBuildNegativePrompt:
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "avoid": InputFieldSchema(
-                    type="text", role="prompt_input", required=False, label="Avoid",
+                    type="text", required=False, label="Avoid",
                 ),
             },
             generation=GenerationConfig(
@@ -379,14 +378,14 @@ class TestBuildProviderIO:
         )
         assert params == {"guidance_scale": 0.8, "duration": 6}
 
-    def test_prompt_input_keys_never_in_params(self):
-        """Prompt-input fields from the manifest.inputs map are unrelated to
-        params; they must not leak through build_provider_io."""
+    def test_manifest_input_keys_never_in_params(self):
+        """manifest.inputs fields (image / text / select etc.) are unrelated
+        to model params; they must not leak through build_provider_io."""
         manifest = make_manifest(
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
                 "style": InputFieldSchema(
-                    type="select", role="prompt_input", required=False, label="Style",
+                    type="select", required=False, label="Style",
                     options=[SelectOption(value="particles", label="Particles")],
                     default="particles",
                 ),

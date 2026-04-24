@@ -93,13 +93,14 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   const prompt = String(source.prompt ?? '')
   const negativePrompt = String(source.negative_prompt ?? '')
 
-  // Build image input schema fields from any non-prompt keys
+  // Build image input schema fields from any non-prompt keys. Only known
+  // image roles pass through — anything else the playground might persist
+  // isn't schema-representable as an image input.
   const inputs: Record<string, InputFieldSchema> = {}
   for (const [key, value] of Object.entries(source)) {
     if (key === 'prompt' || key === 'negative_prompt') continue
     if (typeof value !== 'string' || !value) continue
-    // Treat remaining string values as image roles (that's the only other thing
-    // the playground stores under `inputs`).
+    if (key !== 'start_frame' && key !== 'end_frame') continue
     inputs[key] = {
       type: 'image',
       role: key,

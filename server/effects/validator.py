@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator, model_serializer, model_validat
 
 from effects.jinja_env import env
 
-VALID_ROLES = ("start_frame", "end_frame", "reference", "prompt_input")
+VALID_ROLES = ("start_frame", "end_frame")
 
 
 class SelectOption(BaseModel):
@@ -16,8 +16,11 @@ class SelectOption(BaseModel):
 
 
 class InputFieldSchema(BaseModel):
-    type: Literal["image", "text", "select", "slider", "number"]
-    role: str = "prompt_input"
+    type: Literal["image", "text", "boolean", "select", "slider", "number"]
+    # Role only applies to image inputs, wiring them to a model's image slot
+    # (start_frame, end_frame). Non-image inputs leave role unset — the Jinja
+    # prompt template decides which of them render.
+    role: str | None = None
     required: bool = False
     label: str
     # text fields
@@ -39,7 +42,9 @@ class InputFieldSchema(BaseModel):
 
     @field_validator("role")
     @classmethod
-    def validate_role(cls, v: str) -> str:
+    def validate_role(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
         if v not in VALID_ROLES:
             raise ValueError(f"Invalid role '{v}'. Must be one of: {', '.join(VALID_ROLES)}")
         return v
@@ -162,8 +167,16 @@ class EffectManifest(BaseModel):
     @model_validator(mode="after")
     def validate_roles(self) -> EffectManifest:
         role_counts: dict[str, int] = {}
-        for field in self.inputs.values():
-            role_counts[field.role] = role_counts.get(field.role, 0) + 1
+        for key, field in self.inputs.items():
+            # Role is image-slot wiring; declaring it on anything else is a
+            # manifest bug — prompt-input fields get picked up by the Jinja
+            # template itself, no role needed.
+            if field.role is not None and field.type != "image":
+                raise ValueError(
+                    f"Input '{key}': role is only valid on image fields"
+                )
+            if field.role is not None:
+                role_counts[field.role] = role_counts.get(field.role, 0) + 1
         # Every effect must have a start_frame — the app is image-to-video
         # only for now, so there's no usable model without one.
         if role_counts.get("start_frame", 0) == 0:
@@ -254,6 +267,10 @@ def validate_run_inputs(
                 raise ValueError(
                     f"'{field.label}' must be at most {field.max_length} characters"
                 )
+
+        elif field.type == "boolean":
+            if value not in ("true", "false"):
+                raise ValueError(f"'{field.label}' must be true or false")
 
         elif field.type == "select":
             if field.options is not None:

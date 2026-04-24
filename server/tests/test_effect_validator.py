@@ -64,7 +64,7 @@ class TestEffectValidator:
             EffectManifest(**data)
         assert "default_model" in str(exc_info.value)
 
-    def test_role_defaults_to_prompt_input(self):
+    def test_role_defaults_to_none(self):
         data = make_valid_manifest(
             inputs={
                 "image": {
@@ -78,14 +78,31 @@ class TestEffectValidator:
             },
         )
         manifest = EffectManifest(**data)
-        assert manifest.inputs["text_field"].role == "prompt_input"
+        assert manifest.inputs["text_field"].role is None
+
+    def test_role_on_non_image_field_rejected(self):
+        """Role wires an image input to a model slot — it has no meaning on
+        text / select / numeric fields, so setting one there is a bug."""
+        data = make_valid_manifest(
+            inputs={
+                "image": {
+                    "type": "image", "role": "start_frame", "required": True, "label": "Photo",
+                },
+                "stray": {
+                    "type": "text", "role": "start_frame", "required": False, "label": "Text",
+                },
+            },
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "role is only valid on image fields" in str(exc_info.value)
 
     def test_missing_start_frame_rejected(self):
         """Every effect must declare an input with role 'start_frame'."""
         data = make_valid_manifest(
             inputs={
                 "prompt": {
-                    "type": "text", "role": "prompt_input", "required": False, "label": "Prompt",
+                    "type": "text", "required": False, "label": "Prompt",
                 },
             },
         )
@@ -153,42 +170,41 @@ class TestEffectValidator:
         assert manifest.inputs["image_start"].role == "start_frame"
         assert manifest.inputs["image_end"].role == "end_frame"
 
-    def test_multiple_prompt_inputs_valid(self):
+    def test_multiple_non_image_inputs_valid(self):
         data = make_valid_manifest(
             inputs={
                 "image": {
                     "type": "image", "role": "start_frame", "required": True, "label": "Photo",
                 },
                 "prompt": {
-                    "type": "text", "role": "prompt_input", "required": False, "label": "Prompt",
+                    "type": "text", "required": False, "label": "Prompt",
                 },
                 "style": {
                     "type": "select",
                     "required": False,
                     "label": "Style",
-                    "role": "prompt_input",
                     "default": "cinematic",
                     "options": [{"value": "cinematic", "label": "Cinematic"}],
                 },
             },
         )
         manifest = EffectManifest(**data)
-        assert manifest.inputs["prompt"].role == "prompt_input"
-        assert manifest.inputs["style"].role == "prompt_input"
+        assert manifest.inputs["prompt"].role is None
+        assert manifest.inputs["style"].role is None
 
-    def test_reference_role_valid(self):
+    def test_boolean_type_accepted(self):
         data = make_valid_manifest(
             inputs={
                 "image": {
                     "type": "image", "role": "start_frame", "required": True, "label": "Photo",
                 },
-                "ref_image": {
-                    "type": "image", "role": "reference", "required": False, "label": "Reference",
+                "audio": {
+                    "type": "boolean", "required": False, "label": "Generate audio",
                 },
             },
         )
         manifest = EffectManifest(**data)
-        assert manifest.inputs["ref_image"].role == "reference"
+        assert manifest.inputs["audio"].type == "boolean"
 
     def test_invalid_jinja_in_prompt_rejected(self):
         """Parse-time Jinja syntax check — unclosed tag fails manifest load."""
@@ -342,6 +358,22 @@ class TestValidateRunInputsSlider:
         ))
         with pytest.raises(ValueError, match="must be a number"):
             validate_run_inputs(m, {"intensity": "pretty high"})
+
+
+class TestValidateRunInputsBoolean:
+    def test_true_or_false_passes(self):
+        m = _run_input_manifest(flag=InputFieldSchema(
+            type="boolean", label="Flag",
+        ))
+        validate_run_inputs(m, {"flag": "true"})
+        validate_run_inputs(m, {"flag": "false"})
+
+    def test_other_value_raises(self):
+        m = _run_input_manifest(flag=InputFieldSchema(
+            type="boolean", label="Flag",
+        ))
+        with pytest.raises(ValueError, match="must be true or false"):
+            validate_run_inputs(m, {"flag": "maybe"})
 
 
 class TestValidateRunInputsNumber:

@@ -154,7 +154,7 @@ class EffectManifest(BaseModel):
     version: str = "1.0.0"
     author: str = "openeffect-team"
     url: str | None = None              # self-referencing URL for update checking
-    type: str
+    category: str
     tags: list[str] = []
     assets: Assets = Assets()
     inputs: dict[str, InputFieldSchema]

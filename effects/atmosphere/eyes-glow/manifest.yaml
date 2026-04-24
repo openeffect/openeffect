@@ -7,7 +7,7 @@ description: >
 
 version: "0.1.0"
 author: openeffect-team
-type: atmosphere
+category: atmosphere
 
 tags:
   - trending

@@ -44,7 +44,7 @@ def _make_manifest() -> EffectManifest:
         namespace="openeffect",
         name="HDR",
         description="Test",
-        type="animation",
+        category="animation",
         inputs={
             # EffectManifest's validator requires a start_frame image input
             "image": InputFieldSchema(

@@ -19,7 +19,7 @@ def make_valid_manifest(**overrides) -> dict:
         "description": "A test effect",
         "version": "1.0.0",
         "author": "test",
-        "type": "animation",
+        "category": "animation",
         "tags": [],
         "assets": {},
         "inputs": {
@@ -43,7 +43,7 @@ class TestEffectValidator:
         data = make_valid_manifest()
         manifest = EffectManifest(**data)
         assert manifest.id == "test-effect"
-        assert manifest.type == "animation"
+        assert manifest.category == "animation"
 
     def test_missing_required_field(self):
         data = make_valid_manifest()
@@ -52,10 +52,10 @@ class TestEffectValidator:
             EffectManifest(**data)
         assert "name" in str(exc_info.value)
 
-    def test_free_form_type_accepts_any_string(self):
-        data = make_valid_manifest(type="custom_type")
+    def test_free_form_category_accepts_any_string(self):
+        data = make_valid_manifest(category="custom_category")
         manifest = EffectManifest(**data)
-        assert manifest.type == "custom_type"
+        assert manifest.category == "custom_category"
 
     def test_default_model_not_in_supported(self):
         data = make_valid_manifest()
@@ -250,7 +250,7 @@ def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
         id="t",
         name="T",
         description="T",
-        type="test",
+        category="test",
         inputs=inputs,
         generation=GenerationConfig(prompt="go"),
     )

@@ -36,7 +36,7 @@ def make_manifest(**overrides) -> EffectManifest:
         "description": "A test effect",
         "version": "1.0.0",
         "author": "test",
-        "type": "animation",
+        "category": "animation",
         "tags": [],
         "assets": Assets(),
         "inputs": {
@@ -523,7 +523,7 @@ class TestLockedModelParams:
         id: yaml-test
         name: Yaml Test
         description: ''
-        type: animation
+        category: animation
         inputs:
           image:
             type: image
@@ -548,7 +548,7 @@ class TestLockedModelParams:
         id: yaml-test
         name: Yaml Test
         description: ''
-        type: animation
+        category: animation
         inputs:
           image:
             type: image

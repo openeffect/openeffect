@@ -4,7 +4,7 @@ import type { EffectManifest } from '@/types/api'
 import { useStore } from '@/store'
 import { selectSelectedId } from '@/store/selectors/effectsSelectors'
 import { selectEffect, toggleFavorite } from '@/store/actions/effectsActions'
-import { formatEffectType, isVideoUrl } from '@/utils/formatters'
+import { formatEffectCategory, isVideoUrl } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/cn'
 
@@ -72,7 +72,7 @@ export function EffectCard({ effect }: EffectCardProps) {
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent" />
         {/* Category badge */}
         <Badge variant="overlay" className="absolute left-2 top-2 uppercase tracking-wide">
-          {formatEffectType(effect.type)}
+          {formatEffectCategory(effect.category)}
         </Badge>
         {/* Author badge for installed effects */}
         {effect.source !== 'official' && (

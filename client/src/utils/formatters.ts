@@ -20,8 +20,8 @@ export function isVideoUrl(url: string): boolean {
   return VIDEO_EXTS.test(url)
 }
 
-export function formatEffectType(type: string): string {
-  return type
+export function formatEffectCategory(category: string): string {
+  return category
     .split(/[-_]/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')

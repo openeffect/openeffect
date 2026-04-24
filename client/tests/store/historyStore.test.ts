@@ -241,7 +241,7 @@ describe('historyStore', () => {
           description: '',
           version: '1.0.0',
           author: 'test',
-          type: 'transform',
+          category: 'transform',
           tags: [],
           assets: {},
           source: 'local',

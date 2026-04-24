@@ -4,10 +4,10 @@ import { parseRoute } from '../../src/utils/router'
 
 // URLs now use single-segment UUIDs: /effects/:uuid.
 // Gallery-adjacent routes also carry URL-driven filter context
-// (type / source / search) — parseRoute reflects that on the variants
+// (category / source / search) — parseRoute reflects that on the variants
 // where a gallery is visible underneath.
 
-const EMPTY_FILTERS = { type: 'all', source: 'all', search: '' } as const
+const EMPTY_FILTERS = { category: 'all', source: 'all', search: '' } as const
 
 describe('URL routing', () => {
   describe('parseRoute', () => {

@@ -44,7 +44,7 @@ export interface EffectsSlice {
   selectedId: string | null
   searchQuery: string
   activeSource: EffectSource
-  activeType: string
+  activeCategory: string
   rightTab: RightTab
 }
 

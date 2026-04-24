@@ -97,7 +97,7 @@ export interface EffectManifest {
   version: string
   author: string
   url?: string
-  type: string
+  category: string
   tags: string[]
   assets: Assets
   inputs: Record<string, InputFieldSchema>

@@ -3,30 +3,31 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '@/store'
 import {
   selectEffectsStatus,
-  selectActiveType,
+  selectActiveCategory,
   selectActiveSource,
   selectSearchQuery,
   selectFilteredEffects,
   selectSelectedEffect,
 } from '@/store/selectors/effectsSelectors'
-import { loadEffects, setActiveType } from '@/store/actions/effectsActions'
+import { loadEffects, setActiveCategory } from '@/store/actions/effectsActions'
 import { GalleryFilters } from './GalleryFilters'
 import { EffectCard } from './EffectCard'
 import { EffectHero } from './EffectHero'
-import { formatEffectType } from '@/utils/formatters'
+import { formatEffectCategory } from '@/utils/formatters'
 import { ArrowRight, Loader2, Sparkles, Star } from 'lucide-react'
 import { Separator } from '@/components/ui/Separator'
 import type { EffectManifest } from '@/types/api'
 
-// Maximum effect cards shown per type on the front page (activeType === 'all')
-// before truncating with a "View all" tile. 9 + the tile = 10 items, which is
-// exactly 2 rows on lg (5 cols); narrower breakpoints overflow slightly but
-// that's acceptable — narrow-screen users expect to scroll anyway.
-const MAX_PER_TYPE_ON_HOME = 9
+// Maximum effect cards shown per category on the front page
+// (activeCategory === 'all') before truncating with a "View all" tile. 9 + the
+// tile = 10 items, which is exactly 2 rows on lg (5 cols); narrower
+// breakpoints overflow slightly but that's acceptable — narrow-screen users
+// expect to scroll anyway.
+const MAX_PER_CATEGORY_ON_HOME = 9
 
 export function EffectGallery() {
   const status = useStore(selectEffectsStatus)
-  const activeType = useStore(selectActiveType)
+  const activeCategory = useStore(selectActiveCategory)
   const activeSource = useStore(selectActiveSource)
   const searchQuery = useStore(selectSearchQuery)
   const filteredEffects = useStore(selectFilteredEffects)
@@ -42,7 +43,7 @@ export function EffectGallery() {
   // position doesn't map to anything meaningful after the result set reshapes.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [activeType, activeSource, searchQuery])
+  }, [activeCategory, activeSource, searchQuery])
 
   if (status === 'loading') {
     return (
@@ -53,13 +54,13 @@ export function EffectGallery() {
     )
   }
 
-  // Favorites also stay in their type section so favoriting feels like adding
-  // a shortcut, not removing the card. Different React keys (fav- prefix vs id)
-  // keep the duplicate render valid.
+  // Favorites also stay in their category section so favoriting feels like
+  // adding a shortcut, not removing the card. Different React keys (fav-
+  // prefix vs id) keep the duplicate render valid.
   const favorites = filteredEffects.filter((e) => e.is_favorite)
 
   const grouped =
-    activeType === 'all' ? groupByType(filteredEffects) : { [activeType]: filteredEffects }
+    activeCategory === 'all' ? groupByCategory(filteredEffects) : { [activeCategory]: filteredEffects }
 
   const showHero = selectedEffect && !!(
     selectedEffect.assets.preview ||
@@ -109,15 +110,15 @@ export function EffectGallery() {
             </div>
           )}
 
-          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([type, effects]) => {
+          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, effects]) => {
             if (effects.length === 0) return null
-            const shouldLimit = activeType === 'all' && effects.length > MAX_PER_TYPE_ON_HOME
-            const visibleEffects = shouldLimit ? effects.slice(0, MAX_PER_TYPE_ON_HOME) : effects
+            const shouldLimit = activeCategory === 'all' && effects.length > MAX_PER_CATEGORY_ON_HOME
+            const visibleEffects = shouldLimit ? effects.slice(0, MAX_PER_CATEGORY_ON_HOME) : effects
             return (
-              <div key={type}>
+              <div key={category}>
                 <h2 className="flex items-center gap-2 py-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                   <Separator className="flex-1" />
-                  {formatEffectType(type)}
+                  {formatEffectCategory(category)}
                   <Separator className="flex-1" />
                 </h2>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -126,8 +127,8 @@ export function EffectGallery() {
                   ))}
                   {shouldLimit && (
                     <ViewAllTile
-                      type={type}
-                      hiddenCount={effects.length - MAX_PER_TYPE_ON_HOME}
+                      category={category}
+                      hiddenCount={effects.length - MAX_PER_CATEGORY_ON_HOME}
                     />
                   )}
                 </div>
@@ -146,14 +147,15 @@ export function EffectGallery() {
   )
 }
 
-/* ─── View-all tile: shown in the last grid slot when a type has more effects
- *     than MAX_PER_TYPE_ON_HOME. Matches EffectCard's outer dimensions via
- *     grid's default align-items:stretch, so it fills the same row height.
+/* ─── View-all tile: shown in the last grid slot when a category has more
+ *     effects than MAX_PER_CATEGORY_ON_HOME. Matches EffectCard's outer
+ *     dimensions via grid's default align-items:stretch, so it fills the same
+ *     row height.
  */
-function ViewAllTile({ type, hiddenCount }: { type: string; hiddenCount: number }) {
+function ViewAllTile({ category, hiddenCount }: { category: string; hiddenCount: number }) {
   return (
     <motion.div
-      onClick={() => setActiveType(type)}
+      onClick={() => setActiveCategory(category)}
       whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
       className="group flex h-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-card/40 p-4 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
     >
@@ -170,12 +172,12 @@ function ViewAllTile({ type, hiddenCount }: { type: string; hiddenCount: number 
   )
 }
 
-function groupByType(effects: EffectManifest[]) {
+function groupByCategory(effects: EffectManifest[]) {
   const groups: Record<string, EffectManifest[]> = {}
   for (const e of effects) {
-    const t = e.type
-    if (!groups[t]) groups[t] = []
-    groups[t]!.push(e)
+    const c = e.category
+    if (!groups[c]) groups[c] = []
+    groups[c]!.push(e)
   }
   return groups
 }

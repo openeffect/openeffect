@@ -4,14 +4,14 @@ import {
   selectEffects,
   selectSearchQuery,
   selectActiveSource,
-  selectActiveType,
+  selectActiveCategory,
 } from '@/store/selectors/effectsSelectors'
 import {
   setSearchQuery,
   setActiveSource,
-  setActiveType,
+  setActiveCategory,
 } from '@/store/actions/effectsActions'
-import { formatEffectType } from '@/utils/formatters'
+import { formatEffectCategory } from '@/utils/formatters'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/utils/cn'
 import {
@@ -32,18 +32,18 @@ export function GalleryFilters() {
   const effects = useStore(selectEffects)
   const searchQuery = useStore(selectSearchQuery)
   const activeSource = useStore(selectActiveSource)
-  const activeType = useStore(selectActiveType)
+  const activeCategory = useStore(selectActiveCategory)
 
   const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
   const hasMine = effects.some((e) => e.source === 'local')
   const showSourceFilter = hasInstalled || hasMine
 
-  const types = Array.from(new Set(effects.map(e => e.type)))
+  const categories = Array.from(new Set(effects.map(e => e.category)))
     .sort((a, b) => a.localeCompare(b))
-    .map(t => ({ id: t, label: formatEffectType(t) }))
+    .map(c => ({ id: c, label: formatEffectCategory(c) }))
 
   const sourceLabel = SOURCE_OPTIONS.find((o) => o.id === activeSource)?.label
-  const typeLabel = types.find((t) => t.id === activeType)?.label
+  const categoryLabel = categories.find((c) => c.id === activeCategory)?.label
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-6 py-4">
@@ -72,21 +72,21 @@ export function GalleryFilters() {
           ))}
         </FilterDropdown>
       )}
-      {/* Type filter */}
-      {types.length > 0 && (
+      {/* Category filter */}
+      {categories.length > 0 && (
         <FilterDropdown
-          placeholder="Type"
-          value={typeLabel}
-          onClear={() => setActiveType('all')}
+          placeholder="Category"
+          value={categoryLabel}
+          onClear={() => setActiveCategory('all')}
         >
-          {types.map((t) => (
+          {categories.map((c) => (
             <DropdownMenuItem
-              key={t.id}
-              onClick={() => setActiveType(t.id)}
-              className={cn(activeType === t.id && 'text-primary')}
+              key={c.id}
+              onClick={() => setActiveCategory(c.id)}
+              className={cn(activeCategory === c.id && 'text-primary')}
             >
-              {t.label}
-              {activeType === t.id && <Check size={12} className="ml-auto text-primary" />}
+              {c.label}
+              {activeCategory === c.id && <Check size={12} className="ml-auto text-primary" />}
             </DropdownMenuItem>
           ))}
         </FilterDropdown>

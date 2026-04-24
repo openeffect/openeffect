@@ -8,7 +8,7 @@ description: >
 
 version: "0.1.0"
 author: openeffect-team
-type: transform
+category: transform
 
 tags:
   - trending

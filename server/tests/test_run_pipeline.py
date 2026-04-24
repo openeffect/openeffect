@@ -21,7 +21,7 @@ def _make_manifest() -> EffectManifest:
         namespace="test",
         name="Test Effect",
         description="Test",
-        type="animation",
+        category="animation",
         inputs={
             "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
             "prompt": InputFieldSchema(

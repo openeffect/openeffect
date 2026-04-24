@@ -133,7 +133,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
     description: 'Created from a playground run.',
     version: '1.0.0',
     author: 'me',
-    type: 'transform',
+    category: 'transform',
     tags: ['custom'],
     assets: {},
     inputs,

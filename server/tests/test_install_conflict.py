@@ -16,7 +16,7 @@ MANIFEST_BASE: dict[str, Any] = {
     "description": "Demo effect",
     "version": "1.0.0",
     "author": "tester",
-    "type": "transform",
+    "category": "transform",
     "tags": [],
     "assets": {},
     "inputs": {

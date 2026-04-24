@@ -3,7 +3,7 @@ import { X, MoreVertical, Copy, Download, Pencil, Trash2, AlertTriangle, FlaskCo
 import { useStore } from '@/store'
 import { selectSelectedEffect, selectSelectedId, selectRightTab } from '@/store/selectors/effectsSelectors'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
-import { formatEffectType } from '@/utils/formatters'
+import { formatEffectCategory } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
 import {
   selectEditorIsOpen,
@@ -74,7 +74,7 @@ export function EffectPanel() {
             </h2>
             {manifest && (
               <Badge variant="accent" className="shrink-0 font-semibold uppercase tracking-wider">
-                {formatEffectType(manifest.type)}
+                {formatEffectCategory(manifest.category)}
               </Badge>
             )}
           </div>

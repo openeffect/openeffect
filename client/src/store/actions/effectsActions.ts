@@ -65,8 +65,8 @@ export async function loadEffects(): Promise<void> {
       mutateSelectEffect(s, selectedId)
       // Seed filters + search from the URL so a fresh page load with query
       // params lands in a filtered/searched gallery.
-      if ('type' in route && 'source' in route) {
-        mutateSetFilters(s, { type: route.type, source: route.source, search: route.search })
+      if ('category' in route && 'source' in route) {
+        mutateSetFilters(s, { category: route.category, source: route.source, search: route.search })
       }
     }, 'effects/load')
 
@@ -184,9 +184,9 @@ export function setActiveSource(source: EffectSource): void {
   navigate(pathname, { source })
 }
 
-export function setActiveType(type: string): void {
+export function setActiveCategory(category: string): void {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/'
-  navigate(pathname, { type })
+  navigate(pathname, { category })
 }
 
 export async function toggleFavorite(effect: EffectManifest): Promise<void> {

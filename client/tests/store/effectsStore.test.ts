@@ -15,7 +15,7 @@ const mockEffects: EffectManifest[] = [
     description: 'A dramatic zoom from outer space down to a portrait',
     version: '1.0.0',
     author: 'openeffect',
-    type: 'single-image',
+    category: 'single-image',
     source: 'official',
     tags: ['zoom', 'space', 'dramatic', 'portrait'],
     assets: {
@@ -45,7 +45,7 @@ const mockEffects: EffectManifest[] = [
     description: 'Two people share a warm embrace',
     version: '1.0.0',
     author: 'openeffect',
-    type: 'image-transition',
+    category: 'image-transition',
     source: 'official',
     tags: ['hug', 'embrace', 'love'],
     assets: {
@@ -83,7 +83,7 @@ const mockEffects: EffectManifest[] = [
     description: 'A seamless dancing loop animation',
     version: '1.0.0',
     author: 'openeffect',
-    type: 'single-image',
+    category: 'single-image',
     source: 'official',
     tags: ['dance', 'loop', 'animation'],
     assets: {
@@ -194,29 +194,29 @@ describe('effectsStore', () => {
       expect(filtered[0].id).toBe('dance-loop')
     })
 
-    it('type "single-image" returns only single-image effects', () => {
+    it('category "single-image" returns only single-image effects', () => {
       useStore.setState((s) => {
         s.effects.items = effectsMap(mockEffects)
-        s.effects.activeType = 'single-image'
+        s.effects.activeCategory = 'single-image'
       })
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(2)
-      expect(filtered.every((e) => e.type === 'single-image')).toBe(true)
+      expect(filtered.every((e) => e.category === 'single-image')).toBe(true)
     })
 
-    it('type "all" returns everything', () => {
+    it('category "all" returns everything', () => {
       useStore.setState((s) => {
         s.effects.items = effectsMap(mockEffects)
-        s.effects.activeType = 'all'
+        s.effects.activeCategory = 'all'
       })
       const filtered = getFilteredEffects()
       expect(filtered).toHaveLength(3)
     })
 
-    it('combined search + type filter', () => {
+    it('combined search + category filter', () => {
       useStore.setState((s) => {
         s.effects.items = effectsMap(mockEffects)
-        s.effects.activeType = 'single-image'
+        s.effects.activeCategory = 'single-image'
       })
       setSearchQuery('dance')
       const filtered = getFilteredEffects()
@@ -270,7 +270,7 @@ describe('effectsStore', () => {
       })
       const selected = getSelectedEffect()
       expect(selected).not.toBeNull()
-      expect(selected!.type).toBe('image-transition')
+      expect(selected!.category).toBe('image-transition')
     })
   })
 })

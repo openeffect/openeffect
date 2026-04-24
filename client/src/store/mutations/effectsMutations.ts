@@ -18,9 +18,9 @@ export function mutateSetRightTab(s: AppState, tab: RightTab) {
  *  navigation so the store mirrors the URL's filter + search context. */
 export function mutateSetFilters(
   s: AppState,
-  filters: { type: string; source: EffectSource; search: string },
+  filters: { category: string; source: EffectSource; search: string },
 ) {
-  s.effects.activeType = filters.type
+  s.effects.activeCategory = filters.category
   s.effects.activeSource = filters.source
   s.effects.searchQuery = filters.search
 }

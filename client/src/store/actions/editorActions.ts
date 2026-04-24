@@ -19,7 +19,7 @@ description: >
   Describe what this effect does.
 version: "1.0.0"
 author: me
-type: transform
+category: transform
 tags:
   - custom
 
@@ -72,7 +72,7 @@ const BLANK_MANIFEST: EffectManifest = {
   description: 'Describe what this effect does.',
   version: '1.0.0',
   author: 'me',
-  type: 'transform',
+  category: 'transform',
   tags: ['custom'],
   assets: {},
   inputs: {

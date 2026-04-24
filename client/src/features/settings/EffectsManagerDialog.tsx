@@ -119,7 +119,7 @@ function InstallEffectSection({ onInstalled }: { onInstalled: () => void }) {
           <Link size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Paste manifest.yaml or index.yaml URL..."
+            placeholder="Paste manifest.yaml URL..."
             value={url}
             onChange={(e) => { setUrl(e.target.value); setError(null); setSuccess(null) }}
             onKeyDown={(e) => e.key === 'Enter' && handleInstallUrl()}

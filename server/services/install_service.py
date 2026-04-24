@@ -1,12 +1,15 @@
 import io
+import ipaddress
 import logging
 import re
 import shutil
+import socket
 import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import uuid_utils
@@ -34,6 +37,45 @@ def _validate_asset_filename(filename: str) -> None:
     ext = p.suffix.lower()
     if ext not in ALLOWED_ASSET_EXTENSIONS:
         raise ValueError(f"Disallowed file extension: {ext}")
+
+
+def _validate_install_url(url: str) -> None:
+    """Reject install URLs that could pull data from local / private hosts.
+
+    Guards against SSRF from user-pasted URLs:
+    - Only http / https schemes (blocks file:// data: gopher:// etc.)
+    - Host must resolve — and every resolved address must be a public IP
+      (no loopback 127.*, no RFC1918 10/172.16/192.168, no link-local
+      169.254.* that includes AWS metadata, no reserved/multicast)
+
+    Raises ValueError with a user-facing message on rejection."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Only http/https URLs are supported (got '{parsed.scheme or 'no scheme'}')")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL is missing a hostname")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"Cannot resolve host '{host}': {e}") from e
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(
+                f"Refusing to fetch from {addr} — only public addresses allowed"
+            )
 
 
 def _max_size_for_ext(ext: str) -> int:
@@ -66,12 +108,17 @@ class InstallService:
     # ─── Install from URL ───
 
     async def install_from_url(self, url: str, overwrite: bool = False) -> list[str]:
-        """Fetch manifest(s) from URL, download assets, install.
+        """Fetch a single manifest from URL, download its assets, install.
 
-        Pre-fetches every sub-manifest so we can detect conflicts before touching
-        disk or DB. When `overwrite` is False and any incoming effect already
-        exists at a different version, raise `InstallConflictError`."""
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        Returns a one-element list to match `install_from_archive`'s shape
+        (the route hands both through the same response). When `overwrite`
+        is False and the effect already exists at a different version,
+        raise `InstallConflictError`."""
+        _validate_install_url(url)
+        # Redirects disabled so the SSRF guard above isn't bypassed via a
+        # 3xx to a private address. Authors should paste the final URL
+        # (e.g. raw.githubusercontent.com, not a redirect).
+        async with httpx.AsyncClient(follow_redirects=False, timeout=30.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
 
@@ -79,55 +126,22 @@ class InstallService:
                 raise ValueError("Manifest too large")
 
             data = yaml.safe_load(resp.text)
-            if not isinstance(data, dict):
-                raise ValueError("Invalid YAML content")
+            if not isinstance(data, dict) or "id" not in data:
+                raise ValueError("URL did not return a valid manifest YAML")
 
             base_url = url.rsplit("/", 1)[0] + "/"
-
-            if "effects" in data:
-                pending = await self._fetch_index_manifests(client, base_url, data)
-            elif "id" in data:
-                manifest = EffectManifest(**data)
-                pending = [(data, base_url, manifest)]
-            else:
-                raise ValueError("URL is neither a manifest nor an index")
-
-            for _, _, manifest in pending:
-                self._validate_namespace(manifest.namespace)
+            manifest = EffectManifest(**data)
+            self._validate_namespace(manifest.namespace)
 
             if not overwrite:
-                conflicts = await self._detect_conflicts([m for _, _, m in pending])
+                conflicts = await self._detect_conflicts([manifest])
                 if conflicts:
                     raise InstallConflictError(conflicts)
 
-            installed = []
-            for entry_data, manifest_base, manifest in pending:
-                full_id = await self._install_single_from_url(
-                    client, manifest_base, entry_data, manifest
-                )
-                installed.append(full_id)
-            return installed
-
-    async def _fetch_index_manifests(
-        self, client: httpx.AsyncClient, base_url: str, index: dict[str, Any]
-    ) -> list[tuple[dict[str, Any], str, EffectManifest]]:
-        effects = index.get("effects", [])
-        if not isinstance(effects, list) or not effects:
-            raise ValueError("Index has no effects listed")
-
-        pending: list[tuple[dict[str, Any], str, EffectManifest]] = []
-        for entry in effects:
-            path = entry.get("path") if isinstance(entry, dict) else str(entry)
-            if not path:
-                continue
-            manifest_url = base_url + path
-            resp = await client.get(manifest_url)
-            resp.raise_for_status()
-            data = yaml.safe_load(resp.text)
-            manifest_base = manifest_url.rsplit("/", 1)[0] + "/"
-            manifest = EffectManifest(**data)
-            pending.append((data, manifest_base, manifest))
-        return pending
+            full_id = await self._install_single_from_url(
+                client, base_url, data, manifest
+            )
+            return [full_id]
 
     async def _install_single_from_url(
         self,
@@ -227,6 +241,13 @@ class InstallService:
                 for info in zf.infolist():
                     if ".." in info.filename or info.filename.startswith("/"):
                         raise ValueError(f"Path traversal in ZIP: {info.filename}")
+                    # External-attribute high bits carry the Unix mode. A
+                    # symlink in a zip can point anywhere on disk once
+                    # extracted; reject outright rather than trying to sort
+                    # safe vs unsafe targets.
+                    mode = (info.external_attr >> 16) & 0xFFFF
+                    if mode and (mode & 0o170000) == 0o120000:
+                        raise ValueError(f"Symlink not allowed in ZIP: {info.filename}")
 
                 zf.extractall(tmp_path)
 
@@ -235,8 +256,8 @@ class InstallService:
     async def install_from_folder(
         self, folder: Path, allow_official: bool = False, overwrite: bool = False
     ) -> list[str]:
-        """Install every effect found under `folder` (either listed in an
-        `index.yaml` or discovered via `rglob("manifest.yaml")`).
+        """Install every effect found under `folder` by scanning for
+        `manifest.yaml` files (rglob).
 
         When `overwrite` is False and an incoming manifest already exists at a
         different version, raise `InstallConflictError` without touching disk
@@ -302,20 +323,7 @@ class InstallService:
         return installed
 
     def _find_manifests(self, root: Path) -> list[Path]:
-        """Find manifests: via index.yaml or by scanning for manifest.yaml files."""
-        index_path = root / "index.yaml"
-        if index_path.exists():
-            index = yaml.safe_load(index_path.read_text())
-            paths = []
-            for entry in index.get("effects", []):
-                p = entry.get("path") if isinstance(entry, dict) else str(entry)
-                if not p:
-                    continue
-                full = root / p
-                if full.exists():
-                    paths.append(full)
-            return paths
-
+        """Find every `manifest.yaml` under `root` (recursive)."""
         return sorted(root.rglob("manifest.yaml"))
 
     async def _install_from_extracted(
@@ -344,19 +352,23 @@ class InstallService:
         assets_dir = effect_dir / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
 
+        # Only copy manifest-declared assets, mirroring the URL install
+        # path. Anything else in the zip's assets/ folder is silently
+        # ignored — the manifest is the contract, not the archive layout.
         source_assets = manifest_path.parent / "assets"
-        if source_assets.exists():
-            for src_file in source_assets.rglob("*"):
-                if src_file.is_file():
-                    _validate_asset_filename(src_file.name)
-                    ext = src_file.suffix.lower()
-                    if src_file.stat().st_size > _max_size_for_ext(ext):
-                        raise ValueError(f"Asset {src_file.name} exceeds size limit")
-
-                    rel = src_file.relative_to(source_assets)
-                    dest = assets_dir / rel
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(str(src_file), str(dest))
+        for filename in self._collect_asset_filenames(manifest):
+            _validate_asset_filename(filename)
+            src_file = source_assets / filename
+            if not src_file.is_file():
+                raise ValueError(
+                    f"Asset '{filename}' declared in manifest but missing from archive"
+                )
+            ext = src_file.suffix.lower()
+            if src_file.stat().st_size > _max_size_for_ext(ext):
+                raise ValueError(f"Asset {filename} exceeds size limit")
+            dest = assets_dir / filename
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src_file), str(dest))
 
         shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
 
@@ -532,7 +544,8 @@ class InstallService:
         if not row or not row["source_url"]:
             return {"available": False}
 
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        _validate_install_url(row["source_url"])
+        async with httpx.AsyncClient(follow_redirects=False, timeout=15.0) as client:
             resp = await client.get(row["source_url"])
             resp.raise_for_status()
             remote = yaml.safe_load(resp.text)

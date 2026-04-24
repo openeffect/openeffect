@@ -1,6 +1,7 @@
 """Tests for install conflict detection and overwrite flow."""
 import io
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -140,3 +141,101 @@ class TestArchiveInstallConflict:
         assert installed == ["openeffect/bundled"]
         existing = await install_service.get_effect("openeffect", "bundled")
         assert existing["version"] == "2.0.0"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Security: URL download + zip extraction safeguards
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestInstallUrlScheme:
+    async def test_file_scheme_rejected(self, install_service):
+        with pytest.raises(ValueError, match="Only http/https"):
+            await install_service.install_from_url("file:///etc/passwd")
+
+    async def test_data_scheme_rejected(self, install_service):
+        with pytest.raises(ValueError, match="Only http/https"):
+            await install_service.install_from_url("data:text/yaml;base64,aGVsbG8=")
+
+    async def test_ftp_scheme_rejected(self, install_service):
+        with pytest.raises(ValueError, match="Only http/https"):
+            await install_service.install_from_url("ftp://example.com/effect.yaml")
+
+    async def test_missing_scheme_rejected(self, install_service):
+        with pytest.raises(ValueError, match="Only http/https"):
+            await install_service.install_from_url("example.com/effect.yaml")
+
+
+class TestInstallUrlSSRF:
+    async def test_localhost_rejected(self, install_service):
+        with pytest.raises(ValueError, match="only public addresses"):
+            await install_service.install_from_url("http://127.0.0.1/effect.yaml")
+
+    async def test_ipv6_loopback_rejected(self, install_service):
+        with pytest.raises(ValueError, match="only public addresses"):
+            await install_service.install_from_url("http://[::1]/effect.yaml")
+
+    async def test_private_ip_rejected(self, install_service):
+        with pytest.raises(ValueError, match="only public addresses"):
+            await install_service.install_from_url("http://10.0.0.1/effect.yaml")
+
+    async def test_aws_metadata_link_local_rejected(self, install_service):
+        """AWS / cloud metadata endpoint — classic SSRF target."""
+        with pytest.raises(ValueError, match="only public addresses"):
+            await install_service.install_from_url("http://169.254.169.254/latest/meta-data/")
+
+    async def test_unresolvable_host_raises(self, install_service):
+        with pytest.raises(ValueError, match="Cannot resolve"):
+            await install_service.install_from_url(
+                "http://this-host-should-never-exist.invalid/m.yaml"
+            )
+
+
+class TestArchiveSymlinkGuard:
+    async def test_symlink_entry_rejected(self, install_service):
+        """A ZIP member with Unix mode marking it as a symlink must be
+        rejected before extraction (symlinks can point anywhere on disk)."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            info = zipfile.ZipInfo("evil/manifest.yaml")
+            # Unix symlink mode: 0o120000 | 0o777
+            info.external_attr = (0o120777 & 0xFFFF) << 16
+            zf.writestr(info, "/etc/passwd")
+        with pytest.raises(ValueError, match="Symlink not allowed"):
+            await install_service.install_from_archive(buf.getvalue())
+
+
+class TestArchiveAssetWhitelist:
+    """Install only copies files listed in manifest.assets (preview +
+    inputs.*) — extras in the zip's assets/ folder are ignored. Matches
+    the URL install path, which fetches only declared assets."""
+
+    async def test_extra_asset_in_zip_not_copied(self, install_service):
+        m = _manifest(
+            assets={"preview": "preview.mp4", "inputs": {"image": "in.jpg"}},
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{m['id']}/manifest.yaml", yaml.dump(m))
+            zf.writestr(f"{m['id']}/assets/preview.mp4", b"\x00" * 16)
+            zf.writestr(f"{m['id']}/assets/in.jpg", b"\xFF\xD8\xFF\xE0jpg!")
+            # Undeclared extras the author might have left in the folder
+            zf.writestr(f"{m['id']}/assets/leftover.jpg", b"\xFF\xD8\xFF\xE0!!!")
+            zf.writestr(f"{m['id']}/assets/notes.png", b"\x89PNG\r\n\x1a\n!!!")
+
+        await install_service.install_from_archive(buf.getvalue())
+
+        row = await install_service.get_effect("tester", "demo")
+        assets_dir = Path(row["assets_dir"]) / "assets"
+        declared = {p.name for p in assets_dir.iterdir()}
+        assert declared == {"preview.mp4", "in.jpg"}
+
+    async def test_missing_declared_asset_raises(self, install_service):
+        m = _manifest(assets={"preview": "preview.mp4", "inputs": {}})
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{m['id']}/manifest.yaml", yaml.dump(m))
+            # preview.mp4 is declared but absent from the archive
+
+        with pytest.raises(ValueError, match="declared in manifest but missing"):
+            await install_service.install_from_archive(buf.getvalue())

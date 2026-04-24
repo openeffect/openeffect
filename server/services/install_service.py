@@ -197,13 +197,13 @@ class InstallService:
             yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
             if existing:
                 await self._update_effect(
-                    uuid, manifest, "url", str(effect_dir), yaml_content=yaml_content
+                    uuid, manifest, "installed", str(effect_dir), yaml_content=yaml_content
                 )
             else:
                 await self._insert_effect(
                     uuid=uuid,
                     manifest=manifest,
-                    source="url",
+                    source="installed",
                     assets_dir=str(effect_dir),
                     yaml_content=yaml_content,
                 )
@@ -289,7 +289,7 @@ class InstallService:
     async def sync_bundled_folder(self, folder: Path) -> list[str]:
         """Install the current bundled effect set and demote any previously-
         bundled effect that's no longer in `folder` from `source='official'`
-        to `source='archive'` — so effects dropped from a future release
+        to `source='installed'` — so effects dropped from a future release
         become user-deletable instead of stuck. Files stay on disk so any
         historical runs that reference them keep working."""
         manifest_paths = self._find_manifests(folder) if folder.exists() else []
@@ -312,11 +312,11 @@ class InstallService:
                 continue
             async with self._db.transaction() as conn:
                 await conn.execute(
-                    "UPDATE effects SET source = 'archive' WHERE id = ?",
+                    "UPDATE effects SET source = 'installed' WHERE id = ?",
                     (row["id"],),
                 )
             logger.info(
-                "Demoted dropped bundled effect %s/%s to archive",
+                "Demoted dropped bundled effect %s/%s to installed",
                 row["namespace"], row["slug"],
             )
 
@@ -372,7 +372,7 @@ class InstallService:
 
         shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
 
-        source = "official" if manifest.namespace == "openeffect" else "archive"
+        source = "official" if manifest.namespace == "openeffect" else "installed"
 
         if existing:
             await self._update_effect(uuid, manifest, source, str(effect_dir), yaml_content=yaml_content)
@@ -406,7 +406,7 @@ class InstallService:
                 existing = await self.get_effect_by_uuid(existing_id)
             if not existing:
                 raise ValueError(f"Effect {existing_id} not found")
-            if existing["source"] not in ("local", "archive"):
+            if existing["source"] not in ("local", "installed"):
                 raise ValueError("Cannot edit non-local effects")
 
             uuid = existing["id"]
@@ -508,17 +508,25 @@ class InstallService:
         async with self._db.transaction() as conn:
             await conn.execute("DELETE FROM effects WHERE id=?", (row["id"],))
 
-    # ─── Editable / favorite toggles ───
+    # ─── Source / favorite toggles ───
 
-    async def set_editable(self, namespace: str, slug: str, editable: bool) -> None:
-        """Flip an archive-installed effect into local edit mode (or back)."""
+    async def set_source(self, namespace: str, slug: str, new_source: str) -> None:
+        """Move a non-official effect between the `installed` and `local`
+        buckets. Idempotent no-op when already at `new_source`. Rejects
+        attempts to touch official effects or to set any value outside
+        the two allowed strings."""
+        if new_source not in ("installed", "local"):
+            raise ValueError(
+                f"Invalid source '{new_source}' — must be 'installed' or 'local'"
+            )
         existing = await self.get_effect(namespace, slug)
         if not existing:
             raise ValueError(f"Effect {namespace}/{slug} not found")
         if existing["source"] == "official":
-            raise ValueError("Cannot modify official effects")
+            raise ValueError("Cannot change the source of official effects")
+        if existing["source"] == new_source:
+            return  # no-op
 
-        new_source = "local" if editable else "archive"
         async with self._db.transaction() as conn:
             await conn.execute(
                 "UPDATE effects SET source=? WHERE namespace=? AND slug=?",

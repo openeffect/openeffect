@@ -104,7 +104,7 @@ export interface EffectManifest {
   assets: Assets
   inputs: Record<string, InputFieldSchema>
   generation: GenerationConfig
-  source: 'official' | 'url' | 'archive' | 'local'
+  source: 'official' | 'installed' | 'local'
   compatible_models: string[]
   is_favorite: boolean
 }

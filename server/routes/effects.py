@@ -2,6 +2,7 @@ import io
 import os
 import zipfile
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -145,17 +146,17 @@ class FavoriteRequest(BaseModel):
     favorite: bool
 
 
-class EditableRequest(BaseModel):
-    editable: bool
+class SourceRequest(BaseModel):
+    source: Literal["installed", "local"]
 
 
-@router.patch("/effects/{namespace}/{slug}/editable")
-async def toggle_editable(namespace: str, slug: str, body: EditableRequest, request: Request):
+@router.patch("/effects/{namespace}/{slug}/source")
+async def set_effect_source(namespace: str, slug: str, body: SourceRequest, request: Request):
     install_service = request.app.state.install_service
     loader = request.app.state.effect_loader
 
     try:
-        await install_service.set_editable(namespace, slug, body.editable)
+        await install_service.set_source(namespace, slug, body.source)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg:
@@ -163,7 +164,7 @@ async def toggle_editable(namespace: str, slug: str, body: EditableRequest, requ
         raise bad_request(msg, ErrorCode.OFFICIAL_READONLY)
 
     await loader.reload()
-    return {"ok": True, "editable": body.editable}
+    return {"ok": True, "source": body.source}
 
 
 @router.patch("/effects/{namespace}/{slug}/favorite")

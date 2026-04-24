@@ -190,6 +190,54 @@ class TestInstallUrlSSRF:
             )
 
 
+class TestSetSource:
+    """`set_source` moves non-official effects between the `installed`
+    and `local` buckets (bidirectional). Official effects can't be
+    touched."""
+
+    async def _seed_installed(self, install_service, **overrides):
+        await install_service.install_from_archive(_zip_one(_manifest(**overrides)))
+        return await install_service.get_effect("tester", overrides.get("id", "tester/demo").split("/")[1])
+
+    async def test_installed_to_local(self, install_service):
+        row = await self._seed_installed(install_service)
+        assert row["source"] == "installed"
+        await install_service.set_source("tester", "demo", "local")
+        row = await install_service.get_effect("tester", "demo")
+        assert row["source"] == "local"
+
+    async def test_local_to_installed(self, install_service):
+        await self._seed_installed(install_service)
+        await install_service.set_source("tester", "demo", "local")
+        await install_service.set_source("tester", "demo", "installed")
+        row = await install_service.get_effect("tester", "demo")
+        assert row["source"] == "installed"
+
+    async def test_same_source_noop(self, install_service):
+        """Setting the current value is a silent no-op, not an error."""
+        await self._seed_installed(install_service)
+        await install_service.set_source("tester", "demo", "installed")  # already installed
+        row = await install_service.get_effect("tester", "demo")
+        assert row["source"] == "installed"
+
+    async def test_official_rejected(self, install_service):
+        await install_service.install_from_archive(
+            _zip_one(_manifest(id="openeffect/bundled")),
+            allow_official=True,
+        )
+        with pytest.raises(ValueError, match="official"):
+            await install_service.set_source("openeffect", "bundled", "local")
+
+    async def test_invalid_value_rejected(self, install_service):
+        await self._seed_installed(install_service)
+        with pytest.raises(ValueError, match="Invalid source"):
+            await install_service.set_source("tester", "demo", "garbage")
+
+    async def test_missing_effect_rejected(self, install_service):
+        with pytest.raises(ValueError, match="not found"):
+            await install_service.set_source("nobody", "ghost", "local")
+
+
 class TestArchiveSymlinkGuard:
     async def test_symlink_entry_rejected(self, install_service):
         """A ZIP member with Unix mode marking it as a symlink must be

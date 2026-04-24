@@ -27,7 +27,7 @@ export type ParsedRoute =
   | { page: 'newEffect' }
   | ({ page: 'playground'; runId: string | null } & Filters)
 
-const VALID_SOURCES: readonly EffectSource[] = ['all', 'official', 'mine', 'installed']
+const VALID_SOURCES: readonly EffectSource[] = ['all', 'official', 'installed', 'local']
 
 export function parseFilters(search: string): Filters {
   const params = new URLSearchParams(search)

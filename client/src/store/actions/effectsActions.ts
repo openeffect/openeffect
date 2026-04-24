@@ -208,20 +208,29 @@ export async function toggleFavorite(effect: EffectManifest): Promise<void> {
   }
 }
 
-/** Flip an effect between editable (`source: 'local'`) and read-only
- *  (`source: 'archive'`). Matches what the server does on its side
- *  (see `toggle_editable` in `server/routes/effects.py`). Patches the
- *  local Map in place — no list-wide refetch — so the gallery and
- *  manager dialog don't flash. */
-export async function setEffectEditable(
+/** Move an effect between the `installed` and `local` buckets.
+ *  Optimistic: patches the local Map in place before the network
+ *  round-trip so the gallery and manager dialog update instantly.
+ *  Reverts on error. Official effects can't be moved and the server
+ *  rejects that case; the client never wires it up. */
+export async function setEffectSource(
   effect: EffectManifest,
-  editable: boolean,
+  source: 'installed' | 'local',
 ): Promise<void> {
-  await api.setEditable(effect.namespace, effect.slug, editable)
+  const prev = effect.source
   setState((s) => {
     const item = s.effects.items.get(effect.id)
-    if (item) item.source = editable ? 'local' : 'archive'
-  }, 'effects/setEditable')
+    if (item) item.source = source
+  }, 'effects/setSource')
+
+  try {
+    await api.setEffectSource(effect.namespace, effect.slug, source)
+  } catch {
+    setState((s) => {
+      const item = s.effects.items.get(effect.id)
+      if (item) item.source = prev
+    }, 'effects/setSourceRevert')
+  }
 }
 
 export async function deleteEffect(namespace: string, slug: string): Promise<void> {

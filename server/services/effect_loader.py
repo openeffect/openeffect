@@ -17,7 +17,7 @@ class LoadedEffect:
     id: str                # UUID primary key from the effects table
     full_id: str           # namespace/slug
     assets_dir: Path       # UUID folder path
-    source: str            # "official", "url", "archive", "local"
+    source: str            # "official" | "installed" | "local"
     is_favorite: bool = False
 
 
@@ -34,8 +34,8 @@ class EffectLoaderService:
         Bundled effects live as plain folders in the repo's `effects/` tree —
         no intermediate zip to rebuild on each change. Any effect that was
         bundled in a previous release but has since been removed from the
-        folder is demoted to `source='archive'` so the user can uninstall it
-        (instead of staying permanently locked as 'official')."""
+        folder is demoted to `source='installed'` so the user can uninstall
+        it (instead of staying permanently locked as 'official')."""
         if self._bundled_dir:
             logger.info("Syncing bundled effects...")
             try:

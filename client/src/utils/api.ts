@@ -22,7 +22,7 @@ class ApiError extends Error {
 
 export interface InstallConflictEntry {
   namespace: string
-  id: string
+  slug: string
   name: string
   existing_version: string
   incoming_version: string
@@ -95,10 +95,10 @@ export const api = {
       body: JSON.stringify({ favorite }),
     }),
 
-  setEditable: (namespace: string, slug: string, editable: boolean) =>
-    request<{ ok: boolean; editable: boolean }>(`/api/effects/${namespace}/${slug}/editable`, {
+  setEffectSource: (namespace: string, slug: string, source: 'installed' | 'local') =>
+    request<{ ok: boolean; source: 'installed' | 'local' }>(`/api/effects/${namespace}/${slug}/source`, {
       method: 'PATCH',
-      body: JSON.stringify({ editable }),
+      body: JSON.stringify({ source }),
     }),
 
   // Upload

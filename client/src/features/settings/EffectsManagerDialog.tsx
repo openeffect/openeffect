@@ -1,16 +1,22 @@
-import { useState } from 'react'
-import { Link, Trash2, Loader2, AlertTriangle, Check, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link, Trash2, Loader2, AlertTriangle, Check, X, Search, ChevronDown } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectEffects } from '@/store/selectors/effectsSelectors'
-import { deleteEffect, loadEffects, setEffectEditable } from '@/store/actions/effectsActions'
+import { deleteEffect, loadEffects, setEffectSource } from '@/store/actions/effectsActions'
 import { api, InstallConflictError, type InstallConflictEntry } from '@/utils/api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { Label } from '@/components/ui/Label'
 import { Separator } from '@/components/ui/Separator'
-import { Checkbox } from '@/components/ui/Checkbox'
 import { FileDropzone } from '@/components/FileDropzone'
+import { FilterDropdown } from '@/components/FilterDropdown'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/DropdownMenu'
+import { cn } from '@/utils/cn'
 import type { EffectManifest } from '@/types/api'
 
 interface EffectsManagerDialogProps {
@@ -18,10 +24,40 @@ interface EffectsManagerDialogProps {
   onClose: () => void
 }
 
+type ManagedSource = 'installed' | 'local'
+
+const SOURCE_ROW_OPTIONS: { id: ManagedSource; label: string }[] = [
+  { id: 'installed', label: 'Installed' },
+  { id: 'local', label: 'Local' },
+]
+
 export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogProps) {
   const effects = useStore(selectEffects)
+  // `null` means "no filter" — the pill shows just "Source" (muted).
+  const [sourceFilter, setSourceFilter] = useState<ManagedSource | null>(null)
+  const [search, setSearch] = useState('')
 
-  const installedEffects = effects.filter((e) => e.source !== 'official')
+  // Official effects are out of scope for this dialog — they're managed
+  // by the bundled-sync flow, not by the user.
+  const managedEffects = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return effects.filter((e) => {
+      if (e.source === 'official') return false
+      if (sourceFilter !== null && e.source !== sourceFilter) return false
+      if (q) {
+        return (
+          e.name.toLowerCase().includes(q) ||
+          e.full_id.toLowerCase().includes(q) ||
+          e.tags.some((t) => t.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+  }, [effects, sourceFilter, search])
+
+  const sourceFilterLabel = sourceFilter
+    ? SOURCE_ROW_OPTIONS.find((o) => o.id === sourceFilter)!.label
+    : undefined
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -34,23 +70,72 @@ export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogPr
           {/* Install Effect */}
           <InstallEffectSection onInstalled={loadEffects} />
 
-          {/* Installed Effects */}
-          {installedEffects.length > 0 && (
-            <>
-              <Separator />
-              <div className="space-y-3">
-                <Label variant="section">Installed Effects</Label>
-                <div className="space-y-2">
-                  {installedEffects.map((effect) => (
-                    <InstalledEffectRow
-                      key={`${effect.namespace}/${effect.slug}`}
-                      effect={effect}
-                    />
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+          <Separator />
+
+          {/* Source filter + search */}
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterDropdown
+              placeholder="Source"
+              value={sourceFilterLabel}
+              onClear={() => setSourceFilter(null)}
+            >
+              {SOURCE_ROW_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.id}
+                  onClick={() => setSourceFilter(opt.id)}
+                  className={cn(sourceFilter === opt.id && 'text-primary')}
+                >
+                  {opt.label}
+                  {sourceFilter === opt.id && <Check size={12} className="ml-auto text-primary" />}
+                </DropdownMenuItem>
+              ))}
+            </FilterDropdown>
+            <div className="relative min-w-[140px] flex-1">
+              <Search
+                size={13}
+                className={cn(
+                  'pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2',
+                  search ? 'text-primary' : 'text-muted-foreground',
+                )}
+              />
+              <Input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={cn(
+                  'py-1.5 pl-8 pr-8 text-xs',
+                  search
+                    ? 'border-primary/40 bg-primary/10 hover:border-primary/60'
+                    : 'bg-muted',
+                )}
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-primary/70 hover:text-primary"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Flat list of managed effects */}
+          <div className="space-y-2">
+            {managedEffects.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                No effects match.
+              </p>
+            ) : (
+              managedEffects.map((effect) => (
+                <ManagedEffectRow
+                  key={effect.full_id}
+                  effect={effect}
+                />
+              ))
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -182,10 +267,10 @@ function InstallConflictDialog({
           </p>
           <div className="space-y-1.5">
             {state?.conflicts.map((c) => (
-              <div key={`${c.namespace}/${c.id}`} className="rounded-md border px-3 py-2 text-xs">
+              <div key={`${c.namespace}/${c.slug}`} className="rounded-md border px-3 py-2 text-xs">
                 <div className="font-medium text-foreground">{c.name}</div>
                 <div className="text-muted-foreground">
-                  {c.namespace}/{c.id} — v{c.existing_version} → v{c.incoming_version}
+                  {c.namespace}/{c.slug} — v{c.existing_version} → v{c.incoming_version}
                   {' '}<span className="opacity-60">({c.existing_source})</span>
                 </div>
               </div>
@@ -205,12 +290,11 @@ function InstallConflictDialog({
   )
 }
 
-/* ─── Installed Effect Row ─── */
+/* ─── Managed Effect Row ─── */
 
-function InstalledEffectRow({ effect }: { effect: EffectManifest }) {
+function ManagedEffectRow({ effect }: { effect: EffectManifest }) {
   const [uninstalling, setUninstalling] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [editable, setEditable] = useState(effect.source === 'local')
 
   const handleUninstall = async () => {
     setUninstalling(true)
@@ -218,27 +302,35 @@ function InstalledEffectRow({ effect }: { effect: EffectManifest }) {
     // Store drops the item from its Map; this row unmounts with the list
   }
 
-  const handleToggleEditable = async (value: boolean) => {
-    setEditable(value) // optimistic
-    try {
-      await setEffectEditable(effect, value)
-    } catch {
-      setEditable(!value) // revert on failure
-    }
-  }
+  const currentSource = effect.source as ManagedSource   // official is filtered out upstream
 
   return (
     <div className="flex items-center justify-between rounded-lg border p-3">
       <div className="min-w-0 flex-1">
         <span className="text-sm font-medium text-foreground">{effect.name}</span>
-        <p className="text-xs text-muted-foreground">{effect.namespace}/{effect.slug}</p>
+        <p className="text-xs text-muted-foreground">{effect.full_id}</p>
       </div>
       <div className="flex items-center gap-3">
-        <Checkbox
-          label="Editable"
-          checked={editable}
-          onCheckedChange={(v) => handleToggleEditable(v === true)}
-        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="inline-flex items-center gap-1 rounded-md border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:border-foreground/20">
+              {SOURCE_ROW_OPTIONS.find((o) => o.id === currentSource)!.label}
+              <ChevronDown size={11} className="text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {SOURCE_ROW_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.id}
+                onClick={() => { if (opt.id !== currentSource) setEffectSource(effect, opt.id) }}
+                className={cn(currentSource === opt.id && 'text-primary')}
+              >
+                {opt.label}
+                {currentSource === opt.id && <Check size={12} className="ml-auto text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {confirmDelete ? (
           <div className="flex items-center gap-0.5">
             <Button
@@ -277,3 +369,4 @@ function InstalledEffectRow({ effect }: { effect: EffectManifest }) {
     </div>
   )
 }
+

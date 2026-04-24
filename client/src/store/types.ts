@@ -6,7 +6,7 @@ export type ThemeSetting = 'dark' | 'light' | 'auto'
 export type LeftPanel = 'gallery' | 'run-result' | 'progress'
 export type JobStatus = 'processing' | 'completed' | 'failed'
 export type LoadStatus = 'idle' | 'loading' | 'succeeded' | 'failed'
-export type EffectSource = 'all' | 'official' | 'mine' | 'installed'
+export type EffectSource = 'all' | 'official' | 'installed' | 'local'
 export type RightTab = 'form' | 'history'
 
 export interface ActiveJob {

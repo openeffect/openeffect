@@ -1,4 +1,4 @@
-import { Search, X, ChevronDown, Check } from 'lucide-react'
+import { Search, X, Check } from 'lucide-react'
 import { useStore } from '@/store'
 import {
   selectEffects,
@@ -14,18 +14,14 @@ import {
 import { formatEffectCategory } from '@/utils/formatters'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/utils/cn'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/DropdownMenu'
+import { FilterDropdown } from '@/components/FilterDropdown'
+import { DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import type { EffectSource } from '@/store/types'
 
 const SOURCE_OPTIONS = [
   { id: 'official', label: 'Official' },
-  { id: 'mine', label: 'Mine' },
   { id: 'installed', label: 'Installed' },
+  { id: 'local', label: 'Local' },
 ] as const
 
 export function GalleryFilters() {
@@ -34,9 +30,9 @@ export function GalleryFilters() {
   const activeSource = useStore(selectActiveSource)
   const activeCategory = useStore(selectActiveCategory)
 
-  const hasInstalled = effects.some((e) => e.source !== 'official' && e.source !== 'local')
-  const hasMine = effects.some((e) => e.source === 'local')
-  const showSourceFilter = hasInstalled || hasMine
+  const hasInstalled = effects.some((e) => e.source === 'installed')
+  const hasLocal = effects.some((e) => e.source === 'local')
+  const showSourceFilter = hasInstalled || hasLocal
 
   const categories = Array.from(new Set(effects.map(e => e.category)))
     .sort((a, b) => a.localeCompare(b))
@@ -57,7 +53,7 @@ export function GalleryFilters() {
           {SOURCE_OPTIONS
             .filter((opt) => {
               if (opt.id === 'installed' && !hasInstalled) return false
-              if (opt.id === 'mine' && !hasMine) return false
+              if (opt.id === 'local' && !hasLocal) return false
               return true
             })
             .map((opt) => (
@@ -125,50 +121,3 @@ export function GalleryFilters() {
   )
 }
 
-/* ─── Filter Dropdown ─── */
-
-function FilterDropdown({
-  placeholder,
-  value,
-  onClear,
-  children,
-}: {
-  placeholder: string
-  value: string | undefined
-  onClear: () => void
-  children: React.ReactNode
-}) {
-  const isActive = !!value
-  return (
-    <div
-      className={cn(
-        'inline-flex items-center overflow-hidden rounded-lg border transition-colors',
-        isActive
-          ? 'border-primary/40 bg-primary/10 hover:border-primary/60'
-          : 'border-border bg-muted hover:border-foreground/15',
-      )}
-    >
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs outline-none">
-            <span className={isActive ? 'font-medium text-primary' : 'text-muted-foreground'}>
-              {value ?? placeholder}
-            </span>
-            <ChevronDown size={11} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {children}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {isActive && (
-        <button
-          onClick={onClear}
-          className="border-l border-primary/30 px-1.5 py-1.5 text-primary/70 hover:text-primary"
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
-  )
-}

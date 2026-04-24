@@ -74,10 +74,17 @@ export function EffectCard({ effect }: EffectCardProps) {
         <Badge variant="overlay" className="absolute left-2 top-2 uppercase tracking-wide">
           {formatEffectCategory(effect.category)}
         </Badge>
-        {/* Author badge for installed effects */}
-        {effect.source !== 'official' && (
+        {/* Source badge: namespace for installed third-party effects,
+            a plain "LOCAL" tag for user-owned ones. Official effects
+            are unbadged — they're the expected default. */}
+        {effect.source === 'installed' && (
           <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm">
             {effect.namespace}
+          </span>
+        )}
+        {effect.source === 'local' && (
+          <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm">
+            Local
           </span>
         )}
         {/* Favorite star */}

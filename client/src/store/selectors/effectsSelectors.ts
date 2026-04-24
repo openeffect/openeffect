@@ -35,10 +35,7 @@ export const selectFilteredEffects = createSelector(
   selectActiveCategory,
   (effects, query, source, category) => {
     return effects.filter((e) => {
-      if (source === 'official' && e.source !== 'official') return false
-      if (source === 'mine' && e.source !== 'local') return false
-      if (source === 'installed' && (e.source === 'official' || e.source === 'local'))
-        return false
+      if (source !== 'all' && e.source !== source) return false
       if (category !== 'all' && e.category !== category) return false
       if (query) {
         const q = query.toLowerCase()

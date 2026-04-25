@@ -61,22 +61,23 @@ describe('api', () => {
     })
   })
 
-  describe('upload', () => {
+  describe('uploadFile', () => {
     it('sends multipart form data', async () => {
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' })
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
           Promise.resolve({
-            ref_id: 'abc-123',
-            filename: 'photo.jpg',
-            mime_type: 'image/jpeg',
-            size_bytes: 4,
+            id: 'abc-123',
+            kind: 'image',
+            mime: 'image/jpeg',
+            ext: 'jpg',
+            size: 4,
           }),
       })
-      const result = await api.upload(file)
-      expect(result.ref_id).toBe('abc-123')
-      expect(mockFetch).toHaveBeenCalledWith('/api/upload', expect.objectContaining({ method: 'POST' }))
+      const result = await api.uploadFile(file)
+      expect(result.id).toBe('abc-123')
+      expect(mockFetch).toHaveBeenCalledWith('/api/files', expect.objectContaining({ method: 'POST' }))
     })
   })
 

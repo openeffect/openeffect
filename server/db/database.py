@@ -102,7 +102,7 @@ async def init_db(db_path: Path) -> None:
                 namespace     TEXT NOT NULL,
                 slug          TEXT NOT NULL,
                 source        TEXT NOT NULL,
-                state         TEXT NOT NULL DEFAULT 'installing',
+                state         TEXT NOT NULL DEFAULT 'installing',  -- installing | ready | uninstalling
                 source_url    TEXT,
                 manifest_yaml TEXT NOT NULL,
                 assets_dir    TEXT NOT NULL,

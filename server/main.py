@@ -29,22 +29,22 @@ async def _gc_loop(
     interval_seconds: int,
 ) -> None:
     """Unified background reaper: prunes orphan uploads (`ref_count = 0`)
-    AND abandoned installs (`state = 'installing'`) older than ttl_hours.
-    Runs once immediately at startup (so a previous-process crash gets
-    cleaned before the user notices) and then on a sleep-loop.
+    AND stale effect lifecycle rows (`state` in `installing`/`uninstalling`)
+    older than ttl_hours. Runs once immediately at startup (so a
+    previous-process crash gets cleaned before the user notices) and
+    then on a sleep-loop.
 
     The TTL is the multi-instance safety knob — anything younger than
     `ttl_hours` could still belong to a live process, so we leave it
-    alone. The first iteration's run also doubles as boot recovery for
-    the install lifecycle's `installing` rows."""
+    alone."""
     while True:
         try:
             uploads = await storage_service.prune_orphans(ttl_hours)
-            installs = await install_service.prune_abandoned_installs(ttl_hours)
-            if uploads or installs:
+            lifecycle = await install_service.prune_stale_lifecycle_rows(ttl_hours)
+            if uploads or lifecycle:
                 logger.info(
-                    "gc: pruned %d upload(s), %d install(s)",
-                    uploads, installs,
+                    "gc: pruned %d upload(s), %d lifecycle row(s)",
+                    uploads, lifecycle,
                 )
         except Exception as e:
             logger.warning("gc: failed: %s", e)

@@ -542,10 +542,16 @@ class InstallService:
     # ─── Uninstall ───
 
     async def uninstall(self, namespace: str, slug: str) -> None:
-        """DB-first uninstall: drop the row inside a transaction, then
-        rmtree the folder. If rmtree fails the row is already gone (so
-        the effect is invisible to the user) and the leftover folder
-        will be picked up by ad-hoc cleanup later."""
+        """Lifecycle-tracked uninstall: flip the row to
+        `state='uninstalling'` first (so the loader hides the effect
+        immediately), then rmtree the folder, then DELETE the row.
+
+        Crash recovery is automatic: a row stuck in `uninstalling`
+        for >1h gets finished by `prune_stale_lifecycle_rows`. The
+        DELETE is gated `AND state='uninstalling'` so a concurrent
+        writer that flipped the row back to `ready` (e.g. an immediate
+        reinstall during the rmtree window) doesn't have its row
+        wiped out from under it."""
         row = await self._db.fetchone(
             "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND slug=?",
             (namespace, slug),
@@ -556,12 +562,17 @@ class InstallService:
         if row["source"] == "official":
             raise ValueError("Cannot uninstall official effects")
 
-        async with self._db.transaction() as conn:
-            await conn.execute("DELETE FROM effects WHERE id=?", (row["id"],))
+        await self._mark_uninstalling(row["id"])
 
         assets_dir = Path(row["assets_dir"])
         if assets_dir.exists():
             shutil.rmtree(str(assets_dir), ignore_errors=True)
+
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "DELETE FROM effects WHERE id=? AND state='uninstalling'",
+                (row["id"],),
+            )
 
     # ─── Source / favorite toggles ───
 
@@ -777,6 +788,24 @@ class InstallService:
             if cursor.rowcount == 0:
                 raise ValueError(f"Effect {uuid} no longer exists (concurrent delete)")
 
+    async def _mark_uninstalling(self, uuid: str) -> None:
+        """Flag a row as being torn down. Symmetric with `_mark_installing`:
+        bumps `updated_at` so the reaper can finish the cleanup if this
+        process crashes after the flip, and the loader's `state='ready'`
+        filter immediately hides the effect from the gallery.
+
+        Raises `ValueError` on rowcount=0 — same defensive guard as
+        `_mark_installing` against concurrent deletes (the reaper might
+        have caught the row as abandoned and finished the work first)."""
+        now = datetime.now(timezone.utc).isoformat()
+        async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "UPDATE effects SET state='uninstalling', updated_at=? WHERE id=?",
+                (now, uuid),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Effect {uuid} no longer exists (concurrent delete)")
+
     async def _cleanup_failed(self, uuid: str, effect_dir: Path) -> None:
         """Last step of every install path's `except` arm: drop the row
         and rmtree the folder. The `AND state='installing'` guard makes
@@ -801,10 +830,11 @@ class InstallService:
         return row[0] if row else 0
 
     async def get_all_effects(self) -> list[dict[str, Any]]:
-        """Return only `ready` effects. In-flight installs (`state='installing'`)
-        are server-internal and never surface in the gallery, the editor
-        list, the API, or this method. The reaper / `_cleanup_failed`
-        path is responsible for them."""
+        """Return only `ready` effects. In-flight installs and uninstalls
+        (`state` in `installing`/`uninstalling`) are server-internal and
+        never surface in the gallery, the editor list, the API, or this
+        method. The reaper / `_cleanup_failed` / `uninstall` paths are
+        responsible for transitioning them out of those transient states."""
         rows = await self._db.fetchall(
             "SELECT * FROM effects WHERE state = 'ready' ORDER BY installed_at DESC"
         )
@@ -812,26 +842,35 @@ class InstallService:
 
     # ─── GC reaper hook ───
 
-    async def prune_abandoned_installs(self, max_age_hours: int) -> int:
-        """Delete `state='installing'` effects whose `updated_at` is older
-        than `max_age_hours` ago, plus their on-disk folders. Same shape
-        as `storage_service.prune_orphans`: rmtree first, then DELETE —
-        if rmtree fails the row stays for the next reaper cycle to retry.
+    async def prune_stale_lifecycle_rows(self, max_age_hours: int) -> int:
+        """Finish or abandon rows stuck in a transient lifecycle state
+        for longer than `max_age_hours`:
 
-        The `AND state='installing'` guard on the DELETE makes this safe
-        under concurrent state transitions: if some other coroutine
-        flipped the row to `ready` between our SELECT and DELETE, the
-        DELETE matches no rows and silently skips.
+        - `state='installing'` from a crashed install → roll back
+          (row + folder gone).
+        - `state='uninstalling'` from a crashed uninstall → finish the
+          teardown (row + folder gone).
 
-        Returns the number of effects pruned. Called from the reaper
-        loop in `main.py` once at startup and then on a sleep-loop."""
+        Same safety ordering as `storage_service.prune_orphans`: rmtree
+        first (so a permission error halts the cycle and the row stays
+        for the next iteration to retry), then DELETE.
+
+        The DELETE is gated `AND state IN ('installing', 'uninstalling')
+        AND updated_at < ?` so that a row whose timestamp was just
+        refreshed by a concurrent retry escapes cleanup, and a row that
+        was committed to `ready` between SELECT and DELETE isn't wiped
+        either.
+
+        Returns the number of rows pruned. Called from `_gc_loop` in
+        `main.py` once at startup (which doubles as boot recovery) and
+        then on a sleep-loop."""
         cutoff = (
             datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
         ).isoformat()
 
         rows = await self._db.fetchall(
-            "SELECT id, assets_dir FROM effects "
-            "WHERE state = 'installing' AND updated_at < ?",
+            "SELECT id, assets_dir, state FROM effects "
+            "WHERE state IN ('installing', 'uninstalling') AND updated_at < ?",
             (cutoff,),
         )
         pruned = 0
@@ -844,14 +883,11 @@ class InstallService:
                 # Disk might be wedged; leave the row, retry next cycle.
                 continue
 
-            # The DELETE re-checks `updated_at < cutoff` so that if the
-            # row was retried (UPDATE bumped its timestamp) between our
-            # SELECT and DELETE, the now-fresh row escapes the reaper
-            # rather than getting wiped out from under the active install.
             async with self._db.transaction() as conn:
                 await conn.execute(
                     "DELETE FROM effects "
-                    "WHERE id = ? AND state = 'installing' AND updated_at < ?",
+                    "WHERE id = ? AND state IN ('installing', 'uninstalling') "
+                    "AND updated_at < ?",
                     (row["id"], cutoff),
                 )
             pruned += 1

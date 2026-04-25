@@ -2,7 +2,7 @@
 
 Each install path goes `INSERT installing → write files → UPDATE ready`.
 The loader filters on `state='ready'`, so in-flight or crashed installs
-are invisible to users. The reaper (`prune_abandoned_installs`) cleans
+are invisible to users. The reaper (`prune_stale_lifecycle_rows`) cleans
 abandoned `installing` rows + their folders after a TTL.
 """
 import io
@@ -158,6 +158,78 @@ class TestInstallLifecycle:
         assert not Path(existing["assets_dir"]).exists()
 
 
+class TestUninstallLifecycle:
+    """Symmetric with the install lifecycle: uninstall flips the row to
+    `state='uninstalling'`, rmtrees, and DELETEs. The loader filter on
+    `state='ready'` hides the row from step 2 onward; physical cleanup
+    finishes either in-process or via the reaper after a TTL."""
+
+    async def test_uninstall_clears_row_and_folder(self, install_service):
+        await install_service.install_from_archive(_zip_one(_manifest()))
+        row = await _row(install_service, "tester", "demo")
+        assert row is not None
+        effect_dir = Path(row["assets_dir"])
+        assert effect_dir.exists()
+
+        await install_service.uninstall("tester", "demo")
+
+        assert (await _row(install_service, "tester", "demo")) is None
+        assert not effect_dir.exists()
+
+    async def test_uninstalling_row_invisible_to_loader(self, install_service):
+        await install_service.install_from_archive(_zip_one(_manifest()))
+        row = await _row(install_service, "tester", "demo")
+        assert row is not None
+
+        # Flip to uninstalling without rmtreeing — same shape as a crash
+        # mid-uninstall.
+        await install_service._mark_uninstalling(row["id"])
+
+        all_effects = await install_service.get_all_effects()
+        slugs = {e["slug"] for e in all_effects}
+        assert "demo" not in slugs
+
+    async def test_mark_uninstalling_raises_on_concurrent_delete(self, install_service):
+        await install_service.install_from_archive(_zip_one(_manifest()))
+        existing = await _row(install_service, "tester", "demo")
+        assert existing is not None
+
+        async with install_service._db.transaction() as conn:
+            await conn.execute("DELETE FROM effects WHERE id = ?", (existing["id"],))
+
+        with pytest.raises(ValueError, match="no longer exists"):
+            await install_service._mark_uninstalling(existing["id"])
+
+    async def test_uninstall_delete_guarded_by_state(self, install_service):
+        """If the row gets flipped back to `ready` between
+        `_mark_uninstalling` and the final DELETE (e.g. an immediate
+        reinstall), the DELETE's `AND state='uninstalling'` guard makes
+        it a no-op rather than wiping the live row."""
+        await install_service.install_from_archive(_zip_one(_manifest()))
+        existing = await _row(install_service, "tester", "demo")
+        assert existing is not None
+
+        # Manually reproduce: flip to uninstalling, then back to ready,
+        # then run the same DELETE the uninstall path would issue.
+        await install_service._mark_uninstalling(existing["id"])
+        async with install_service._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE effects SET state='ready' WHERE id = ?",
+                (existing["id"],),
+            )
+
+        async with install_service._db.transaction() as conn:
+            await conn.execute(
+                "DELETE FROM effects WHERE id=? AND state='uninstalling'",
+                (existing["id"],),
+            )
+
+        # Row survived because the state guard rejected the DELETE.
+        survivor = await _row(install_service, "tester", "demo")
+        assert survivor is not None
+        assert survivor["state"] == "ready"
+
+
 class TestPartialArchiveSuccess:
     """Per-effect commit: a 5-effect archive with one bad effect leaves
     the earlier ones installed and the rest unattempted. No batched tx."""
@@ -188,13 +260,15 @@ class TestPartialArchiveSuccess:
 
 
 class TestPruneAbandonedInstalls:
-    """The reaper deletes `installing` rows older than `max_age_hours`
-    and rmtrees their folders. Fresh ones are left alone — that's how a
-    second instance starting up doesn't trample a sibling's in-flight
-    install."""
+    """The reaper deletes rows in transient lifecycle states (installing
+    or uninstalling) older than `max_age_hours` and rmtrees their
+    folders. Fresh ones are left alone — that's how a second instance
+    starting up doesn't trample a sibling's in-flight install."""
 
-    async def _plant_installing(self, install_service, slug: str, age_hours: float) -> Path:
-        """Insert a synthetic `installing` row + its folder, with
+    async def _plant(
+        self, install_service, slug: str, age_hours: float, state: str = "installing"
+    ) -> Path:
+        """Insert a synthetic transient-state row + its folder, with
         `updated_at` set to (now - age_hours)."""
         uuid = f"uuid-{slug}"
         assets_dir = install_service.effects_dir / uuid
@@ -209,16 +283,38 @@ class TestPruneAbandonedInstalls:
                     assets_dir, version, installed_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    uuid, "tester", slug, "installed", "installing",
+                    uuid, "tester", slug, "installed", state,
                     f"id: tester/{slug}\nname: x\n",
                     str(assets_dir), "1.0.0", ts, ts,
                 ),
             )
         return assets_dir
 
+    async def _plant_installing(self, install_service, slug: str, age_hours: float) -> Path:
+        return await self._plant(install_service, slug, age_hours, "installing")
+
+    async def test_old_uninstalling_rows_pruned(self, install_service):
+        """A row stuck in `state='uninstalling'` for >TTL gets the same
+        treatment as a stuck `installing` row: rmtree + DELETE."""
+        old_dir = await self._plant(install_service, "stuck-uninstall", age_hours=2.0, state="uninstalling")
+        pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
+        assert pruned == 1
+        assert not old_dir.exists()
+        assert (await _row(install_service, "tester", "stuck-uninstall")) is None
+
+    async def test_reaper_handles_both_transient_states_together(self, install_service):
+        """One installing + one uninstalling, both old → both pruned in
+        a single reaper cycle. Confirms the unified WHERE covers both."""
+        a = await self._plant(install_service, "a-install", age_hours=2.0, state="installing")
+        b = await self._plant(install_service, "b-uninstall", age_hours=2.0, state="uninstalling")
+        pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
+        assert pruned == 2
+        assert not a.exists()
+        assert not b.exists()
+
     async def test_old_installing_rows_pruned(self, install_service):
         old_dir = await self._plant_installing(install_service, "old", age_hours=2.0)
-        pruned = await install_service.prune_abandoned_installs(max_age_hours=1)
+        pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
         assert pruned == 1
         assert not old_dir.exists()
         assert (await _row(install_service, "tester", "old")) is None
@@ -230,7 +326,7 @@ class TestPruneAbandonedInstalls:
         fresh_dir = await self._plant_installing(
             install_service, "fresh", age_hours=5 / 60
         )
-        pruned = await install_service.prune_abandoned_installs(max_age_hours=1)
+        pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
         assert pruned == 0
         assert fresh_dir.exists()
         assert (await _row(install_service, "tester", "fresh"))["state"] == "installing"
@@ -247,7 +343,7 @@ class TestPruneAbandonedInstalls:
                 (ancient,),
             )
 
-        pruned = await install_service.prune_abandoned_installs(max_age_hours=1)
+        pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
         assert pruned == 0
         assert (await _row(install_service, "tester", "demo")) is not None
 
@@ -263,7 +359,7 @@ class TestPruneAbandonedInstalls:
 
         async def racing_fetchall(sql, params=()):
             rows = await original_fetchall(sql, params)
-            if "WHERE state = 'installing'" in sql:
+            if "WHERE state IN" in sql:
                 # User just retried — bump updated_at to now (still
                 # state='installing' because the install is in flight).
                 now = datetime.now(timezone.utc).isoformat()
@@ -275,7 +371,7 @@ class TestPruneAbandonedInstalls:
             return rows
 
         with patch.object(install_service._db, "fetchall", racing_fetchall):
-            await install_service.prune_abandoned_installs(max_age_hours=1)
+            await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
 
         # Row survives — its updated_at is now fresh, the DELETE's
         # `updated_at < cutoff` guard rejected the row.
@@ -315,7 +411,7 @@ class TestPruneAbandonedInstalls:
 
         async def racing_fetchall(sql, params=()):
             rows = await original_fetchall(sql, params)
-            if "WHERE state = 'installing'" in sql:
+            if "WHERE state IN" in sql:
                 async with install_service._db.transaction() as conn:
                     await conn.execute(
                         "UPDATE effects SET state = 'ready' WHERE namespace = 'tester' AND slug = 'racy'"
@@ -323,7 +419,7 @@ class TestPruneAbandonedInstalls:
             return rows
 
         with patch.object(install_service._db, "fetchall", racing_fetchall):
-            await install_service.prune_abandoned_installs(max_age_hours=1)
+            await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
 
         # Row is still there at state='ready' — the racy DELETE matched
         # nothing because the WHERE state='installing' guard rejected it.

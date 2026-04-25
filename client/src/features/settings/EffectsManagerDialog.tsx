@@ -171,7 +171,15 @@ function InstallEffectSection({ onInstalled }: { onInstalled: () => void }) {
     setSuccess(null)
     try {
       const result = await runInstall(pending, overwrite)
-      setSuccess(`Installed ${result.installed.length} effect(s)`)
+      // URL install is always single; archive can ship multiple effects.
+      // Surface the slug for the common single case, fall back to a count
+      // for archives that bring more than one.
+      const installed = result.installed
+      setSuccess(
+        installed.length === 1
+          ? `Installed ${installed[0]}`
+          : `Installed ${installed.length} effects`,
+      )
       if (pending.kind === 'url') setUrl('')
       setConflict(null)
       onInstalled()
@@ -265,7 +273,7 @@ function InstallConflictDialog({
               ? 'These effects are already installed. Overwrite them?'
               : 'This effect is already installed. Overwrite it?'}
           </p>
-          <div className="space-y-1.5">
+          <div className="max-h-[40vh] space-y-1.5 overflow-y-auto pr-1">
             {state?.conflicts.map((c) => (
               <div key={`${c.namespace}/${c.slug}`} className="rounded-md border px-3 py-2 text-xs">
                 <div className="font-medium text-foreground">{c.name}</div>

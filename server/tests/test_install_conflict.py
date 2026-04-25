@@ -141,6 +141,22 @@ class TestArchiveInstallConflict:
         existing = await install_service.get_effect("openeffect", "bundled")
         assert existing["version"] == "2.0.0"
 
+    async def test_reserved_namespace_in_archive_blocks_whole_install(self, install_service):
+        """A multi-effect archive where one manifest claims a reserved
+        namespace must reject the whole install — not partially install
+        the other effects before hitting the bad one."""
+        archive = _zip_many([
+            _manifest(id="tester/clean-a"),
+            _manifest(id="openeffect/sneaky"),  # reserved
+            _manifest(id="tester/clean-b"),
+        ])
+        with pytest.raises(ValueError, match="reserved"):
+            await install_service.install_from_archive(archive)
+        # None of the clean ones should have leaked in
+        assert (await install_service.get_effect("tester", "clean-a")) is None
+        assert (await install_service.get_effect("tester", "clean-b")) is None
+        assert (await install_service.get_effect("openeffect", "sneaky")) is None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Security: URL download + zip extraction safeguards

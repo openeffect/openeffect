@@ -274,6 +274,13 @@ class InstallService:
             manifest = EffectManifest(**data)
             pending.append((manifest_path, manifest))
 
+        # Validate every namespace upfront so a single bad manifest can't
+        # leave the archive half-installed — the per-effect install loop
+        # below assumes everything in `pending` is already cleared.
+        if not allow_official:
+            for _, m in pending:
+                self._validate_namespace(m.namespace)
+
         if not allow_official and not overwrite:
             conflicts = await self._detect_conflicts([m for _, m in pending])
             if conflicts:
@@ -329,12 +336,12 @@ class InstallService:
     async def _install_from_extracted(
         self, manifest_path: Path, allow_official: bool
     ) -> str:
+        # Caller (`install_from_folder`) has already validated namespace and
+        # detected conflicts upfront — reaching this loop means every
+        # manifest is clear to install.
         yaml_content = manifest_path.read_text()
         data = yaml.safe_load(yaml_content)
         manifest = EffectManifest(**data)
-
-        if not allow_official:
-            self._validate_namespace(manifest.namespace)
 
         existing = await self.get_effect(manifest.namespace, manifest.slug)
         if existing and existing["version"] == manifest.version:

@@ -29,7 +29,11 @@ export interface RestoredParams {
 export interface AssetFile {
   filename: string
   size: number
+  /** Original-bytes URL — used for downloads and full-size previews.
+   *  Composed thumbnails: `/api/files/<id>/512.webp` or `/1024.webp`. */
   url: string
+  /** UUID7 of the underlying file row. */
+  id: string
 }
 
 // ─── Slice interfaces ────────────────────────────────────────────────────────

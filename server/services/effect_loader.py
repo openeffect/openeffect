@@ -1,29 +1,50 @@
+import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
+from db.database import Database
 from effects.validator import EffectManifest
 from services.install_service import InstallService
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class FileRef:
+    """An effect's view of a file in the file store. The serializer
+    composes URLs from these without ever hitting the DB or filesystem.
+    Note `hash` is intentionally absent — it's a server-internal dedup
+    key and exposing it via the API would let an attacker probe for
+    known content."""
+    id: str
+    mime: str
+    ext: str
+    variants: list[str]
+
+
 @dataclass
 class LoadedEffect:
     """Wraps a validated manifest with loader-specific metadata."""
     manifest: EffectManifest
-    id: str                # UUID primary key from the effects table
-    full_id: str           # namespace/slug
-    assets_dir: Path       # UUID folder path
-    source: str            # "official" | "installed" | "local"
+    id: str                                 # UUID primary key from the effects table
+    full_id: str                            # namespace/slug
+    source: str                             # "official" | "installed" | "local"
     is_favorite: bool = False
+    files: dict[str, FileRef] = field(default_factory=dict)  # logical_name → FileRef
 
 
 class EffectLoaderService:
-    def __init__(self, install_service: InstallService, bundled_dir: Path | None = None):
+    def __init__(
+        self,
+        install_service: InstallService,
+        db: Database,
+        bundled_dir: Path | None = None,
+    ):
         self._install = install_service
+        self._db = db
         self._bundled_dir = bundled_dir
         self._cache: dict[str, LoadedEffect] = {}       # keyed by full_id (namespace/slug)
         self._uuid_cache: dict[str, LoadedEffect] = {}  # keyed by effects.id (UUID)
@@ -45,14 +66,40 @@ class EffectLoaderService:
             except Exception as e:
                 logger.error(f"Failed to sync bundled effects: {e}")
 
-        # Load all effects from DB
         await self.reload()
 
     async def reload(self) -> None:
-        """Reload the in-memory cache from the DB. Atomic swap to avoid empty cache during rebuild."""
+        """Atomic-swap rebuild of the in-memory cache. Joins `effect_files`
+        against `files` once so each `LoadedEffect.files` is populated
+        without per-effect round trips."""
         new_cache: dict[str, LoadedEffect] = {}
         new_uuid_cache: dict[str, LoadedEffect] = {}
+
         rows = await self._install.get_all_effects()
+        if not rows:
+            self._cache = new_cache
+            self._uuid_cache = new_uuid_cache
+            logger.info("Loaded 0 effects from database")
+            return
+
+        # Single JOIN to pull every (effect_id, logical_name) → file mapping.
+        # Cheaper than per-effect lookups even for tiny libraries.
+        effect_ids = [row["id"] for row in rows]
+        placeholders = ",".join("?" * len(effect_ids))
+        files_query = (
+            "SELECT ef.effect_id, ef.logical_name, f.id, f.mime, f.ext, f.variants "
+            "FROM effect_files ef "
+            "JOIN files f ON f.id = ef.file_id "
+            f"WHERE ef.effect_id IN ({placeholders})"
+        )
+        file_rows = await self._db.fetchall(files_query, tuple(effect_ids))
+        files_by_effect: dict[str, dict[str, FileRef]] = {}
+        for fr in file_rows:
+            ref = FileRef(
+                id=fr["id"], mime=fr["mime"], ext=fr["ext"],
+                variants=json.loads(fr["variants"]),
+            )
+            files_by_effect.setdefault(fr["effect_id"], {})[fr["logical_name"]] = ref
 
         for row in rows:
             try:
@@ -60,15 +107,14 @@ class EffectLoaderService:
                 manifest = EffectManifest(**manifest_data)
                 effect_id = row["id"]
                 full_id = manifest.full_id
-                assets_dir = Path(row["assets_dir"])
 
                 loaded = LoadedEffect(
                     manifest=manifest,
                     id=effect_id,
                     full_id=full_id,
-                    assets_dir=assets_dir,
                     source=row["source"],
                     is_favorite=bool(row.get("is_favorite", 0)),
+                    files=files_by_effect.get(effect_id, {}),
                 )
                 new_cache[full_id] = loaded
                 new_uuid_cache[effect_id] = loaded
@@ -94,21 +140,3 @@ class EffectLoaderService:
     def get_by_id(self, effect_id: str) -> LoadedEffect | None:
         """Look up by the UUID primary key."""
         return self._uuid_cache.get(effect_id)
-
-    def get_asset_path(self, uuid: str, filename: str) -> Path | None:
-        """Resolve an asset file from a UUID folder. No DB query needed."""
-        # Validate UUID format (basic check)
-        if not uuid or "/" in uuid or ".." in uuid:
-            return None
-
-        assets_dir = self._install.effects_dir / uuid / "assets"
-
-        # Directory traversal protection
-        safe_path = (assets_dir / filename).resolve()
-        if not str(safe_path).startswith(str(assets_dir.resolve())):
-            return None
-
-        if not safe_path.exists():
-            return None
-
-        return safe_path

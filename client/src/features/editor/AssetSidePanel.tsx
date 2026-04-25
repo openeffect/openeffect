@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, Film, Trash2, Pencil, Check, X } from 'lucide-react'
+import { ChevronLeft, Trash2, Pencil, Check, X, Loader2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectAssetFiles } from '@/store/selectors/editorSelectors'
+import {
+  addEditorAsset,
+  removeEditorAsset,
+  renameEditorAsset,
+} from '@/store/actions/editorActions'
 import { api } from '@/utils/api'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { FileDropzone } from '@/components/FileDropzone'
 import type { AssetFile } from '@/store/types'
 
-const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
 // Rail width matches the expanded-header height so the two chrome strips
 // read as the same-thickness bar — one rotated 90° relative to the other.
 const RAIL_WIDTH = 32
@@ -18,63 +22,36 @@ const PANEL_WIDTH = 320
 const EASE: [number, number, number, number] = [0.25, 1, 0.5, 1]
 
 export function AssetSidePanel({ effectId }: { effectId: string }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const storeFiles = useStore(selectAssetFiles)
-  const [files, setFiles] = useState(storeFiles)
-  // Sync from store when it changes (e.g. on open). React's "storing info
-  // from previous renders" pattern — setState-in-effect would cascade.
-  const [prevStoreFiles, setPrevStoreFiles] = useState(storeFiles)
-  if (storeFiles !== prevStoreFiles) {
-    setPrevStoreFiles(storeFiles)
-    setFiles(storeFiles)
-  }
-  const [renamingFile, setRenamingFile] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-
+  // The store's assetFiles slice mirrors what the server has bound to
+  // the effect. Add/rename/delete each call the per-asset endpoint
+  // before mutating local state, so save is purely a YAML update.
+  const files = useStore(selectAssetFiles)
   // effectId is a UUID — resolve to namespace/slug for API calls.
   const effect = useStore((s) => s.effects.items.get(effectId))
   const ns = effect?.namespace
   const slug = effect?.slug
+  const isPersisted = ns !== undefined && slug !== undefined
+
+  const [isOpen, setIsOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const handleUpload = async (file: File) => {
     if (!ns || !slug) return
+    setUploadError(null)
+    setUploading(true)
     try {
-      const result = await api.uploadAsset(ns, slug, file)
-      setFiles((prev) => [...prev, result])
-    } catch {
-      // ignore
-    }
-  }
-
-  const handleDelete = async (filename: string) => {
-    if (!ns || !slug) return
-    try {
-      await api.deleteAsset(ns, slug, filename)
-      setFiles((prev) => prev.filter((f) => f.filename !== filename))
-    } catch {
-      // ignore
-    }
-  }
-
-  const startRename = (filename: string) => {
-    setRenamingFile(filename)
-    setRenameValue(filename)
-  }
-
-  const handleRename = async () => {
-    if (!ns || !slug || !renamingFile || !renameValue.trim()) return
-    if (renameValue === renamingFile) {
-      setRenamingFile(null)
-      return
-    }
-    try {
-      const result = await api.renameAsset(ns, slug, renamingFile, renameValue.trim())
-      setFiles((prev) =>
-        prev.map((f) => f.filename === renamingFile ? { ...f, filename: result.filename, url: result.url } : f),
-      )
-      setRenamingFile(null)
-    } catch {
-      // ignore
+      const result = await api.uploadEffectAsset(ns, slug, file)
+      addEditorAsset({
+        filename: result.filename,
+        size: result.size,
+        url: result.url,
+        id: result.id,
+      })
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -103,9 +80,23 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
             {count > 0 && <Badge className="ml-1">{count}</Badge>}
           </button>
 
-          {/* Upload — pinned to top */}
-          <div className="shrink-0 border-b p-3">
-            <FileDropzone onFile={handleUpload} label="Click or drag to upload asset" />
+          {/* Upload — pinned to top. Disabled until the effect has been
+              saved at least once, since asset bindings need an effect_id
+              to attach to. */}
+          <div className="shrink-0 space-y-2 border-b p-3">
+            {isPersisted ? (
+              <FileDropzone
+                onFile={handleUpload}
+                label="Click or drag to upload asset"
+                accept="image/*,video/mp4,video/webm"
+                busy={uploading}
+              />
+            ) : (
+              <div className="rounded-md border border-dashed bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
+                Save the effect first to attach assets.
+              </div>
+            )}
+            {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
           </div>
 
           {/* File list — only this scrolls */}
@@ -114,13 +105,8 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
               <FileRow
                 key={f.filename}
                 file={f}
-                isRenaming={renamingFile === f.filename}
-                renameValue={renameValue}
-                onRenameValueChange={setRenameValue}
-                onStartRename={() => startRename(f.filename)}
-                onConfirmRename={handleRename}
-                onCancelRename={() => setRenamingFile(null)}
-                onDelete={() => handleDelete(f.filename)}
+                ns={ns ?? ''}
+                slug={slug ?? ''}
               />
             ))}
           </div>
@@ -143,127 +129,176 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
   )
 }
 
+/** A row owns its own busy + error state so feedback lands inline,
+ *  next to whichever file the user is acting on. Mirrors the
+ *  ManagedEffectRow pattern in EffectsManagerDialog where the confirm
+ *  button itself swaps to a spinner. */
 function FileRow({
   file,
-  isRenaming,
-  renameValue,
-  onRenameValueChange,
-  onStartRename,
-  onConfirmRename,
-  onCancelRename,
-  onDelete,
+  ns,
+  slug,
 }: {
   file: AssetFile
-  isRenaming: boolean
-  renameValue: string
-  onRenameValueChange: (v: string) => void
-  onStartRename: () => void
-  onConfirmRename: () => void
-  onCancelRename: () => void
-  onDelete: () => void
+  ns: string
+  slug: string
 }) {
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(file.filename)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const ext = file.filename.split('.').pop()?.toLowerCase() ?? ''
-  const isImage = IMAGE_EXTS.has(ext)
+  const [busy, setBusy] = useState<'rename' | 'delete' | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleConfirmDelete = () => {
-    setConfirmingDelete(false)
-    onDelete()
+  // Every image and video has a `512.webp` on disk (Pillow thumbnail for
+  // images, ffmpeg poster frame for videos) — the file-store's contract.
+  // No need to check.
+  const thumbnailUrl = `/api/files/${file.id}/512.webp`
+
+  const startRename = () => {
+    setIsRenaming(true)
+    setRenameValue(file.filename)
+    setError(null)
+  }
+
+  const cancelRename = () => {
+    setIsRenaming(false)
+    setError(null)
+  }
+
+  const confirmRename = async () => {
+    const next = renameValue.trim()
+    if (!next || next === file.filename) {
+      cancelRename()
+      return
+    }
+    setError(null)
+    setBusy('rename')
+    try {
+      const result = await api.renameEffectAsset(ns, slug, file.filename, next)
+      renameEditorAsset(file.filename, result.filename)
+      setIsRenaming(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Rename failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const confirmDelete = async () => {
+    setError(null)
+    setBusy('delete')
+    try {
+      await api.deleteEffectAsset(ns, slug, file.filename)
+      removeEditorAsset(file.filename)
+      // No need to clear local state — the row unmounts as the parent
+      // list drops this entry from the store.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+      setBusy(null)
+      setConfirmingDelete(false)
+    }
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border p-2">
-      {/* Thumbnail */}
-      {isImage ? (
+    <div className="rounded-lg border">
+      <div className="flex items-center gap-2 p-2">
+        {/* Thumbnail — clicks open the original. */}
         <a href={file.url} target="_blank" rel="noreferrer" className="shrink-0">
           <img
-            src={file.url}
+            src={thumbnailUrl}
             alt={file.filename}
             className="h-8 w-8 rounded object-cover"
           />
         </a>
-      ) : (
-        <a
-          href={file.url}
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted"
-        >
-          <Film size={14} className="text-muted-foreground" />
-        </a>
-      )}
 
-      {/* Middle — rename input or filename */}
-      {isRenaming ? (
-        <Input
-          value={renameValue}
-          onChange={(e) => onRenameValueChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onConfirmRename()
-            if (e.key === 'Escape') onCancelRename()
-          }}
-          className="h-6 flex-1 py-0 text-xs"
-          autoFocus
-        />
-      ) : (
-        <span className="flex-1 truncate text-xs text-foreground">{file.filename}</span>
-      )}
-
-      {/* Actions — swap to confirm/cancel while renaming or confirming delete */}
-      <div className="flex shrink-0 items-center gap-0.5">
+        {/* Middle — rename input or filename */}
         {isRenaming ? (
-          <>
-            <button
-              onClick={onConfirmRename}
-              className="rounded-md p-1 text-success hover:bg-success/15"
-              title="Save"
-            >
-              <Check size={12} />
-            </button>
-            <button
-              onClick={onCancelRename}
-              className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-              title="Cancel"
-            >
-              <X size={12} />
-            </button>
-          </>
-        ) : confirmingDelete ? (
-          <>
-            <button
-              onClick={handleConfirmDelete}
-              className="rounded-md p-1 text-destructive hover:bg-destructive/15"
-              title="Confirm delete"
-            >
-              <Check size={12} />
-            </button>
-            <button
-              onClick={() => setConfirmingDelete(false)}
-              className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-              title="Cancel"
-            >
-              <X size={12} />
-            </button>
-          </>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') confirmRename()
+              if (e.key === 'Escape') cancelRename()
+            }}
+            disabled={busy === 'rename'}
+            className="h-6 flex-1 py-0 text-xs"
+            autoFocus
+          />
         ) : (
-          <>
-            <button
-              onClick={onStartRename}
-              className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-              title="Rename"
-            >
-              <Pencil size={12} />
-            </button>
-            <button
-              onClick={() => setConfirmingDelete(true)}
-              className="rounded-md p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-              title="Delete"
-            >
-              <Trash2 size={12} />
-            </button>
-          </>
+          <span className="flex-1 truncate text-xs text-foreground">{file.filename}</span>
         )}
+
+        {/* Actions — swap to confirm/cancel while renaming or confirming delete */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {isRenaming ? (
+            <>
+              <button
+                onClick={confirmRename}
+                disabled={busy !== null}
+                className="rounded-md p-1 text-success hover:bg-success/15 disabled:opacity-60"
+                title="Save"
+              >
+                {busy === 'rename' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} />
+                )}
+              </button>
+              <button
+                onClick={cancelRename}
+                disabled={busy !== null}
+                className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-60"
+                title="Cancel"
+              >
+                <X size={12} />
+              </button>
+            </>
+          ) : confirmingDelete ? (
+            <>
+              <button
+                onClick={confirmDelete}
+                disabled={busy !== null}
+                className="rounded-md p-1 text-destructive hover:bg-destructive/15 disabled:opacity-60"
+                title="Confirm delete"
+              >
+                {busy === 'delete' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} />
+                )}
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                disabled={busy !== null}
+                className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-60"
+                title="Cancel"
+              >
+                <X size={12} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={startRename}
+                className="rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                title="Rename"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={() => { setConfirmingDelete(true); setError(null) }}
+                className="rounded-md p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                title="Delete"
+              >
+                <Trash2 size={12} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Inline error — sits inside the row's border, anchored under
+          the file it concerns. Same `text-xs` as the filename. */}
+      {error && <p className="px-2 pb-2 text-xs text-destructive">{error}</p>}
     </div>
   )
 }

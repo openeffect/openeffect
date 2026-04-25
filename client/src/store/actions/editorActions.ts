@@ -193,6 +193,9 @@ export async function saveEffect(): Promise<void> {
   }, 'editor/saveStart')
 
   try {
+    // Save touches only the YAML — the asset bindings on
+    // `effect_files` were already updated as the user added / renamed /
+    // deleted assets through the panel.
     const result = await api.saveEffect(yamlContent, editingEffectId)
     const effectId = result.manifest.id
 
@@ -328,4 +331,34 @@ export async function editEffect(effect: EffectManifest): Promise<void> {
   } catch {
     forkEffect(effect)
   }
+}
+
+// ─── Asset list mutations ────────────────────────────────────────────────────
+
+/** Append an asset to the editor's pending list. The associated file row
+ *  must already exist on the server (uploaded via /api/files). The save
+ *  endpoint will bind it to the effect on the next save. */
+export function addEditorAsset(file: AssetFile): void {
+  setState((s) => {
+    s.editor.assetFiles = [...s.editor.assetFiles, file]
+  }, 'editor/asset/add')
+}
+
+/** Drop an asset by filename. The underlying file row stays — its
+ *  ref_count just drops by one when the next save runs. */
+export function removeEditorAsset(filename: string): void {
+  setState((s) => {
+    s.editor.assetFiles = s.editor.assetFiles.filter((f) => f.filename !== filename)
+  }, 'editor/asset/remove')
+}
+
+/** Rename an asset's logical filename. The underlying file (and hash)
+ *  is unchanged — only the (filename → hash) mapping that gets sent at
+ *  save time. */
+export function renameEditorAsset(oldName: string, newName: string): void {
+  setState((s) => {
+    s.editor.assetFiles = s.editor.assetFiles.map((f) =>
+      f.filename === oldName ? { ...f, filename: newName } : f,
+    )
+  }, 'editor/asset/rename')
 }

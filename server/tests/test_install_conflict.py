@@ -1,14 +1,23 @@
 """Tests for install conflict detection and overwrite flow."""
 import io
 import zipfile
-from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from PIL import Image
 
 from db.database import Database, init_db
+from services.file_service import FileService
 from services.install_service import InstallConflictError, InstallService
+
+
+def _png_bytes(color: tuple[int, int, int] = (50, 50, 50)) -> bytes:
+    """Real PNG so the file store's thumbnail pipeline accepts it."""
+    img = Image.new("RGB", (16, 16), color=color)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 MANIFEST_BASE: dict[str, Any] = {
     "id": "tester/demo",
@@ -63,11 +72,13 @@ def _zip_many(manifests: list[dict]) -> bytes:
 @pytest.fixture
 async def install_service(tmp_path):
     db_path = tmp_path / "test.db"
-    effects_dir = tmp_path / "effects"
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
     await init_db(db_path)
     db = Database(db_path)
     await db.connect()
-    yield InstallService(db, effects_dir)
+    file_service = FileService(files_dir, db)
+    yield InstallService(db, file_service)
     await db.close()
 
 
@@ -318,23 +329,33 @@ class TestArchiveAssetWhitelist:
 
     async def test_extra_asset_in_zip_not_copied(self, install_service):
         m = _manifest(
-            showcases=[{"preview": "preview.mp4", "inputs": {"image": "in.jpg"}}],
+            showcases=[{"preview": "preview.png", "inputs": {"image": "in.png"}}],
         )
+        png_a = _png_bytes(color=(10, 10, 10))
+        png_b = _png_bytes(color=(20, 20, 20))
+        png_c = _png_bytes(color=(30, 30, 30))
+        png_d = _png_bytes(color=(40, 40, 40))
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(f"{m['id']}/manifest.yaml", yaml.dump(m))
-            zf.writestr(f"{m['id']}/assets/preview.mp4", b"\x00" * 16)
-            zf.writestr(f"{m['id']}/assets/in.jpg", b"\xFF\xD8\xFF\xE0jpg!")
+            zf.writestr(f"{m['id']}/assets/preview.png", png_a)
+            zf.writestr(f"{m['id']}/assets/in.png", png_b)
             # Undeclared extras the author might have left in the folder
-            zf.writestr(f"{m['id']}/assets/leftover.jpg", b"\xFF\xD8\xFF\xE0!!!")
-            zf.writestr(f"{m['id']}/assets/notes.png", b"\x89PNG\r\n\x1a\n!!!")
+            zf.writestr(f"{m['id']}/assets/leftover.png", png_c)
+            zf.writestr(f"{m['id']}/assets/notes.png", png_d)
 
         await install_service.install_from_archive(buf.getvalue())
 
         row = await install_service.get_effect("tester", "demo")
-        assets_dir = Path(row["assets_dir"]) / "assets"
-        declared = {p.name for p in assets_dir.iterdir()}
-        assert declared == {"preview.mp4", "in.jpg"}
+        assert row is not None
+        # Only declared assets get bound — the install path ignores
+        # extras in the zip's assets/ folder.
+        rows = await install_service._db.fetchall(
+            "SELECT logical_name FROM effect_files WHERE effect_id = ?",
+            (row["id"],),
+        )
+        declared = {r["logical_name"] for r in rows}
+        assert declared == {"preview.png", "in.png"}
 
     async def test_missing_declared_asset_raises(self, install_service):
         m = _manifest(showcases=[{"preview": "preview.mp4", "inputs": {}}])

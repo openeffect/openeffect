@@ -24,8 +24,8 @@ async function prepareInputs(
     if (schema.type === 'image') {
       const val = values[key]
       if (val instanceof File) {
-        const uploaded = await api.upload(val)
-        inputs[key] = uploaded.ref_id
+        const uploaded = await api.uploadFile(val)
+        inputs[key] = uploaded.id
       } else if (
         val &&
         typeof val === 'object' &&

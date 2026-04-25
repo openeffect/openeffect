@@ -460,7 +460,7 @@ function PreviousParams({ items }: { items: { key: string; value: string; label:
               {type === 'image' ? (
                 <div className="mt-1 overflow-hidden rounded-lg border bg-muted">
                   <img
-                    src={`/api/uploads/${value}/512.jpg`}
+                    src={`/api/files/${value}/512.webp`}
                     alt={label}
                     className="max-h-28 w-full object-cover"
                     onError={(e) => { e.currentTarget.style.display = 'none' }}

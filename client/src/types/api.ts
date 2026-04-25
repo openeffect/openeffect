@@ -117,7 +117,11 @@ export interface RunRecord {
   status: 'processing' | 'completed' | 'failed'
   progress: number
   progress_msg: string | null
+  /** Composed by the server from `output_id + ext`. Null while the run
+   *  is in flight or if it failed before producing a result. */
   video_url: string | null
+  /** UUID7 of the result file. Composed thumbnails: `/api/files/<id>/512.webp`. */
+  output_id: string | null
   inputs: unknown
   error: string | null
   created_at: string
@@ -192,15 +196,17 @@ export interface AppConfig {
   keyring_available: boolean
 }
 
-export interface UploadResponse {
-  ref_id: string
-  filename: string
-  mime_type: string
-  size_bytes: number
-  thumbnails: {
-    '512': string
-    '2048': string
-  }
+export interface FileResponse {
+  /** UUID7 — the addressable identifier for the file. Compose URLs as
+   *  `/api/files/<id>/<filename>`. Every image and video the server
+   *  accepts has `original.<ext>`, `512.webp`, and `1024.webp` available
+   *  on disk — no need to check ahead of time. */
+  id: string
+  kind: 'image' | 'video' | 'other'
+  mime: string
+  /** Canonical original extension, no leading dot (e.g. "jpg", "mp4"). */
+  ext: string
+  size: number
 }
 
 export interface RunRequest {

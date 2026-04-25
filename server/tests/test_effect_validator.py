@@ -339,7 +339,7 @@ class TestValidateRunInputsRequired:
 
     def test_image_required_is_not_enforced_here(self):
         """start_frame required-ness is an author-time invariant; at run
-        time we receive a ref_id and can't meaningfully 'require' one
+        time we receive a file id and can't meaningfully 'require' one
         without a separate request-shape check."""
         m = _run_input_manifest()
         validate_run_inputs(m, {})  # no raise, despite required image

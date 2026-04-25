@@ -58,15 +58,14 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
             status === 'processing' && 'bg-primary',
           )}
         />
-        {/* Video thumbnail */}
-        {status === 'completed' && item.video_url && (
+        {/* Video thumbnail — the file store's contract guarantees a
+            `512.webp` poster frame on every result. */}
+        {status === 'completed' && item.output_id && (
           <div className="shrink-0 w-20 self-stretch overflow-hidden rounded-md border bg-muted">
-            <video
-              src={item.video_url}
+            <img
+              src={`/api/files/${item.output_id}/512.webp`}
+              alt=""
               className="h-full w-full object-cover"
-              muted
-              preload="metadata"
-              onLoadedData={(e) => { (e.target as HTMLVideoElement).currentTime = 0.5 }}
             />
           </div>
         )}
@@ -110,7 +109,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
               {imageRefs.map(([key, refId]) => (
                 <div key={key} className="h-10 w-10 overflow-hidden rounded border bg-muted">
                   <img
-                    src={`/api/uploads/${refId}/512`}
+                    src={`/api/files/${refId}/512.webp`}
                     alt={key}
                     className="h-full w-full object-cover"
                     onError={(e) => { e.currentTarget.style.display = 'none' }}

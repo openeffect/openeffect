@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     server_host: str = "127.0.0.1"
     log_level: str = "info"
     update_version: str = ""
-    upload_ttl_hours: int = 1
-    upload_reaper_interval_seconds: int = 3600
+    file_ttl_hours: int = 1
+    file_reaper_interval_seconds: int = 3600
 
     model_config = SettingsConfigDict(env_prefix="OPENEFFECT_")
 

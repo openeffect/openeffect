@@ -1,8 +1,7 @@
 """Integration tests for the run pipeline with a mocked provider."""
 import asyncio
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,7 +9,7 @@ from db.database import Database, init_db
 from effects.validator import EffectManifest, GenerationConfig, InputFieldSchema
 from schemas.run import RunRequest
 from services.effect_loader import EffectLoaderService, LoadedEffect
-from services.history_service import HistoryService, RunRecord
+from services.history_service import HistoryService
 from services.run_service import RunJob, RunService
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -37,7 +36,6 @@ def _make_loaded(manifest: EffectManifest, effect_id: str = "test-uuid-001") -> 
         manifest=manifest,
         id=effect_id,
         full_id=manifest.full_id,
-        assets_dir=Path("/tmp/test-assets"),
         source="local",
     )
 
@@ -70,10 +68,13 @@ def effect_loader():
 
 
 @pytest.fixture
-def storage():
+def files(tmp_path):
+    """A FileService stand-in — only the methods the run pipeline calls
+    need to look real, the rest are MagicMock."""
     svc = MagicMock()
+    svc.files_dir = tmp_path / "files"
+    svc.files_dir.mkdir(exist_ok=True)
     svc.increment_ref = AsyncMock()
-    svc.get_upload_path.return_value = Path("/tmp/fake-image.jpg")
     return svc
 
 
@@ -90,12 +91,12 @@ def config_service():
 
 
 @pytest.fixture
-def run_service(effect_loader, config_service, history, storage, model_service):
+def run_service(effect_loader, config_service, history, files, model_service):
     return RunService(
         effect_loader=effect_loader,
         config_service=config_service,
         history_service=history,
-        storage_service=storage,
+        file_service=files,
         model_service=model_service,
     )
 
@@ -103,15 +104,14 @@ def run_service(effect_loader, config_service, history, storage, model_service):
 # ─── Tests ───────────────────────────────────────────────────────────────────
 
 class TestStartRun:
-    async def test_creates_job_and_returns_id(self, run_service, history, tmp_path):
-        with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
-            job_id = await run_service.start(RunRequest(
-                effect_id="test-uuid-001",
-                model_id="wan-2.7",
-                provider_id="fal",
-                inputs={"prompt": "hello"},
-                output={},
-            ))
+    async def test_creates_job_and_returns_id(self, run_service, history):
+        job_id = await run_service.start(RunRequest(
+            effect_id="test-uuid-001",
+            model_id="wan-2.7",
+            provider_id="fal",
+            inputs={"prompt": "hello"},
+            output={},
+        ))
         assert job_id is not None
         assert len(job_id) > 0
 
@@ -121,16 +121,15 @@ class TestStartRun:
         assert record.status == "processing"
         assert record.effect_name == "Test Effect"
 
-    async def test_stores_inputs_as_structured_json(self, run_service, history, tmp_path):
-        with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
-            job_id = await run_service.start(RunRequest(
-                effect_id="test-uuid-001",
-                model_id="wan-2.7",
-                provider_id="fal",
-                inputs={"prompt": "city night"},
-                output={"duration": 5},
-                user_params={"guidance_scale": 3.5},
-            ))
+    async def test_stores_inputs_as_structured_json(self, run_service, history):
+        job_id = await run_service.start(RunRequest(
+            effect_id="test-uuid-001",
+            model_id="wan-2.7",
+            provider_id="fal",
+            inputs={"prompt": "city night"},
+            output={"duration": 5},
+            user_params={"guidance_scale": 3.5},
+        ))
 
         record = await history.get_by_id(job_id)
         data = json.loads(record.inputs)
@@ -168,17 +167,16 @@ class TestStartRun:
                 output={},
             ))
 
-    async def test_increments_ref_count_for_image_inputs(self, run_service, storage, tmp_path):
-        with patch.object(RunRecord, 'run_folder', return_value=tmp_path / "run"):
-            await run_service.start(RunRequest(
-                effect_id="test-uuid-001",
-                model_id="wan-2.7",
-                provider_id="fal",
-                inputs={"image": "ref-123", "prompt": "test"},
-                output={},
-            ))
+    async def test_increments_ref_count_for_image_inputs(self, run_service, files):
+        await run_service.start(RunRequest(
+            effect_id="test-uuid-001",
+            model_id="wan-2.7",
+            provider_id="fal",
+            inputs={"image": "abc123hash", "prompt": "test"},
+            output={},
+        ))
 
-        storage.increment_ref.assert_called_once_with("ref-123")
+        files.increment_ref.assert_called_once_with("abc123hash")
 
 
 class TestBroadcast:

@@ -37,7 +37,7 @@ def client(tmp_path):
         app.state.effect_loader = effect_loader
         app.state.config_service = MagicMock(get_api_key=AsyncMock(return_value="k"))
         app.state.settings = MagicMock()
-        app.state.storage_service = MagicMock()
+        app.state.file_service = MagicMock()
         app.state.history_service = MagicMock()
         app.state.model_service = MagicMock()
         app.state.run_service = MagicMock()

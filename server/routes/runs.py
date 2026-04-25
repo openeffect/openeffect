@@ -1,11 +1,8 @@
 import json
-import shutil
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
 
-from config.settings import get_settings
-from routes._errors import ErrorCode, conflict, not_found
+from routes._errors import conflict, not_found
 
 router = APIRouter()
 
@@ -41,23 +38,12 @@ async def get_run(item_id: str, request: Request):
     return record.to_dict()
 
 
-@router.get("/runs/{item_id}/result")
-async def get_run_result(item_id: str, request: Request):
-    history = request.app.state.history_service
-    record = await history.get_by_id(item_id)
-    if not record:
-        raise not_found("Record not found")
-
-    settings = get_settings()
-    result_path = settings.user_data_dir / "runs" / item_id / "result.mp4"
-    if not result_path.exists():
-        raise not_found("Result file not found", ErrorCode.FILE_NOT_FOUND)
-
-    return FileResponse(result_path, media_type="video/mp4")
-
-
 @router.delete("/runs/{item_id}")
 async def delete_run(item_id: str, request: Request):
+    """Delete a run and decrement refs on every file it referenced.
+    The record's `input_ids` array tracks inputs explicitly; the output
+    is on `output_id`. Files dropped to ref_count=0 get swept by the
+    file reaper on its next cycle."""
     history = request.app.state.history_service
     record = await history.get_by_id(item_id)
     if not record:
@@ -65,48 +51,25 @@ async def delete_run(item_id: str, request: Request):
     if record.status == "processing":
         raise conflict("Cannot delete a processing record")
 
-    # Extract upload ref_ids from inputs and decrement refs
-    storage = request.app.state.storage_service
-    ref_ids: list[str] = []
-    if record.inputs:
-        try:
-            raw = json.loads(record.inputs)
-            inputs_data = raw.get("inputs", raw) if isinstance(raw, dict) else raw
-            if record.kind == "playground":
-                # Playground inputs are { prompt, negative_prompt, <role>: ref_id, ... }.
-                # Everything that isn't prompt/negative_prompt is an image ref.
-                if isinstance(inputs_data, dict):
-                    for key, value in inputs_data.items():
-                        if key in ("prompt", "negative_prompt"):
-                            continue
-                        if isinstance(value, str) and value:
-                            ref_ids.append(value)
-            else:
-                # Effect runs: look up manifest to determine image fields
-                loader = request.app.state.effect_loader
-                loaded = None
-                if record.effect_id:
-                    loaded = loader.get_by_id(record.effect_id) or loader.get_loaded(record.effect_id)
-                manifest = loaded.manifest if loaded else None
-                if manifest:
-                    for key, field in manifest.inputs.items():
-                        if field.type == "image" and key in inputs_data:
-                            ref_ids.append(inputs_data[key])
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            pass
+    files_service = request.app.state.file_service
 
-    # Delete DB record first, then clean up files (best-effort)
+    ids: list[str] = []
+    if record.input_ids:
+        try:
+            parsed = json.loads(record.input_ids)
+            if isinstance(parsed, list):
+                ids.extend(i for i in parsed if isinstance(i, str) and i)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if record.output_id:
+        ids.append(record.output_id)
+
+    # Delete DB record first, then drop refs (best-effort).
     await history.delete(item_id)
 
     try:
-        if ref_ids:
-            await storage.decrement_refs_and_cleanup(ref_ids)
+        if ids:
+            await files_service.decrement_refs(ids)
     except Exception:
-        pass  # Ref cleanup is best-effort — record is already deleted
-
-    settings = get_settings()
-    run_folder = settings.user_data_dir / "runs" / item_id
-    if run_folder.exists():
-        shutil.rmtree(run_folder, ignore_errors=True)
-
+        pass  # ref cleanup is best-effort — record is already deleted
     return {"ok": True}

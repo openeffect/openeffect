@@ -107,12 +107,16 @@ class TestComplete:
         job = _make_job("job-complete-1")
         await service.create_processing(job)
 
-        await service.complete("job-complete-1", "/videos/output.mp4", 5000)
+        # `complete()` takes the file id; URL composition lives in
+        # `to_dict()`. The id here doesn't have to point at a real
+        # file row — get_by_id LEFT JOINs and gracefully returns null
+        # for the joined columns.
+        await service.complete("job-complete-1", "fake-uuid-1", 5000)
 
         record = await service.get_by_id("job-complete-1")
         assert record is not None
         assert record.status == "completed"
-        assert record.video_url == "/videos/output.mp4"
+        assert record.output_id == "fake-uuid-1"
         assert record.duration_ms == 5000
         assert record.progress == 100
 
@@ -121,7 +125,7 @@ class TestComplete:
         await service.create_processing(job)
         await service.update_progress("job-complete-2", 50, "Working...")
 
-        await service.complete("job-complete-2", "/out.mp4", 3000)
+        await service.complete("job-complete-2", "fake-uuid-2", 3000)
 
         record = await service.get_by_id("job-complete-2")
         assert record is not None
@@ -314,7 +318,8 @@ class TestGetById:
         assert hasattr(record, "model_id")
         assert hasattr(record, "status")
         assert hasattr(record, "progress")
-        assert hasattr(record, "video_url")
+        assert hasattr(record, "output_id")
+        assert hasattr(record, "input_ids")
         assert hasattr(record, "error")
         assert hasattr(record, "created_at")
         assert hasattr(record, "updated_at")
@@ -328,7 +333,8 @@ class TestRunRecordToDict:
         d = record.to_dict()
         expected_keys = {
             "id", "kind", "effect_id", "effect_name", "model_id", "status",
-            "progress", "progress_msg", "video_url", "inputs",
+            "progress", "progress_msg", "video_url",
+            "output_id", "inputs",
             "error", "created_at", "updated_at", "duration_ms",
         }
         assert set(d.keys()) == expected_keys

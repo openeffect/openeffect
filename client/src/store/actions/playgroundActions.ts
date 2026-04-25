@@ -77,12 +77,12 @@ export async function startPlaygroundRun(args: {
   output: Record<string, string | number | boolean>
   userParams: Record<string, number | string | boolean>
 }): Promise<string> {
-  // Upload any File objects to get ref_ids; pass through existing ref_id strings
+  // Upload any File objects to get ids; pass through existing id strings.
   const resolvedImageInputs: Record<string, string> = {}
   for (const [role, val] of Object.entries(args.imageInputs)) {
     if (val instanceof File) {
-      const uploaded = await api.upload(val)
-      resolvedImageInputs[role] = uploaded.ref_id
+      const uploaded = await api.uploadFile(val)
+      resolvedImageInputs[role] = uploaded.id
     } else if (typeof val === 'string' && val) {
       resolvedImageInputs[role] = val
     }

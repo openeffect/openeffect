@@ -119,7 +119,7 @@ export function PlaygroundForm() {
   // by "Try in Playground" from an effect — which seeds the store *before*
   // this component mounts). Mirrors EffectFormTab's restoredParams handling,
   // but applies the unified playground inputs shape:
-  // { prompt, negative_prompt, <role>: ref_id, ... }.
+  // { prompt, negative_prompt, <role>: file_id, ... }.
   // Sentinel `undefined` init (restoredParams is never undefined) so the
   // first render's comparison fires — otherwise a pre-seeded value would
   // match its own `useState(restoredParams)` and the block would be skipped.
@@ -268,7 +268,7 @@ export function PlaygroundForm() {
                     required={slot.required}
                     error={!!fieldErrors[slot.key]}
                     value={value instanceof File ? value : null}
-                    restoredUrl={typeof value === 'string' && value ? `/api/uploads/${value}/512` : null}
+                    restoredUrl={typeof value === 'string' && value ? `/api/files/${value}/512.webp` : null}
                     onChange={(f) => {
                       handleImageChange(slot.key, f)
                       setFieldErrors((prev) => (prev[slot.key] ? { ...prev, [slot.key]: null } : prev))

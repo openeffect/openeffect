@@ -1,7 +1,7 @@
 import type {
   EffectManifest,
   AppConfig,
-  UploadResponse,
+  FileResponse,
   RunResponse,
   RunRequest,
   PlaygroundRunRequest,
@@ -101,16 +101,16 @@ export const api = {
       body: JSON.stringify({ source }),
     }),
 
-  // Upload
-  upload: async (file: File): Promise<UploadResponse> => {
+  // Files (content-addressed blob store)
+  uploadFile: async (file: File): Promise<FileResponse> => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch('/api/upload', { method: 'POST', body: form })
+    const res = await fetch('/api/files', { method: 'POST', body: form })
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText }))
       throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? res.statusText)
     }
-    return res.json() as Promise<UploadResponse>
+    return res.json() as Promise<FileResponse>
   },
 
   // Run
@@ -161,24 +161,41 @@ export const api = {
     request<{ models: AppConfig['available_models'] }>('/api/models').then((r) => r.models),
 
   // Effect editor
-  saveEffect: (yamlContent: string, effectId: string | null, forkFrom?: string) =>
+  saveEffect: (
+    yamlContent: string,
+    effectId: string | null,
+    forkFrom?: string,
+  ) =>
     request<{ full_id: string; manifest: EffectManifest }>('/api/effects/save', {
       method: 'POST',
-      body: JSON.stringify({ yaml_content: yamlContent, effect_id: effectId, fork_from: forkFrom }),
+      body: JSON.stringify({
+        yaml_content: yamlContent,
+        effect_id: effectId,
+        fork_from: forkFrom,
+      }),
     }),
 
   getEffectEditorData: (namespace: string, slug: string) =>
-    request<{ yaml: string; files: { filename: string; size: number; url: string }[] }>(
-      `/api/effects/${namespace}/${slug}/editor`,
-    ),
+    request<{
+      yaml: string
+      files: { filename: string; size: number; url: string; id: string }[]
+    }>(`/api/effects/${namespace}/${slug}/editor`),
 
   exportEffect: (namespace: string, slug: string) =>
     `/api/effects/${namespace}/${slug}/export`,
 
-  uploadAsset: async (namespace: string, slug: string, file: File) => {
+  // Per-asset CRUD — each call lands the change on the server
+  // immediately so the editor's save is just YAML + metadata.
+  uploadEffectAsset: async (
+    namespace: string,
+    slug: string,
+    file: File,
+    logicalName?: string,
+  ) => {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`/api/effects/${namespace}/${slug}/assets/upload`, {
+    if (logicalName) form.append('logical_name', logicalName)
+    const res = await fetch(`/api/effects/${namespace}/${slug}/assets`, {
       method: 'POST',
       body: form,
     })
@@ -187,18 +204,24 @@ export const api = {
       const detail = body.detail ?? body
       throw new ApiError(res.status, detail.code ?? 'UNKNOWN', detail.error ?? res.statusText)
     }
-    return res.json() as Promise<{ filename: string; size: number; url: string }>
+    return res.json() as Promise<{
+      filename: string
+      size: number
+      url: string
+      id: string
+    }>
   },
 
-  deleteAsset: (namespace: string, slug: string, filename: string) =>
-    request<{ ok: boolean }>(`/api/effects/${namespace}/${slug}/assets/file/${encodeURIComponent(filename)}`, {
-      method: 'DELETE',
-    }),
-
-  renameAsset: (namespace: string, slug: string, oldName: string, newName: string) =>
-    request<{ filename: string; size: number; url: string }>(
-      `/api/effects/${namespace}/${slug}/assets/file/${encodeURIComponent(oldName)}`,
+  renameEffectAsset: (namespace: string, slug: string, oldName: string, newName: string) =>
+    request<{ filename: string; size: number; url: string; id: string }>(
+      `/api/effects/${namespace}/${slug}/assets/${encodeURIComponent(oldName)}`,
       { method: 'PATCH', body: JSON.stringify({ new_name: newName }) },
+    ),
+
+  deleteEffectAsset: (namespace: string, slug: string, logicalName: string) =>
+    request<{ ok: boolean }>(
+      `/api/effects/${namespace}/${slug}/assets/${encodeURIComponent(logicalName)}`,
+      { method: 'DELETE' },
     ),
 }
 

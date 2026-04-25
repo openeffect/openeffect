@@ -2,7 +2,6 @@ import io
 import ipaddress
 import logging
 import re
-import shutil
 import socket
 import tempfile
 import zipfile
@@ -19,24 +18,71 @@ from pydantic import ValidationError
 from core.limits import MAX_IMAGE_SIZE, MAX_TOTAL_SIZE, MAX_VIDEO_SIZE
 from db.database import Database
 from effects.validator import EffectManifest
+from services.file_service import FileKind, FileService
 
 logger = logging.getLogger(__name__)
 
 # Security limits
 MAX_MANIFEST_SIZE = 100 * 1024       # 100 KB
 MAX_ZIP_FILES = 100
-ALLOWED_ASSET_EXTENSIONS = {".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_ASSET_EXTENSIONS = {".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".gif"}
 RESERVED_NAMESPACES = {"openeffect", "system", "admin"}
 
 
+_MAX_ASSET_NAME_LEN = 200
+
+
 def _validate_asset_filename(filename: str) -> None:
-    """Reject path traversal and non-whitelisted extensions."""
+    """Reject anything that's not a safe single filename.
+
+    Two callers feed this:
+      - The install paths, where filenames come from a manifest YAML
+        an author wrote.
+      - The editor save path (`_replace_effect_files`), where the
+        filename is whatever the user just typed into the asset panel.
+
+    The export ZIP writes entries as `<effect>/assets/<logical_name>`,
+    so a traversal here would slip out of the extraction directory on
+    whoever unzips the export — that's the load-bearing reason this
+    validator runs on both paths."""
+    if not filename or not filename.strip():
+        raise ValueError("Asset name cannot be empty")
+    if len(filename) > _MAX_ASSET_NAME_LEN:
+        raise ValueError(
+            f"Asset name too long ({len(filename)} chars; max {_MAX_ASSET_NAME_LEN})"
+        )
+    if "\x00" in filename:
+        raise ValueError("Asset name cannot contain null bytes")
+    # Control characters (tabs, newlines, etc.) — anything below 0x20.
+    if any(ord(c) < 32 for c in filename):
+        raise ValueError("Asset name cannot contain control characters")
+    # Single filename only — no path components, no platform slashes.
+    if "/" in filename or "\\" in filename:
+        raise ValueError(f"Asset name cannot contain slashes: {filename!r}")
     p = Path(filename)
     if ".." in p.parts or p.is_absolute():
         raise ValueError(f"Invalid asset path: {filename}")
+    # The "stem" must have actual content — `.png` or `   .png` is
+    # rejected, since both round-trip badly through filesystems and
+    # archive tools.
+    if not p.stem.strip():
+        raise ValueError(f"Asset name has empty stem: {filename!r}")
     ext = p.suffix.lower()
     if ext not in ALLOWED_ASSET_EXTENSIONS:
-        raise ValueError(f"Disallowed file extension: {ext}")
+        raise ValueError(
+            f"Disallowed file extension: {ext or '(none)'} "
+            f"(allowed: {', '.join(sorted(ALLOWED_ASSET_EXTENSIONS))})"
+        )
+
+
+def _kind_for_asset(filename: str) -> FileKind:
+    """Decide image vs video from the manifest-declared extension. The
+    asset extension whitelist (`ALLOWED_ASSET_EXTENSIONS`) keeps this
+    table small."""
+    ext = Path(filename).suffix.lower()
+    if ext in (".mp4", ".webm"):
+        return "video"
+    return "image"
 
 
 def _validate_install_url(url: str) -> None:
@@ -109,6 +155,25 @@ def _parse_manifest_yaml(yaml_text: str) -> tuple[dict[str, Any], EffectManifest
     return data, manifest
 
 
+def _asset_response(
+    file_id: str,
+    ext: str,
+    size: int,
+    *,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    """Shape an `AssetFile` payload for the editor. The original-bytes
+    URL is what we send; the client composes thumbnail URLs by
+    appending `/512.webp` or `/1024.webp` as needed — both tiers are
+    guaranteed to exist for any image or video the file store accepts."""
+    return {
+        "filename": filename if filename is not None else f"original.{ext}",
+        "size": size,
+        "url": f"/api/files/{file_id}/original.{ext}",
+        "id": file_id,
+    }
+
+
 class InstallConflictError(Exception):
     """Raised when one or more incoming manifests already exist in the DB at a
     different version. `conflicts` is a list of dicts with keys
@@ -120,15 +185,9 @@ class InstallConflictError(Exception):
 
 
 class InstallService:
-    def __init__(self, db: Database, effects_dir: Path):
+    def __init__(self, db: Database, file_service: FileService):
         self._db = db
-        self._effects_dir = effects_dir
-        self._effects_dir.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def effects_dir(self) -> Path:
-        """Where installed effect packages live on disk."""
-        return self._effects_dir
+        self._files = file_service
 
     # ─── Install from URL ───
 
@@ -174,14 +233,14 @@ class InstallService:
         """Install one manifest via the state lifecycle:
 
         - INSERT or `_mark_installing` flips the row to `state='installing'`
-          (invisible to the loader) before any files land on disk.
-        - On success, `_update_effect` flips `state='ready'` and writes
-          the new manifest content in one transaction.
-        - On any failure, `_cleanup_failed` drops the row and the folder.
-
-        Conflict detection (different installed version) is the caller's
-        job; this method handles the same-version no-op skip and the
-        replace-in-place flow."""
+          (invisible to the loader) before any asset bytes land.
+        - Each manifest asset is funneled into `FileService.add_file` and
+          a corresponding `effect_files` row gets recorded.
+        - On success, `_update_effect` flips `state='ready'` in one
+          transaction.
+        - On any failure, `_cleanup_failed` drops the row (and the
+          `effect_files` rows cascade). Files dropped to ref_count=0 will
+          be swept by the file reaper on its next cycle."""
         existing = await self.get_effect(manifest.namespace, manifest.slug)
         if (
             existing
@@ -191,25 +250,21 @@ class InstallService:
             return manifest.full_id
 
         uuid = existing["id"] if existing else str(uuid_utils.uuid7())
-        effect_dir = self._effects_dir / uuid
         # Same dump kwargs for both DB column and on-disk file so the two
         # never disagree on key ordering.
         yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
 
         if existing:
             await self._mark_installing(uuid)
+            # Replace mode: the old asset map is stale once the new manifest
+            # commits, so clear it now and re-record per-asset below.
+            await self._clear_effect_files(uuid)
         else:
             await self._insert_effect(
-                uuid, manifest, "installed", str(effect_dir),
-                yaml_content=yaml_content,
+                uuid, manifest, "installed", yaml_content=yaml_content,
             )
 
         try:
-            if effect_dir.exists():
-                shutil.rmtree(str(effect_dir), ignore_errors=True)
-            assets_dir = effect_dir / "assets"
-            assets_dir.mkdir(parents=True)
-
             total_size = 0
             for filename in self._collect_asset_filenames(manifest):
                 _validate_asset_filename(filename)
@@ -224,18 +279,15 @@ class InstallService:
                 if total_size > MAX_TOTAL_SIZE:
                     raise ValueError("Total effect size exceeds limit")
 
-                dest = assets_dir / filename
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(resp.content)
-
-            (effect_dir / "manifest.yaml").write_text(yaml_content)
+                await self._adopt_asset_bytes(
+                    uuid, filename, resp.content, _kind_for_asset(filename),
+                )
 
             await self._update_effect(
-                uuid, manifest, "installed", str(effect_dir),
-                yaml_content=yaml_content,
+                uuid, manifest, "installed", yaml_content=yaml_content,
             )
         except Exception:
-            await self._cleanup_failed(uuid, effect_dir)
+            await self._cleanup_failed(uuid)
             raise
 
         return manifest.full_id
@@ -327,8 +379,8 @@ class InstallService:
         """Install the current bundled effect set and demote any previously-
         bundled effect that's no longer in `folder` from `source='official'`
         to `source='installed'` — so effects dropped from a future release
-        become user-deletable instead of stuck. Files stay on disk so any
-        historical runs that reference them keep working."""
+        become user-deletable instead of stuck. Files stay in the shared
+        store so any historical runs that reference them keep working."""
         manifest_paths = self._find_manifests(folder) if folder.exists() else []
 
         pending_ids: set[tuple[str, str]] = set()
@@ -366,8 +418,8 @@ class InstallService:
         self, manifest_path: Path, manifest: EffectManifest, allow_official: bool
     ) -> str:
         """Install one manifest from an extracted archive folder via the
-        same INSERT installing → write → UPDATE ready lifecycle as the
-        URL path. Caller has already parsed + validated the manifest,
+        same INSERT installing → ingest assets → UPDATE ready lifecycle as
+        the URL path. Caller has already parsed + validated the manifest,
         checked the namespace, and resolved conflicts."""
         yaml_content = manifest_path.read_text()
         # Bundled namespace `openeffect/*` is reserved by the validator
@@ -384,23 +436,17 @@ class InstallService:
             return manifest.full_id
 
         uuid = existing["id"] if existing else str(uuid_utils.uuid7())
-        effect_dir = self._effects_dir / uuid
 
         if existing:
             await self._mark_installing(uuid)
+            await self._clear_effect_files(uuid)
         else:
             await self._insert_effect(
-                uuid, manifest, source, str(effect_dir),
-                yaml_content=yaml_content,
+                uuid, manifest, source, yaml_content=yaml_content,
             )
 
         try:
-            if effect_dir.exists():
-                shutil.rmtree(str(effect_dir), ignore_errors=True)
-            assets_dir = effect_dir / "assets"
-            assets_dir.mkdir(parents=True)
-
-            # Only copy manifest-declared assets, mirroring the URL install
+            # Only adopt manifest-declared assets, mirroring the URL install
             # path. Anything else in the zip's assets/ folder is silently
             # ignored — the manifest is the contract, not the archive layout.
             source_assets = manifest_path.parent / "assets"
@@ -414,18 +460,15 @@ class InstallService:
                 ext = src_file.suffix.lower()
                 if src_file.stat().st_size > _max_size_for_ext(ext):
                     raise ValueError(f"Asset {filename} exceeds size limit")
-                dest = assets_dir / filename
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(src_file), str(dest))
-
-            shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
+                await self._adopt_asset_path(
+                    uuid, filename, src_file, _kind_for_asset(filename),
+                )
 
             await self._update_effect(
-                uuid, manifest, source, str(effect_dir),
-                yaml_content=yaml_content,
+                uuid, manifest, source, yaml_content=yaml_content,
             )
         except Exception:
-            await self._cleanup_failed(uuid, effect_dir)
+            await self._cleanup_failed(uuid)
             raise
 
         return manifest.full_id
@@ -439,17 +482,21 @@ class InstallService:
         existing_id: str | None = None,
         fork_from: str | None = None,
     ) -> str:
-        """Save or update a locally created/forked effect. `fork_from` =
-        `namespace/slug` to copy assets from on a fresh fork.
+        """Save or update a locally created/forked effect. Save touches
+        only the YAML and effect metadata — assets are managed through
+        the per-asset endpoints (`add_effect_asset`, `rename_effect_asset`,
+        `remove_effect_asset`) which run as the user uploads / renames /
+        deletes them in the editor's asset panel.
 
-        - Update path: write the new manifest.yaml in place, then UPDATE
-          the row to `state='ready'` with the new content. No installing
-          lifecycle — this is a small in-place edit, the row's existing
-          content is the user's last known good state and DELETE-on-fail
-          would lose the data they're trying to save.
-        - Create path: full INSERT installing → mkdir + fork-copy + write
-          → UPDATE ready lifecycle. On failure, the row + folder are
-          cleaned by `_cleanup_failed` and the user retries."""
+        - Update path: UPDATE the row to `state='ready'` with the new YAML
+          content. No installing lifecycle — this is a small in-place
+          edit, the row's existing content is the user's last known good
+          state and DELETE-on-fail would lose the data they're trying to
+          save.
+        - Create path: INSERT installing → optionally clone fork-source's
+          asset bindings → UPDATE ready. The newly-created effect has no
+          assets unless `fork_from` was given; the user adds them through
+          the asset panel after the first save."""
         if existing_id:
             existing: dict[str, Any] | None = None
             if "/" in existing_id:
@@ -463,12 +510,8 @@ class InstallService:
                 raise ValueError("Cannot edit non-local effects")
 
             uuid = existing["id"]
-            effect_dir = Path(existing["assets_dir"])
-            effect_dir.mkdir(parents=True, exist_ok=True)
-
-            (effect_dir / "manifest.yaml").write_text(yaml_content)
             await self._update_effect(
-                uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content,
+                uuid, manifest, "local", yaml_content=yaml_content,
             )
             return manifest.full_id
 
@@ -488,39 +531,26 @@ class InstallService:
             )
 
         uuid = str(uuid_utils.uuid7())
-        effect_dir = self._effects_dir / uuid
 
         await self._insert_effect(
-            uuid, manifest, "local", str(effect_dir),
-            yaml_content=yaml_content,
+            uuid, manifest, "local", yaml_content=yaml_content,
         )
 
         try:
-            assets_dir = effect_dir / "assets"
-            assets_dir.mkdir(parents=True)
-
             if fork_from:
                 parts = fork_from.split("/", 1)
                 if len(parts) == 2:
-                    source = await self.get_effect(parts[0], parts[1])
-                    if source:
-                        source_assets = Path(source["assets_dir"]) / "assets"
-                        if source_assets.exists():
-                            for src_file in source_assets.iterdir():
-                                if src_file.is_file():
-                                    shutil.copy2(
-                                        str(src_file),
-                                        str(assets_dir / src_file.name),
-                                    )
-
-            (effect_dir / "manifest.yaml").write_text(yaml_content)
+                    source_effect = await self.get_effect(parts[0], parts[1])
+                    if source_effect:
+                        # Copy effect_files mapping from the source effect —
+                        # bumping ref_count on each shared file.
+                        await self._copy_effect_files(source_effect["id"], uuid)
 
             await self._update_effect(
-                uuid, manifest, "local", str(effect_dir),
-                yaml_content=yaml_content,
+                uuid, manifest, "local", yaml_content=yaml_content,
             )
         except Exception:
-            await self._cleanup_failed(uuid, effect_dir)
+            await self._cleanup_failed(uuid)
             raise
 
         return manifest.full_id
@@ -536,7 +566,7 @@ class InstallService:
         them to HTTP 400 without seeing implementation details."""
         _, manifest = _parse_manifest_yaml(yaml_content)
         return await self.save_local_effect(
-            manifest, yaml_content, existing_id, fork_from=fork_from
+            manifest, yaml_content, existing_id, fork_from=fork_from,
         )
 
     # ─── Uninstall ───
@@ -544,16 +574,20 @@ class InstallService:
     async def uninstall(self, namespace: str, slug: str) -> None:
         """Lifecycle-tracked uninstall: flip the row to
         `state='uninstalling'` first (so the loader hides the effect
-        immediately), then rmtree the folder, then DELETE the row.
+        immediately), drop its `effect_files` rows (decrementing each
+        referenced file's `ref_count`), then DELETE the row.
 
-        Crash recovery is automatic: a row stuck in `uninstalling`
-        for >1h gets finished by `prune_stale_lifecycle_rows`. The
-        DELETE is gated `AND state='uninstalling'` so a concurrent
-        writer that flipped the row back to `ready` (e.g. an immediate
-        reinstall during the rmtree window) doesn't have its row
-        wiped out from under it."""
+        Files themselves are not directly touched — orphans drop to
+        `ref_count=0` and the file reaper picks them up on its next
+        cycle.
+
+        Crash recovery is automatic: a row stuck in `uninstalling` for
+        >1h gets finished by `prune_stale_lifecycle_rows`. The DELETE
+        is gated `AND state='uninstalling'` so a concurrent writer that
+        flipped the row back to `ready` (e.g. an immediate reinstall)
+        doesn't have its row wiped out from under it."""
         row = await self._db.fetchone(
-            "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND slug=?",
+            "SELECT id, source FROM effects WHERE namespace=? AND slug=?",
             (namespace, slug),
         )
         if not row:
@@ -564,9 +598,7 @@ class InstallService:
 
         await self._mark_uninstalling(row["id"])
 
-        assets_dir = Path(row["assets_dir"])
-        if assets_dir.exists():
-            shutil.rmtree(str(assets_dir), ignore_errors=True)
+        await self._clear_effect_files(row["id"])
 
         async with self._db.transaction() as conn:
             await conn.execute(
@@ -640,6 +672,227 @@ class InstallService:
             "remote_version": remote_version,
         }
 
+    # ─── Asset adoption helpers ───
+
+    async def _adopt_asset_bytes(
+        self, effect_id: str, logical_name: str, content: bytes, kind: FileKind,
+    ) -> None:
+        """Ingest in-memory asset bytes into the file store and record
+        the per-effect mapping. Idempotent for re-installs — the
+        composite PRIMARY KEY on `effect_files` would otherwise reject
+        the duplicate, so callers clear `effect_files` upfront via
+        `_clear_effect_files`."""
+        ext = Path(logical_name).suffix.lstrip(".").lower() or None
+        file = await self._files.add_file(content, kind=kind, ext=ext)
+        await self._link_effect_file(effect_id, logical_name, file.id)
+
+    async def _adopt_asset_path(
+        self, effect_id: str, logical_name: str, src: Path, kind: FileKind,
+    ) -> None:
+        """Like `_adopt_asset_bytes` but for an on-disk source — used
+        from the archive-extract install path."""
+        ext = src.suffix.lstrip(".").lower() or None
+        file = await self._files.add_file(src, kind=kind, ext=ext)
+        await self._link_effect_file(effect_id, logical_name, file.id)
+
+    # ─── Per-asset CRUD (used by the editor's asset panel) ───
+
+    async def add_effect_asset(
+        self,
+        namespace: str,
+        slug: str,
+        upload: Any,  # fastapi.UploadFile — duck-typed for tests
+        *,
+        logical_name: str | None = None,
+        kind: FileKind,
+        mime: str,
+        max_size: int,
+    ) -> dict[str, Any]:
+        """Upload a file and link it to an existing effect in one
+        atomic-feeling step. Returns an `AssetFile`-shaped dict the
+        editor can drop straight into its in-memory list — same shape
+        the editor-data endpoint uses on initial open.
+
+        The effect must already exist (i.e. been saved at least once).
+        Brand-new effects with no `editingEffectId` yet have to save
+        their YAML before the asset panel becomes interactive."""
+        existing = await self.get_effect(namespace, slug)
+        if not existing:
+            raise ValueError(f"Effect {namespace}/{slug} not found")
+
+        original = upload.filename or ""
+        chosen_name = (logical_name or original).strip()
+        # Strip any path components the browser might have prepended.
+        chosen_name = Path(chosen_name).name
+        _validate_asset_filename(chosen_name)
+
+        # Surface a clean error if the editor's local state is stale and
+        # would push a duplicate name (the composite PK would also catch
+        # it, but the message is much more useful here).
+        dup = await self._db.fetchone(
+            "SELECT 1 FROM effect_files WHERE effect_id = ? AND logical_name = ?",
+            (existing["id"], chosen_name),
+        )
+        if dup:
+            raise ValueError(f"Asset '{chosen_name}' already exists on this effect")
+
+        ext = Path(chosen_name).suffix.lstrip(".").lower() or None
+        file = await self._files.add_file(
+            upload, kind=kind, mime=mime, ext=ext, max_size=max_size,
+        )
+        await self._link_effect_file(existing["id"], chosen_name, file.id)
+
+        return _asset_response(
+            file.id, file.ext, file.size, filename=chosen_name,
+        )
+
+    async def rename_effect_asset(
+        self, namespace: str, slug: str, old_name: str, new_name: str,
+    ) -> dict[str, Any]:
+        """Change the logical name an effect uses to refer to an
+        already-bound file. The file row itself isn't touched — only
+        the (effect_id, logical_name) → file_id mapping is.
+
+        Returns the resulting `AssetFile`-shaped dict."""
+        existing = await self.get_effect(namespace, slug)
+        if not existing:
+            raise ValueError(f"Effect {namespace}/{slug} not found")
+
+        new_name = new_name.strip()
+        _validate_asset_filename(new_name)
+
+        if old_name == new_name:
+            row = await self._db.fetchone(
+                "SELECT f.id, f.ext, f.size FROM effect_files ef "
+                "JOIN files f ON f.id = ef.file_id "
+                "WHERE ef.effect_id = ? AND ef.logical_name = ?",
+                (existing["id"], old_name),
+            )
+            if not row:
+                raise ValueError(f"Asset '{old_name}' not found on this effect")
+            return _asset_response(
+                row["id"], row["ext"], row["size"], filename=old_name,
+            )
+
+        async with self._db.transaction() as conn:
+            dup = await conn.execute(
+                "SELECT 1 FROM effect_files WHERE effect_id = ? AND logical_name = ?",
+                (existing["id"], new_name),
+            )
+            if await dup.fetchone():
+                raise ValueError(f"Asset '{new_name}' already exists on this effect")
+
+            cursor = await conn.execute(
+                "UPDATE effect_files SET logical_name = ? "
+                "WHERE effect_id = ? AND logical_name = ?",
+                (new_name, existing["id"], old_name),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Asset '{old_name}' not found on this effect")
+
+        row = await self._db.fetchone(
+            "SELECT f.id, f.ext, f.size FROM effect_files ef "
+            "JOIN files f ON f.id = ef.file_id "
+            "WHERE ef.effect_id = ? AND ef.logical_name = ?",
+            (existing["id"], new_name),
+        )
+        if row is None:
+            # Should be unreachable — we just renamed to this name.
+            raise ValueError(f"Asset '{new_name}' not found after rename")
+        return _asset_response(
+            row["id"], row["ext"], row["size"], filename=new_name,
+        )
+
+    async def remove_effect_asset(
+        self, namespace: str, slug: str, logical_name: str,
+    ) -> None:
+        """Drop an effect's binding to a file. The file row itself
+        sticks around with its ref_count decremented — the orphan
+        reaper will sweep it on its next cycle if nothing else
+        references it."""
+        existing = await self.get_effect(namespace, slug)
+        if not existing:
+            raise ValueError(f"Effect {namespace}/{slug} not found")
+
+        async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "SELECT file_id FROM effect_files "
+                "WHERE effect_id = ? AND logical_name = ?",
+                (existing["id"], logical_name),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                raise ValueError(f"Asset '{logical_name}' not found on this effect")
+
+            await conn.execute(
+                "UPDATE files SET ref_count = ref_count - 1 WHERE id = ? AND ref_count > 0",
+                (row["file_id"],),
+            )
+            await conn.execute(
+                "DELETE FROM effect_files WHERE effect_id = ? AND logical_name = ?",
+                (existing["id"], logical_name),
+            )
+
+    async def _link_effect_file(
+        self, effect_id: str, logical_name: str, file_id: str,
+    ) -> None:
+        """Add or replace an `effect_files` row, bumping `ref_count`
+        on the referenced file. Run in a single transaction so a crash
+        between INSERT and UPDATE can't leave a row pointing at a
+        ref-counted file we never bumped."""
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                """INSERT INTO effect_files (effect_id, logical_name, file_id)
+                   VALUES (?, ?, ?)""",
+                (effect_id, logical_name, file_id),
+            )
+            await conn.execute(
+                "UPDATE files SET ref_count = ref_count + 1 WHERE id = ?",
+                (file_id,),
+            )
+
+    async def _clear_effect_files(self, effect_id: str) -> None:
+        """Drop every `effect_files` row for an effect, decrementing
+        each referenced file's `ref_count`. Single transaction so
+        a crash in the middle can't desync the counts."""
+        async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "SELECT file_id FROM effect_files WHERE effect_id = ?",
+                (effect_id,),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                await conn.execute(
+                    "UPDATE files SET ref_count = ref_count - 1 WHERE id = ? AND ref_count > 0",
+                    (row["file_id"],),
+                )
+            await conn.execute(
+                "DELETE FROM effect_files WHERE effect_id = ?",
+                (effect_id,),
+            )
+
+    async def _copy_effect_files(self, source_id: str, dest_id: str) -> None:
+        """Mirror one effect's `effect_files` rows onto another, bumping
+        `ref_count` per shared file. Used by the fork-from path so a
+        new local effect inherits the source's asset map without any
+        file copies on disk."""
+        async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "SELECT logical_name, file_id FROM effect_files WHERE effect_id = ?",
+                (source_id,),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                await conn.execute(
+                    """INSERT INTO effect_files (effect_id, logical_name, file_id)
+                       VALUES (?, ?, ?)""",
+                    (dest_id, row["logical_name"], row["file_id"]),
+                )
+                await conn.execute(
+                    "UPDATE files SET ref_count = ref_count + 1 WHERE id = ?",
+                    (row["file_id"],),
+                )
+
     # ─── Helpers ───
 
     def _validate_namespace(self, namespace: str) -> None:
@@ -679,27 +932,36 @@ class InstallService:
         return dict(row) if row else None
 
     def _collect_asset_filenames(self, manifest: EffectManifest) -> list[str]:
-        files: list[str] = []
+        """Deduped list of every asset filename a manifest references.
+        Showcases can repeat names — the same `preview.mp4` could be
+        the preview of one showcase and the input of another. The
+        install loop binds each name once: `effect_files` has a
+        composite PRIMARY KEY on (effect_id, logical_name), and a
+        duplicate `_link_effect_file` call would raise."""
+        seen: set[str] = set()
+        ordered: list[str] = []
         for sc in manifest.showcases:
-            if sc.preview:
-                files.append(sc.preview)
-            files.extend(sc.inputs.values())
-        return files
+            for candidate in (sc.preview, *sc.inputs.values()):
+                if not candidate or candidate in seen:
+                    continue
+                seen.add(candidate)
+                ordered.append(candidate)
+        return ordered
 
     async def _insert_effect(
         self,
         uuid: str,
         manifest: EffectManifest,
         source: str,
-        assets_dir: str,
         yaml_content: str | None = None,
         *,
         state: str = "installing",
     ) -> None:
         """Insert an effect row. Defaults to `state='installing'` — call
-        `_mark_ready` after the on-disk install completes. Pass
-        `state='ready'` to skip the lifecycle for special paths (none
-        today; the parameter is kept for forward compat / tests)."""
+        `_update_effect` after asset ingestion completes to flip to
+        `ready`. Pass `state='ready'` to skip the lifecycle for special
+        paths (none today; the parameter is kept for forward compat /
+        tests)."""
         now = datetime.now(timezone.utc).isoformat()
         if yaml_content is None:
             yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
@@ -707,8 +969,8 @@ class InstallService:
             await conn.execute(
                 """INSERT INTO effects (
                        id, namespace, slug, source, state, source_url,
-                       manifest_yaml, assets_dir, version, installed_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       manifest_yaml, version, installed_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     uuid,
                     manifest.namespace,
@@ -717,7 +979,6 @@ class InstallService:
                     state,
                     manifest.url,
                     yaml_content,
-                    assets_dir,
                     manifest.version,
                     now,
                     now,
@@ -729,7 +990,6 @@ class InstallService:
         uuid: str,
         manifest: EffectManifest,
         source: str,
-        assets_dir: str,
         yaml_content: str | None = None,
         *,
         state: str = "ready",
@@ -740,15 +1000,15 @@ class InstallService:
 
         Raises `ValueError` if the row has been deleted out from under
         us (concurrent GC reaper). In install paths the caller's
-        `except` arm catches this and runs `_cleanup_failed` so the
-        on-disk folder doesn't outlive the missing row."""
+        `except` arm catches this and runs `_cleanup_failed` so any
+        adopted `effect_files` rows get cleaned up too."""
         now = datetime.now(timezone.utc).isoformat()
         if yaml_content is None:
             yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         async with self._db.transaction() as conn:
             cursor = await conn.execute(
                 """UPDATE effects SET namespace=?, slug=?, source=?, state=?, source_url=?,
-                   manifest_yaml=?, assets_dir=?, version=?, updated_at=?
+                   manifest_yaml=?, version=?, updated_at=?
                    WHERE id=?""",
                 (
                     manifest.namespace,
@@ -757,7 +1017,6 @@ class InstallService:
                     state,
                     manifest.url,
                     yaml_content,
-                    assets_dir,
                     manifest.version,
                     now,
                     uuid,
@@ -806,22 +1065,21 @@ class InstallService:
             if cursor.rowcount == 0:
                 raise ValueError(f"Effect {uuid} no longer exists (concurrent delete)")
 
-    async def _cleanup_failed(self, uuid: str, effect_dir: Path) -> None:
+    async def _cleanup_failed(self, uuid: str) -> None:
         """Last step of every install path's `except` arm: drop the row
-        and rmtree the folder. The `AND state='installing'` guard makes
+        and any `effect_files` rows it owns (via the FK cascade —
+        `_clear_effect_files` runs first to make sure ref_counts are
+        decremented properly). The `AND state='installing'` guard makes
         the DELETE a no-op if some other coroutine already flipped the
         row to `ready` between our failure and this cleanup — we'd
-        rather leak a folder than wipe a row a different writer just
-        committed. The rmtree is best-effort; a left-behind folder will
-        be referenced by no DB row and can be picked up later by an
-        explicit ad-hoc cleanup (out of scope here)."""
+        rather leak `effect_files` than wipe a row a different writer
+        just committed."""
+        await self._clear_effect_files(uuid)
         async with self._db.transaction() as conn:
             await conn.execute(
                 "DELETE FROM effects WHERE id=? AND state='installing'",
                 (uuid,),
             )
-        if effect_dir.exists():
-            shutil.rmtree(str(effect_dir), ignore_errors=True)
 
     async def effect_count(self) -> int:
         row = await self._db.fetchone(
@@ -847,13 +1105,10 @@ class InstallService:
         for longer than `max_age_hours`:
 
         - `state='installing'` from a crashed install → roll back
-          (row + folder gone).
+          (drop `effect_files`, drop the effect row, files dropped to
+          `ref_count=0` get swept by the file reaper).
         - `state='uninstalling'` from a crashed uninstall → finish the
-          teardown (row + folder gone).
-
-        Same safety ordering as `storage_service.prune_orphans`: rmtree
-        first (so a permission error halts the cycle and the row stays
-        for the next iteration to retry), then DELETE.
+          teardown (same shape).
 
         The DELETE is gated `AND state IN ('installing', 'uninstalling')
         AND updated_at < ?` so that a row whose timestamp was just
@@ -869,18 +1124,16 @@ class InstallService:
         ).isoformat()
 
         rows = await self._db.fetchall(
-            "SELECT id, assets_dir, state FROM effects "
+            "SELECT id, state FROM effects "
             "WHERE state IN ('installing', 'uninstalling') AND updated_at < ?",
             (cutoff,),
         )
         pruned = 0
         for row in rows:
             try:
-                assets_dir = Path(row["assets_dir"])
-                if assets_dir.exists():
-                    shutil.rmtree(str(assets_dir))
+                await self._clear_effect_files(row["id"])
             except Exception:
-                # Disk might be wedged; leave the row, retry next cycle.
+                # DB might be wedged; leave the row, retry next cycle.
                 continue
 
             async with self._db.transaction() as conn:

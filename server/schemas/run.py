@@ -15,6 +15,6 @@ class PlaygroundRunRequest(BaseModel):
     provider_id: str = "fal"
     prompt: str
     negative_prompt: str = ""
-    image_inputs: dict[str, str] = {}  # role -> ref_id
+    image_inputs: dict[str, str] = {}  # role -> file hash
     output: dict[str, str | int] = {}
     user_params: dict[str, float | int | str | bool] = {}

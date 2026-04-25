@@ -263,7 +263,7 @@ function HistoricalRunView({ record, activeJob }: {
                   <div key={key} className="flex flex-col items-center gap-1">
                     <div className="h-12 w-12 overflow-hidden rounded-md border bg-muted">
                       <img
-                        src={`/api/uploads/${refId}/512`}
+                        src={`/api/files/${refId}/512.webp`}
                         alt={key}
                         className="h-full w-full object-cover"
                         onError={(e) => { e.currentTarget.style.display = 'none' }}

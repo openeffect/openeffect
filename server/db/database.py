@@ -29,6 +29,7 @@ class Database:
         conn.row_factory = aiosqlite.Row
         await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA foreign_keys=ON")
         self._conn = conn
 
     async def close(self) -> None:
@@ -76,6 +77,7 @@ class Database:
 
 async def init_db(db_path: Path) -> None:
     async with aiosqlite.connect(str(db_path)) as db:
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id                  TEXT PRIMARY KEY,
@@ -86,7 +88,8 @@ async def init_db(db_path: Path) -> None:
                 status              TEXT NOT NULL,
                 progress            INTEGER DEFAULT 0,
                 progress_msg        TEXT,
-                video_url           TEXT,
+                input_ids           TEXT,         -- JSON array of files.id
+                output_id           TEXT,         -- files.id of the result blob
                 inputs              TEXT,
                 error               TEXT,
                 created_at          TEXT NOT NULL,
@@ -105,7 +108,6 @@ async def init_db(db_path: Path) -> None:
                 state         TEXT NOT NULL DEFAULT 'installing',  -- installing | ready | uninstalling
                 source_url    TEXT,
                 manifest_yaml TEXT NOT NULL,
-                assets_dir    TEXT NOT NULL,
                 version       TEXT,
                 installed_at  TEXT NOT NULL,
                 updated_at    TEXT,
@@ -114,15 +116,26 @@ async def init_db(db_path: Path) -> None:
             )
         """)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS uploads (
-                id         TEXT PRIMARY KEY,
-                hash       TEXT NOT NULL UNIQUE,
-                filename   TEXT NOT NULL,
-                ext        TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS files (
+                id         TEXT PRIMARY KEY,        -- uuid7; the folder name and URL identifier
+                hash       TEXT NOT NULL UNIQUE,    -- sha256 for content-addressed dedup
+                kind       TEXT NOT NULL,           -- 'image' | 'video' | 'other'
                 mime       TEXT NOT NULL,
+                ext        TEXT NOT NULL,           -- canonical original extension (no dot)
                 size       INTEGER NOT NULL,
-                ref_count  INTEGER DEFAULT 0,
+                variants   TEXT NOT NULL,           -- JSON array, e.g. ["original.jpg","512.webp","1024.webp"]
+                ref_count  INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS effect_files (
+                effect_id    TEXT NOT NULL,
+                logical_name TEXT NOT NULL,         -- exactly what the manifest writes
+                file_id      TEXT NOT NULL,
+                PRIMARY KEY (effect_id, logical_name),
+                FOREIGN KEY (effect_id) REFERENCES effects(id) ON DELETE CASCADE,
+                FOREIGN KEY (file_id) REFERENCES files(id)
             )
         """)
         await db.execute("""
@@ -133,8 +146,9 @@ async def init_db(db_path: Path) -> None:
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_uploads_orphan ON uploads(ref_count, created_at)")
-        # Mirrors `idx_uploads_orphan` — speeds up the GC reaper's
-        # "abandoned installing rows" scan as the effects table grows.
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_files_orphan ON files(ref_count, created_at)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_effect_files_file_id ON effect_files(file_id)")
+        # Speeds up the GC reaper's "abandoned installing/uninstalling rows"
+        # scan as the effects table grows.
         await db.execute("CREATE INDEX IF NOT EXISTS idx_effects_pending ON effects(state, updated_at)")
         await db.commit()

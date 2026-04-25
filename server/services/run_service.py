@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-import shutil
+import tempfile
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -21,14 +21,14 @@ from providers.factory import ModelProviderFactory
 from providers.fal_provider import FalProvider
 from schemas.run import PlaygroundRunRequest, RunRequest
 from services.effect_loader import EffectLoaderService
-from services.history_service import HistoryService, RunRecord
+from services.file_service import FileService
+from services.history_service import HistoryService
 from services.model_service import (
     MODELS_BY_ID,
     ModelService,
     get_compatible_model_ids,
     model_supported_image_keys,
 )
-from services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,34 @@ async def _download_capped(url: str, dest: Path, max_bytes: int) -> None:
                             f"Result video exceeded {max_bytes} bytes — aborted"
                         )
                     f.write(chunk)
+
+
+async def _reverse_video_in_place(path: Path) -> None:
+    """Rewrite `path` with its frames + audio reversed via ffmpeg. The
+    end_frame-only effect convention asks the provider to drive the
+    motion forward and we flip it after; same shape as before, just
+    refactored to take/return a single Path."""
+    reversed_path = path.with_name(path.name + ".reversed")
+    try:
+        # ffmpeg has no business seeing FAL_KEY
+        child_env = {k: v for k, v in os.environ.items() if k != "FAL_KEY"}
+        proc = await asyncio.create_subprocess_exec(
+            imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", str(path),
+            "-vf", "reverse", "-af", "areverse",
+            str(reversed_path),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            env=child_env,
+        )
+        await proc.wait()
+        if proc.returncode == 0 and reversed_path.exists():
+            reversed_path.replace(path)
+        else:
+            logger.warning("Video reverse failed; keeping original")
+            reversed_path.unlink(missing_ok=True)
+    except Exception as rev_err:
+        logger.warning("Video reverse error: %s", rev_err)
+        reversed_path.unlink(missing_ok=True)
 
 
 class RunJob:
@@ -82,13 +110,13 @@ class RunService:
         effect_loader: EffectLoaderService,
         config_service: ConfigService,
         history_service: HistoryService,
-        storage_service: StorageService,
+        file_service: FileService,
         model_service: ModelService,
     ):
         self._effect_loader = effect_loader
         self._config = config_service
         self._history = history_service
-        self._storage = storage_service
+        self._files = file_service
         self._model_service = model_service
         self._jobs: dict[str, RunJob] = {}
         # Shared event fan-out for /api/runs/stream. Every event produced for
@@ -108,8 +136,8 @@ class RunService:
         effect_uuid = loaded.id
 
         # Reject out-of-range / too-long / unknown-option values before we
-        # spend any more work on the run. Images skipped — ref_ids were
-        # validated at /api/upload.
+        # spend any more work on the run. Images skipped — hashes were
+        # validated at /api/files when the file landed.
         validate_run_inputs(manifest, request.inputs)
 
         # Validate model compatibility based on input roles. Split by required
@@ -138,15 +166,14 @@ class RunService:
         )
         self._jobs[job_id] = job
 
-        run_folder = RunRecord.run_folder(job_id)
-        run_folder.mkdir(parents=True, exist_ok=True)
-
         saved_inputs: dict[str, str] = {}
+        input_ids: list[str] = []
         for key, field in manifest.inputs.items():
             if field.type == "image" and key in request.inputs:
-                ref_id = request.inputs[key]
-                await self._storage.increment_ref(ref_id)
-                saved_inputs[key] = ref_id
+                file_id = request.inputs[key]
+                await self._files.increment_ref(file_id)
+                input_ids.append(file_id)
+                saved_inputs[key] = file_id
             elif key in request.inputs:
                 saved_inputs[key] = request.inputs[key]
 
@@ -177,7 +204,7 @@ class RunService:
                 continue
             role = getattr(field, "role", "start_frame")
             if key in request.inputs:
-                image_refs_by_role[role] = request.inputs[key]  # ref_id, not file path
+                image_refs_by_role[role] = request.inputs[key]  # file id
 
         model_inputs = {
             "prompt": prompt,
@@ -192,14 +219,12 @@ class RunService:
             "user_params": dict(request.user_params) if request.user_params else {},
         })
 
-        await self._history.create_processing(job, inputs_json=inputs_json)
+        await self._history.create_processing(
+            job, inputs_json=inputs_json, input_ids=input_ids,
+        )
 
-        # Resolve ref_ids -> file paths for the provider (ephemeral, not stored)
-        image_paths: dict[str, str] = {}
-        for role, ref_id in image_refs_by_role.items():
-            file_path = self._storage.get_upload_path(ref_id, "2048")
-            if file_path:
-                image_paths[role] = str(file_path)
+        # Resolve hashes -> file paths for the provider (ephemeral, not stored)
+        image_paths = self._resolve_image_paths(image_refs_by_role)
 
         provider_input = ProviderInput(
             prompt=prompt,
@@ -248,13 +273,12 @@ class RunService:
         )
         self._jobs[job_id] = job
 
-        run_folder = RunRecord.run_folder(job_id)
-        run_folder.mkdir(parents=True, exist_ok=True)
-
-        # Hold a ref on each upload so the orphan-reaper doesn't delete it
+        # Hold a ref on each file so the orphan-reaper doesn't delete it
         # while the run is still in flight.
-        for ref_id in image_inputs.values():
-            await self._storage.increment_ref(ref_id)
+        input_ids: list[str] = []
+        for file_id in image_inputs.values():
+            await self._files.increment_ref(file_id)
+            input_ids.append(file_id)
 
         # Route request values via the model registry, then pull out the
         # negative_prompt if it was passed via user_params.
@@ -285,14 +309,12 @@ class RunService:
             "user_params": dict(request.user_params) if request.user_params else {},
         })
 
-        await self._history.create_processing(job, inputs_json=inputs_json, kind="playground")
+        await self._history.create_processing(
+            job, inputs_json=inputs_json, input_ids=input_ids, kind="playground",
+        )
 
-        # Resolve ref_ids -> file paths for the provider (ephemeral, not stored)
-        image_paths: dict[str, str] = {}
-        for role, ref_id in image_inputs.items():
-            file_path = self._storage.get_upload_path(ref_id, "2048")
-            if file_path:
-                image_paths[role] = str(file_path)
+        # Resolve hashes -> file paths for the provider (ephemeral, not stored)
+        image_paths = self._resolve_image_paths(image_inputs)
 
         provider_input = ProviderInput(
             prompt=request.prompt,
@@ -309,6 +331,23 @@ class RunService:
         ))
 
         return job_id
+
+    def _resolve_image_paths(self, refs_by_role: dict[str, str]) -> dict[str, str]:
+        """Turn `{role: file_id}` into `{role: absolute_disk_path}` for
+        the provider. Original bytes — fal.ai handles up to the upload
+        cap fine, no separate "model" variant needed."""
+        out: dict[str, str] = {}
+        for role, file_id in refs_by_role.items():
+            file_dir = self._files.files_dir / file_id
+            if not file_dir.is_dir():
+                continue
+            # Find the original.* — there's exactly one, named with the
+            # canonical extension recorded on the row.
+            for child in file_dir.iterdir():
+                if child.name.startswith("original."):
+                    out[role] = str(child)
+                    break
+        return out
 
     def _broadcast(self, event: dict[str, Any]) -> None:
         """Fan out an event to every open broadcast subscriber. Sync on purpose
@@ -338,6 +377,48 @@ class RunService:
         finally:
             self._broadcast_queues.discard(queue)
 
+    async def _ingest_result(
+        self, video_url: str, needs_reverse: bool,
+    ) -> str | None:
+        """Download the provider's result, optionally reverse it, then
+        adopt it into the file store. Returns the file id, or None if
+        ingestion failed (a failed download just leaves output_id null
+        and the run still marked completed — same shape as before)."""
+        if not video_url:
+            return None
+
+        # Download to a temp file under files_dir so the eventual rename
+        # to the final folder is on the same filesystem.
+        with tempfile.NamedTemporaryFile(
+            dir=str(self._files.files_dir), suffix=".mp4", delete=False
+        ) as tf:
+            tmp_path = Path(tf.name)
+        try:
+            if video_url.startswith("http://") or video_url.startswith("https://"):
+                try:
+                    await _download_capped(video_url, tmp_path, MAX_RESULT_VIDEO_SIZE)
+                except Exception as e:
+                    logger.warning("Failed to download result video: %s", e)
+                    return None
+            else:
+                src = Path(video_url)
+                if not src.exists():
+                    return None
+                with open(src, "rb") as src_f, open(tmp_path, "wb") as dst_f:
+                    while chunk := src_f.read(64 * 1024):
+                        dst_f.write(chunk)
+
+            if needs_reverse and tmp_path.exists():
+                await _reverse_video_in_place(tmp_path)
+
+            file = await self._files.add_file(
+                tmp_path, kind="video", mime="video/mp4", ext="mp4",
+            )
+            await self._files.increment_ref(file.id)
+            return file.id
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
     async def _execute_provider(
         self,
         job: RunJob,
@@ -346,10 +427,8 @@ class RunService:
         provider_input: ProviderInput,
         needs_reverse: bool,
     ) -> None:
-        """Run the provider, stream events, download the result, and update history.
-
-        Shared tail used by both effect runs and playground runs.
-        """
+        """Run the provider, stream events, ingest the result, update history.
+        Shared tail used by both effect runs and playground runs."""
         try:
             api_key = await self._config.get_api_key()
             models_dir = self._model_service._models_dir if hasattr(self._model_service, '_models_dir') else None
@@ -357,7 +436,6 @@ class RunService:
 
             async for event in provider.generate(provider_input):
                 if event.type == "submitted":
-                    # Store provider request_id for crash recovery
                     if event.request_id:
                         await self._history.set_provider_request(
                             job.job_id, event.request_id, event.endpoint or ""
@@ -373,53 +451,25 @@ class RunService:
                 elif event.type == "completed":
                     duration_ms = int((time.time() - job.started_at) * 1000)
                     job.status = "completed"
-                    job.video_url = event.video_url
 
-                    video_url = event.video_url or ""
-                    run_folder = RunRecord.run_folder(job.job_id)
-                    result_path = run_folder / "result.mp4"
+                    output_id = await self._ingest_result(
+                        event.video_url or "", needs_reverse,
+                    )
+                    await self._history.complete(job.job_id, output_id or "", duration_ms)
 
-                    if video_url.startswith("http://") or video_url.startswith("https://"):
-                        # Capped stream so a rogue CDN can't fill the data volume
-                        try:
-                            await _download_capped(video_url, result_path, MAX_RESULT_VIDEO_SIZE)
-                        except Exception as dl_err:
-                            logger.warning(f"Failed to download result video for {job.job_id}: {dl_err}")
-                    elif video_url:
-                        src = Path(video_url)
-                        if src.exists():
-                            shutil.copy2(str(src), str(result_path))
-
-                    # Reverse video if end_frame was used without start_frame
-                    if needs_reverse and result_path.exists():
-                        reversed_path = run_folder / "result_reversed.mp4"
-                        try:
-                            # ffmpeg has no business seeing FAL_KEY
-                            child_env = {k: v for k, v in os.environ.items() if k != "FAL_KEY"}
-                            proc = await asyncio.create_subprocess_exec(
-                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", str(result_path),
-                                "-vf", "reverse", "-af", "areverse",
-                                str(reversed_path),
-                                stdout=asyncio.subprocess.DEVNULL,
-                                stderr=asyncio.subprocess.DEVNULL,
-                                env=child_env,
-                            )
-                            await proc.wait()
-                            if proc.returncode == 0 and reversed_path.exists():
-                                reversed_path.rename(result_path)
-                            else:
-                                logger.warning(f"Video reverse failed for {job.job_id}, using original")
-                                if reversed_path.exists():
-                                    reversed_path.unlink()
-                        except Exception as rev_err:
-                            logger.warning(f"Video reverse error for {job.job_id}: {rev_err}")
-
-                    # Update the DB record to point to our API endpoint
-                    api_video_url = f"/api/runs/{job.job_id}/result"
-                    await self._history.complete(job.job_id, api_video_url, duration_ms)
+                    video_url = (
+                        f"/api/files/{output_id}/original.mp4"
+                        if output_id else None
+                    )
+                    job.video_url = video_url
                     self._broadcast({
                         "event": "completed",
-                        "data": {"job_id": job.job_id, "video_url": api_video_url, "duration_ms": duration_ms},
+                        "data": {
+                            "job_id": job.job_id,
+                            "video_url": video_url,
+                            "output_id": output_id,
+                            "duration_ms": duration_ms,
+                        },
                     })
                 elif event.type == "failed":
                     job.status = "failed"
@@ -480,15 +530,12 @@ class RunService:
                 )
 
                 if event.type == "completed" and event.video_url:
-                    run_folder = RunRecord.run_folder(record.id)
-                    run_folder.mkdir(parents=True, exist_ok=True)
-                    result_path = run_folder / "result.mp4"
-
-                    await _download_capped(event.video_url, result_path, MAX_RESULT_VIDEO_SIZE)
-
-                    api_video_url = f"/api/runs/{record.id}/result"
-                    await self._history.complete(record.id, api_video_url, 0)
-                    logger.info(f"Recovered job {record.id} — completed")
+                    output_id = await self._ingest_result(event.video_url, needs_reverse=False)
+                    if output_id:
+                        await self._history.complete(record.id, output_id, 0)
+                        logger.info(f"Recovered job {record.id} — completed")
+                    else:
+                        await self._history.fail(record.id, "Recovery ingest failed")
                 else:
                     await self._history.fail(record.id, event.error or "Recovery failed")
                     logger.warning(f"Recovery failed for {record.id}: {event.error}")

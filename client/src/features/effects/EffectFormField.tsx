@@ -22,7 +22,7 @@ export function EffectFormField({ schema, value, error, onChange }: EffectFormFi
     case 'image': {
       const isRestored = value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)
       const restored = isRestored ? (value as { filename: string }) : null
-      const restoredUrl = restored ? `/api/uploads/${restored.filename}/512.jpg` : null
+      const restoredUrl = restored ? `/api/files/${restored.filename}/512.webp` : null
 
       return (
         <ImageUploader

@@ -18,11 +18,11 @@ from effects.validator import EffectManifest, GenerationConfig, InputFieldSchema
 from providers.base import ProviderEvent
 from routes import register_routes
 from services.effect_loader import EffectLoaderService, LoadedEffect
-from services.history_service import HistoryService, RunRecord
+from services.file_service import FileService
+from services.history_service import HistoryService
 from services.install_service import InstallService
 from services.model_service import ModelService
 from services.run_service import RunService
-from services.storage_service import StorageService
 
 
 class FakeProvider:
@@ -59,22 +59,14 @@ def _make_manifest() -> EffectManifest:
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path):
     """Build a test app with a preloaded effect (no install round-trip) and
     FakeProvider wired in for anything the route triggers."""
     db_path = tmp_path / "test.db"
-    uploads_dir = tmp_path / "uploads"
-    uploads_dir.mkdir()
-    effects_dir = tmp_path / "effects"
-    effects_dir.mkdir()
+    files_dir = tmp_path / "files"
+    files_dir.mkdir()
     models_dir = tmp_path / "models"
     models_dir.mkdir()
-    runs_dir = tmp_path / "runs"
-    runs_dir.mkdir()
-
-    # Run results land under `{settings.user_data_dir}/runs/{job_id}`. Point
-    # the helper at tmp_path so the test can't litter the real data volume.
-    monkeypatch.setattr(RunRecord, "run_folder", staticmethod(lambda job_id: runs_dir / job_id))
 
     asyncio.run(init_db(db_path))
     database = Database(db_path)
@@ -84,7 +76,6 @@ def client(tmp_path, monkeypatch):
         manifest=manifest,
         id="test-uuid-001",
         full_id="openeffect/hdr",
-        assets_dir=effects_dir / "test-uuid-001",
         source="official",
     )
 
@@ -107,8 +98,8 @@ def client(tmp_path, monkeypatch):
     async def _lifespan(app: FastAPI):
         await database.connect()
 
-        install_service = InstallService(database, effects_dir)
-        storage_service = StorageService(uploads_dir, database)
+        file_service = FileService(files_dir, database)
+        install_service = InstallService(database, file_service)
         history_service = HistoryService(database)
         model_service = ModelService(models_dir)
 
@@ -117,14 +108,14 @@ def client(tmp_path, monkeypatch):
         app.state.config_service = config_service
         app.state.install_service = install_service
         app.state.effect_loader = effect_loader
-        app.state.storage_service = storage_service
+        app.state.file_service = file_service
         app.state.history_service = history_service
         app.state.model_service = model_service
         app.state.run_service = RunService(
             effect_loader=effect_loader,
             config_service=config_service,
             history_service=history_service,
-            storage_service=storage_service,
+            file_service=file_service,
             model_service=model_service,
         )
         yield

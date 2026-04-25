@@ -13,22 +13,22 @@ from config.settings import get_settings
 from db.database import Database, init_db
 from routes import register_routes
 from services.effect_loader import EffectLoaderService
+from services.file_service import FileService
 from services.history_service import HistoryService
 from services.install_service import InstallService
 from services.model_service import ModelService
 from services.run_service import RunService
-from services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
 
 async def _gc_loop(
-    storage_service,
+    file_service,
     install_service,
     ttl_hours: int,
     interval_seconds: int,
 ) -> None:
-    """Unified background reaper: prunes orphan uploads (`ref_count = 0`)
+    """Unified background reaper: prunes orphan files (`ref_count = 0`)
     AND stale effect lifecycle rows (`state` in `installing`/`uninstalling`)
     older than ttl_hours. Runs once immediately at startup (so a
     previous-process crash gets cleaned before the user notices) and
@@ -39,12 +39,12 @@ async def _gc_loop(
     alone."""
     while True:
         try:
-            uploads = await storage_service.prune_orphans(ttl_hours)
+            files = await file_service.prune_orphan_files(ttl_hours)
             lifecycle = await install_service.prune_stale_lifecycle_rows(ttl_hours)
-            if uploads or lifecycle:
+            if files or lifecycle:
                 logger.info(
-                    "gc: pruned %d upload(s), %d lifecycle row(s)",
-                    uploads, lifecycle,
+                    "gc: pruned %d file(s), %d lifecycle row(s)",
+                    files, lifecycle,
                 )
         except Exception as e:
             logger.warning("gc: failed: %s", e)
@@ -79,9 +79,8 @@ async def lifespan(app: FastAPI):
     _warn_if_exposed()
 
     settings.user_data_dir.mkdir(parents=True, exist_ok=True)
-    (settings.user_data_dir / "uploads").mkdir(exist_ok=True)
-    (settings.user_data_dir / "runs").mkdir(exist_ok=True)
-    (settings.user_data_dir / "effects").mkdir(exist_ok=True)
+    files_dir = settings.user_data_dir / "files"
+    files_dir.mkdir(exist_ok=True)
 
     db_path = settings.user_data_dir / "openeffect.db"
     await init_db(db_path)
@@ -90,28 +89,23 @@ async def lifespan(app: FastAPI):
 
     config_service = ConfigService(database)
 
-    install_service = InstallService(
-        db=database,
-        effects_dir=settings.user_data_dir / "effects",
-    )
+    file_service = FileService(files_dir=files_dir, db=database)
+    install_service = InstallService(db=database, file_service=file_service)
 
     effect_loader = EffectLoaderService(
         install_service=install_service,
+        db=database,
         bundled_dir=settings.effects_dir,
     )
     await effect_loader.load_all()
 
-    storage_service = StorageService(
-        uploads_dir=settings.user_data_dir / "uploads",
-        db=database,
-    )
     history_service = HistoryService(database)
     model_service = ModelService(settings.user_data_dir / "models")
     run_service = RunService(
         effect_loader=effect_loader,
         config_service=config_service,
         history_service=history_service,
-        storage_service=storage_service,
+        file_service=file_service,
         model_service=model_service,
     )
 
@@ -126,21 +120,21 @@ async def lifespan(app: FastAPI):
     app.state.run_service = run_service
     app.state.history_service = history_service
     app.state.model_service = model_service
-    app.state.storage_service = storage_service
+    app.state.file_service = file_service
 
-    # Spawn the unified GC reaper. Cleans both orphan uploads (eager
+    # Spawn the unified GC reaper. Cleans both orphan files (eager
     # client-side uploads sitting at ref_count=0) and abandoned installs
     # (in-flight when the previous process died). Same TTL covers both —
     # under that age, a live process might still own them.
     reaper_task = asyncio.create_task(
         _gc_loop(
-            storage_service,
+            file_service,
             install_service,
-            settings.upload_ttl_hours,
-            settings.upload_reaper_interval_seconds,
+            settings.file_ttl_hours,
+            settings.file_reaper_interval_seconds,
         )
     )
-    app.state.upload_reaper_task = reaper_task
+    app.state.gc_reaper_task = reaper_task
 
     yield
 

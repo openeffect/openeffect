@@ -305,8 +305,8 @@ def validate_run_inputs(
     """Enforce manifest-declared input constraints at run-submission time.
 
     Raises ValueError with a user-facing message on the first violation.
-    Image fields are skipped here: the value we receive is a ref_id
-    (validated at /api/upload when the file lands), and start_frame
+    Image fields are skipped here: the value we receive is a file hash
+    (validated at /api/files when the file lands), and start_frame
     required-ness is an author-time invariant enforced by `validate_roles`
     on the manifest itself."""
     for key, field in manifest.inputs.items():

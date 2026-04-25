@@ -12,6 +12,12 @@ import { selectEffect } from './effectsActions'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+/** Matches the manifest's `id: namespace/slug` line. Used by saveEffect
+ *  to surgically patch the id when the server auto-suffixes on a slug
+ *  collision, without disturbing any other lines the user may have
+ *  edited while save was in flight. */
+const ID_LINE_RE = /^id:\s*(.+)$/m
+
 const BLANK_TEMPLATE = `id: my/new-effect
 name: New Effect
 description: >
@@ -193,13 +199,13 @@ export async function saveEffect(): Promise<void> {
   }, 'editor/saveStart')
 
   try {
-    // Save touches only the YAML — the asset bindings on
-    // `effect_files` were already updated as the user added / renamed /
-    // deleted assets through the panel.
-    const result = await api.saveEffect(yamlContent, editingEffectId)
+    // Snapshot the YAML we're sending so we can later detect whether
+    // the user kept typing during the round-trip.
+    const submittedYaml = yamlContent
+    const result = await api.saveEffect(submittedYaml, editingEffectId)
     const effectId = result.manifest.id
+    const savedFullId = `${result.manifest.namespace}/${result.manifest.slug}`
 
-    const currentYaml = getState().editor.yamlContent
     setState((s) => {
       // Upsert the saved manifest. New effects go to the front (matches the
       // server's newest-first order); re-saves keep their current position.
@@ -210,7 +216,29 @@ export async function saveEffect(): Promise<void> {
       }
       s.editor.editingEffectId = effectId
       s.editor.savedManifest = result.manifest
-      s.editor.lastSavedYaml = currentYaml
+
+      // Reconcile the textarea with the saved id. The server can rewrite
+      // the id line on a fresh-effect collision (e.g. `my/foo` →
+      // `my/foo-2`); other lines come back exactly as submitted. So
+      // only patch the id line, and only if the user hasn't touched it
+      // since save started — that way edits to other fields made while
+      // save was in flight stay intact, and a deliberate id rename
+      // mid-save isn't clobbered.
+      const submittedId = ID_LINE_RE.exec(submittedYaml)?.[1]?.trim()
+      const currentId = ID_LINE_RE.exec(s.editor.yamlContent)?.[1]?.trim()
+      if (submittedId && currentId === submittedId && submittedId !== savedFullId) {
+        s.editor.yamlContent = s.editor.yamlContent.replace(
+          ID_LINE_RE,
+          `id: ${savedFullId}`,
+        )
+      }
+      // The canonical "last saved" content is what we submitted with
+      // its id line rewritten — same transformation the server applies.
+      // Reconstructing it locally avoids round-tripping the full YAML.
+      s.editor.lastSavedYaml = submittedYaml.replace(
+        ID_LINE_RE,
+        `id: ${savedFullId}`,
+      )
       s.editor.isSaving = false
       s.editor.saveVersion++
     }, 'editor/save')

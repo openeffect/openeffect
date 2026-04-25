@@ -152,6 +152,23 @@ export function EffectEditor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Sync store → CodeMirror for changes that didn't originate from typing
+  // (e.g. `saveEffect` patching the id line after a server-side
+  // auto-suffix, or `editEffect`/`forkEffect` swapping in a fresh
+  // manifest). The equality check breaks the otherwise-circular update:
+  // user-typing path is CM → updateListener → updateYaml → store →
+  // this effect, where the doc already matches and we skip.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const editorYaml = view.state.doc.toString()
+    if (editorYaml !== yamlContent) {
+      view.dispatch({
+        changes: { from: 0, to: editorYaml.length, insert: yamlContent },
+      })
+    }
+  }, [yamlContent])
+
   const handleExport = () => {
     if (!savedManifest) return
     window.open(api.exportEffect(savedManifest.namespace, savedManifest.slug), '_blank')

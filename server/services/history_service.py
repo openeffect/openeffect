@@ -114,9 +114,25 @@ class HistoryService:
         input_ids: list[str] | None = None,
         kind: str = "effect",
     ) -> RunRecord:
+        """Create a processing run row, bumping `ref_count` on every
+        input file in the same transaction. If any input is no longer
+        available (tombstoned by the GC reaper while the user was
+        composing the request), the whole transaction rolls back —
+        we never end up with bumped refs and no run row, or a run row
+        whose inputs got reaped under it."""
         now = datetime.now(timezone.utc).isoformat()
         ids_json = json.dumps(input_ids) if input_ids else None
         async with self._db.transaction() as conn:
+            for fid in input_ids or []:
+                cursor = await conn.execute(
+                    "UPDATE files SET ref_count = ref_count + 1 "
+                    "WHERE id = ? AND ref_count IS NOT NULL",
+                    (fid,),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError(
+                        f"Input file {fid[:8]}… is no longer available"
+                    )
             await conn.execute(
                 """INSERT INTO runs (
                        id, kind, effect_id, effect_name, model_id,
@@ -155,14 +171,34 @@ class HistoryService:
         return [_row_to_record(row) for row in rows]
 
     async def complete(self, job_id: str, output_id: str, duration_ms: int) -> None:
+        """Mark a run completed and bump `ref_count` on the output
+        file in the same transaction. `output_id` may be the empty
+        string when the result download failed — in that case we
+        store NULL and skip the bump.
+
+        If the bump fails (the just-ingested output was somehow
+        tombstoned in the microseconds between `add_file` and now),
+        the transaction rolls back and the run stays at processing —
+        the caller can then mark it failed."""
         now = datetime.now(timezone.utc).isoformat()
+        normalized_id = output_id or None
         async with self._db.transaction() as conn:
+            if normalized_id:
+                cursor = await conn.execute(
+                    "UPDATE files SET ref_count = ref_count + 1 "
+                    "WHERE id = ? AND ref_count IS NOT NULL",
+                    (normalized_id,),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError(
+                        f"Output file {normalized_id[:8]}… is no longer available"
+                    )
             await conn.execute(
                 """UPDATE runs
                    SET status='completed', output_id=?, duration_ms=?,
                        progress=100, progress_msg=NULL, updated_at=?
                    WHERE id=?""",
-                (output_id, duration_ms, now, job_id),
+                (normalized_id, duration_ms, now, job_id),
             )
 
     async def fail(self, job_id: str, error: str) -> None:
@@ -226,5 +262,37 @@ class HistoryService:
         return row[0] if row else 0
 
     async def delete(self, job_id: str) -> None:
+        """Delete a run row and decrement `ref_count` on every file
+        it referenced (`input_ids` + `output_id`) in the same
+        transaction. Without this atomic pairing a crash between the
+        DELETE and a separate decrement would strand input/output
+        files at `ref_count > 0` forever — the orphan reaper would
+        never touch them."""
         async with self._db.transaction() as conn:
-            await conn.execute("DELETE FROM runs WHERE id=?", (job_id,))
+            cursor = await conn.execute(
+                "SELECT input_ids, output_id FROM runs WHERE id = ?",
+                (job_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return  # idempotent — nothing to delete
+
+            ids: list[str] = []
+            if row["input_ids"]:
+                try:
+                    parsed = json.loads(row["input_ids"])
+                    if isinstance(parsed, list):
+                        ids.extend(i for i in parsed if isinstance(i, str) and i)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if row["output_id"]:
+                ids.append(row["output_id"])
+
+            await conn.execute("DELETE FROM runs WHERE id = ?", (job_id,))
+
+            for fid in ids:
+                await conn.execute(
+                    "UPDATE files SET ref_count = ref_count - 1 "
+                    "WHERE id = ? AND ref_count > 0",
+                    (fid,),
+                )

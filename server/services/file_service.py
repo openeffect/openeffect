@@ -128,12 +128,17 @@ class FileService:
                 file_id = str(uuid_utils.uuid7())
                 now = datetime.now(timezone.utc).isoformat()
                 async with self._db.transaction() as conn:
+                    # The conflict target uses the partial unique index
+                    # `idx_files_hash_live` (hash, WHERE ref_count IS NOT NULL).
+                    # A tombstoned row with the same hash doesn't trigger
+                    # the conflict — exactly what we want so a fresh upload
+                    # bypasses a row mid-cleanup.
                     cursor = await conn.execute(
                         """INSERT INTO files (
                                id, hash, kind, mime, ext, size, variants,
                                ref_count, created_at
                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-                           ON CONFLICT(hash) DO NOTHING
+                           ON CONFLICT(hash) WHERE ref_count IS NOT NULL DO NOTHING
                            RETURNING id""",
                         (file_id, file_hash, kind, chosen_mime, chosen_ext, size,
                          json.dumps(variants), now),
@@ -240,8 +245,14 @@ class FileService:
         )
 
     async def _fetch_by_hash(self, file_hash: str) -> File | None:
+        # `ref_count IS NOT NULL` filters out tombstoned rows so dedup
+        # never resurrects a file that's mid-cleanup. Combined with the
+        # partial unique index, a tombstoned row + a fresh row with the
+        # same hash can briefly coexist; this filter ensures callers only
+        # ever see the live one.
         row = await self._db.fetchone(
-            "SELECT id, hash, kind, mime, ext, size, variants FROM files WHERE hash = ?",
+            "SELECT id, hash, kind, mime, ext, size, variants FROM files "
+            "WHERE hash = ? AND ref_count IS NOT NULL",
             (file_hash,),
         )
         return self._row_to_file(row) if row else None
@@ -265,11 +276,18 @@ class FileService:
         return path if path.is_file() else None
 
     async def increment_ref(self, file_id: str) -> None:
+        """Bump a file's ref count. Raises `ValueError` if the file has
+        been tombstoned (`ref_count IS NULL`) or doesn't exist — silent
+        no-ops here would leak refs (`NULL + 1 = NULL`) and leave the
+        caller thinking they hold a reference."""
         async with self._db.transaction() as conn:
-            await conn.execute(
-                "UPDATE files SET ref_count = ref_count + 1 WHERE id = ?",
+            cursor = await conn.execute(
+                "UPDATE files SET ref_count = ref_count + 1 "
+                "WHERE id = ? AND ref_count IS NOT NULL",
                 (file_id,),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"File {file_id} is no longer available")
 
     async def decrement_refs(self, ids: list[str]) -> None:
         """Drop one ref off each given id. Cleanup of `ref_count = 0`
@@ -285,39 +303,55 @@ class FileService:
                 )
 
     async def prune_orphan_files(self, max_age_hours: int) -> int:
-        """Background reaper: drop `ref_count = 0` files that have been
-        sitting for more than `max_age_hours`. Safety ordering — for
-        each orphan, rmtree the disk folder FIRST, then DELETE the row.
-        If rmtree fails the row stays for the next cycle; that's better
-        than deleting the row and leaking the files.
+        """Two-phase orphan sweep.
 
-        `max_age_hours` covers the tiny window between an eager add_file
-        (inserts ref_count=0) and the consumer's increment_ref (run
-        adopts the upload). Anything younger could still belong to a
-        live request."""
+        **Phase 1 — tombstone.** Atomically move every fresh
+        `ref_count = 0` row past the TTL into the tombstoned state
+        (`ref_count = NULL`). The partial unique index on `hash` no
+        longer covers tombstoned rows, so a concurrent upload of the
+        same content can claim a fresh `id` even before Phase 2 has
+        rmtree'd the doomed folder.
+
+        **Phase 2 — drain.** For each tombstoned row, rmtree the
+        folder then DELETE the row. The selection here is `ref_count
+        IS NULL` (no age filter): a tombstoned row from a previous
+        cycle whose rmtree failed gets retried until it succeeds.
+
+        `max_age_hours` is the multi-instance safety knob: anything
+        younger could still belong to a live request that's about to
+        bump the ref."""
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
 
+        # Phase 1 — atomically tombstone aged orphans.
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL "
+                "WHERE ref_count = 0 AND created_at < ?",
+                (cutoff,),
+            )
+
+        # Phase 2 — drain every tombstoned row (this cycle's plus any
+        # leftovers from a crashed previous cycle).
         rows = await self._db.fetchall(
-            "SELECT id FROM files WHERE ref_count = 0 AND created_at < ?",
-            (cutoff,),
+            "SELECT id FROM files WHERE ref_count IS NULL"
         )
-        orphan_ids = [row["id"] for row in rows]
-        if not orphan_ids:
+        if not rows:
             return 0
 
         pruned = 0
-        for fid in orphan_ids:
-            orphan_dir = self._files_dir / fid
+        for row in rows:
+            orphan_dir = self._files_dir / row["id"]
             try:
                 if orphan_dir.exists():
                     shutil.rmtree(str(orphan_dir))
             except Exception:
+                # Disk wedged; leave the row tombstoned, retry next cycle.
                 continue
 
             async with self._db.transaction() as conn:
                 await conn.execute(
-                    "DELETE FROM files WHERE id = ? AND ref_count = 0",
-                    (fid,),
+                    "DELETE FROM files WHERE id = ? AND ref_count IS NULL",
+                    (row["id"],),
                 )
             pruned += 1
 

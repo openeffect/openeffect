@@ -167,7 +167,19 @@ class TestStartRun:
                 output={},
             ))
 
-    async def test_increments_ref_count_for_image_inputs(self, run_service, files):
+    async def test_increments_ref_count_for_image_inputs(self, run_service, database):
+        """Bumping happens atomically inside `history.create_processing`
+        (same transaction as the run row INSERT). Plant a live file row
+        for the input id, kick off `start`, verify the ref_count moved."""
+        from datetime import datetime, timezone
+        async with database.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+                "                   ref_count, created_at) "
+                "VALUES (?, ?, 'image', 'image/png', 'png', 0, '[]', 0, ?)",
+                ("abc123hash", "h-abc", datetime.now(timezone.utc).isoformat()),
+            )
+
         await run_service.start(RunRequest(
             effect_id="test-uuid-001",
             model_id="wan-2.7",
@@ -176,7 +188,11 @@ class TestStartRun:
             output={},
         ))
 
-        files.increment_ref.assert_called_once_with("abc123hash")
+        row = await database.fetchone(
+            "SELECT ref_count FROM files WHERE id = ?", ("abc123hash",),
+        )
+        assert row is not None
+        assert row["ref_count"] == 1
 
 
 class TestBroadcast:

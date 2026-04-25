@@ -1,7 +1,7 @@
 """Unit tests for HistoryService with a real SQLite DB."""
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -34,6 +34,26 @@ def _make_job(job_id: str = "job-001", effect_id: str = "single-image/hdr",
                    effect_name=effect_name, model_id=model_id)
 
 
+async def _plant_file(service, file_id: str, *, ref_count: int = 0) -> None:
+    """Insert a synthetic live `files` row so create_processing/complete
+    can bump its ref_count without `add_file` actually running."""
+    async with service._db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+            "                   ref_count, created_at) "
+            "VALUES (?, ?, 'image', 'image/png', 'png', 0, '[]', ?, ?)",
+            (file_id, f"h-{file_id}", ref_count,
+             datetime.now(timezone.utc).isoformat()),
+        )
+
+
+async def _file_ref_count(service, file_id: str) -> int | None:
+    row = await service._db.fetchone(
+        "SELECT ref_count FROM files WHERE id = ?", (file_id,),
+    )
+    return row[0] if row else None
+
+
 class TestCreateProcessing:
     async def test_inserts_record_with_processing_status(self, service):
         job = _make_job("job-create-1")
@@ -64,6 +84,41 @@ class TestCreateProcessing:
         assert fetched is not None
         assert fetched.id == "job-create-4"
         assert fetched.status == "processing"
+
+    async def test_bumps_input_refs_atomically(self, service):
+        """Each `input_ids[i]`'s ref_count goes 0 → 1 inside the
+        same transaction as the run row INSERT."""
+        await _plant_file(service, "in-1")
+        await _plant_file(service, "in-2")
+
+        await service.create_processing(
+            _make_job("job-with-inputs"),
+            input_ids=["in-1", "in-2"],
+        )
+
+        assert await _file_ref_count(service, "in-1") == 1
+        assert await _file_ref_count(service, "in-2") == 1
+
+    async def test_rolls_back_when_input_tombstoned(self, service):
+        """If any input is tombstoned, the whole transaction
+        rolls back — no half-bumped state, no orphan run row."""
+        await _plant_file(service, "in-live")
+        await _plant_file(service, "in-tomb")
+        async with service._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL WHERE id = ?", ("in-tomb",),
+            )
+
+        with pytest.raises(ValueError, match="no longer available"):
+            await service.create_processing(
+                _make_job("job-doomed"),
+                input_ids=["in-live", "in-tomb"],
+            )
+
+        # First input's bump rolled back.
+        assert await _file_ref_count(service, "in-live") == 0
+        # No run row was inserted.
+        assert await service.get_by_id("job-doomed") is None
 
 
 class TestUpdateProgress:
@@ -104,28 +159,73 @@ class TestUpdateProgress:
 
 class TestComplete:
     async def test_sets_completed_status(self, service):
+        await _plant_file(service, "out-1")
         job = _make_job("job-complete-1")
         await service.create_processing(job)
 
-        # `complete()` takes the file id; URL composition lives in
-        # `to_dict()`. The id here doesn't have to point at a real
-        # file row — get_by_id LEFT JOINs and gracefully returns null
-        # for the joined columns.
-        await service.complete("job-complete-1", "fake-uuid-1", 5000)
+        await service.complete("job-complete-1", "out-1", 5000)
 
         record = await service.get_by_id("job-complete-1")
         assert record is not None
         assert record.status == "completed"
-        assert record.output_id == "fake-uuid-1"
+        assert record.output_id == "out-1"
         assert record.duration_ms == 5000
         assert record.progress == 100
 
+    async def test_complete_bumps_output_ref_atomically(self, service):
+        """The bump on `output_id` lives inside the same transaction
+        as the run row UPDATE — no window where the run is completed
+        but the file's ref_count is still 0."""
+        await _plant_file(service, "out-bump", ref_count=0)
+        job = _make_job("job-bump")
+        await service.create_processing(job)
+
+        await service.complete("job-bump", "out-bump", 1234)
+
+        assert await _file_ref_count(service, "out-bump") == 1
+
+    async def test_complete_with_empty_output_id_skips_bump(self, service):
+        """Empty `output_id` (failed result download) stores NULL and
+        skips the bump — the run still flips to completed."""
+        job = _make_job("job-no-output")
+        await service.create_processing(job)
+
+        await service.complete("job-no-output", "", 100)
+
+        record = await service.get_by_id("job-no-output")
+        assert record is not None
+        assert record.status == "completed"
+        assert record.output_id is None
+
+    async def test_complete_raises_when_output_tombstoned(self, service):
+        """If the just-ingested output got tombstoned in the
+        microseconds between `add_file` and `complete`, the bump
+        guard fires and the transaction rolls back."""
+        await _plant_file(service, "out-tomb")
+        # Tombstone it manually
+        async with service._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL WHERE id = ?", ("out-tomb",),
+            )
+        job = _make_job("job-doomed")
+        await service.create_processing(job)
+
+        with pytest.raises(ValueError, match="no longer available"):
+            await service.complete("job-doomed", "out-tomb", 100)
+
+        # Run row stayed at processing — caller's responsibility to
+        # mark it failed if appropriate.
+        record = await service.get_by_id("job-doomed")
+        assert record is not None
+        assert record.status == "processing"
+
     async def test_clears_progress_message(self, service):
+        await _plant_file(service, "out-2")
         job = _make_job("job-complete-2")
         await service.create_processing(job)
         await service.update_progress("job-complete-2", 50, "Working...")
 
-        await service.complete("job-complete-2", "fake-uuid-2", 3000)
+        await service.complete("job-complete-2", "out-2", 3000)
 
         record = await service.get_by_id("job-complete-2")
         assert record is not None
@@ -230,7 +330,9 @@ class TestActiveCount:
     async def test_excludes_completed_records(self, service):
         await service.create_processing(_make_job("job-ac-1"))
         await service.create_processing(_make_job("job-ac-2"))
-        await service.complete("job-ac-1", "/out.mp4", 1000)
+        # Empty `output_id` skips the ref bump — these tests only care
+        # about the status flip, not the output binding.
+        await service.complete("job-ac-1", "", 1000)
 
         count = await service.active_count()
         assert count == 1
@@ -245,7 +347,7 @@ class TestActiveCount:
 
     async def test_zero_when_none_processing(self, service):
         await service.create_processing(_make_job("job-az-1"))
-        await service.complete("job-az-1", "/out.mp4", 1000)
+        await service.complete("job-az-1", "", 1000)
 
         count = await service.active_count()
         assert count == 0
@@ -262,7 +364,7 @@ class TestCount:
     async def test_count_includes_all_statuses(self, service):
         await service.create_processing(_make_job("job-ct-1"))
         await service.create_processing(_make_job("job-ct-2"))
-        await service.complete("job-ct-1", "/out.mp4", 1000)
+        await service.complete("job-ct-1", "", 1000)
         await service.fail("job-ct-2", "Error")
 
         total = await service.count()
@@ -295,6 +397,32 @@ class TestDelete:
 
     async def test_delete_nonexistent_does_not_error(self, service):
         await service.delete("nonexistent-id")
+
+    async def test_decrements_input_and_output_refs_atomically(self, service):
+        """Delete drops the run row and decrements every file it
+        referenced (`input_ids` + `output_id`) in one transaction."""
+        await _plant_file(service, "in-a")
+        await _plant_file(service, "in-b")
+        await _plant_file(service, "out-x")
+
+        await service.create_processing(
+            _make_job("job-refs"),
+            input_ids=["in-a", "in-b"],
+        )
+        await service.complete("job-refs", "out-x", 100)
+
+        # All three at ref_count=1 after create+complete.
+        assert await _file_ref_count(service, "in-a") == 1
+        assert await _file_ref_count(service, "in-b") == 1
+        assert await _file_ref_count(service, "out-x") == 1
+
+        await service.delete("job-refs")
+
+        # Run gone, every ref dropped back to 0.
+        assert await service.get_by_id("job-refs") is None
+        assert await _file_ref_count(service, "in-a") == 0
+        assert await _file_ref_count(service, "in-b") == 0
+        assert await _file_ref_count(service, "out-x") == 0
 
 
 class TestGetById:

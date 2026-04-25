@@ -287,3 +287,85 @@ class TestGetFilePath:
         f = await _add_image(files, _png_bytes(), "p.png")
         assert files.get_file_path(f.id, "../etc/passwd") is None
         assert files.get_file_path(f.id, "../../") is None
+
+
+class TestTombstoneSemantics:
+    """The orphan reaper marks rows tombstoned (`ref_count = NULL`)
+    before rmtreeing the folder. Tombstoned rows are invisible to
+    dedup, can't be ref-bumped, and are eventually drained by the
+    next reaper cycle."""
+
+    async def _tombstone(self, files: FileService, file_id: str) -> None:
+        async with files._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL WHERE id = ?", (file_id,),
+            )
+
+    async def test_dedup_skips_tombstoned_row(self, files):
+        """Same content uploaded after a row gets tombstoned should
+        land at a fresh id — the partial unique index lets the
+        tombstoned row coexist briefly."""
+        png = _png_bytes()
+        f1 = await _add_image(files, png, "a.png")
+        await self._tombstone(files, f1.id)
+
+        f2 = await _add_image(files, png, "b.png")
+        assert f2.id != f1.id
+        assert (files.files_dir / f2.id).is_dir()
+        assert (files.files_dir / f1.id).is_dir()  # tombstoned but folder still on disk until Phase 2
+
+    async def test_increment_ref_on_tombstoned_raises(self, files):
+        f = await _add_image(files, _png_bytes(), "r.png")
+        await self._tombstone(files, f.id)
+        with pytest.raises(ValueError, match="no longer available"):
+            await files.increment_ref(f.id)
+
+    async def test_reaper_two_phase_handles_concurrent_upload(self, files):
+        """Reaper Phase 1 tombstones the doomed row. A racing upload
+        of identical content lands at a fresh id. Phase 2 sweeps only
+        the tombstoned folder, leaving the new one intact."""
+        png = _png_bytes(color=(99, 88, 77))
+        f1 = await _add_image(files, png, "first.png")
+        # Age it past the TTL so Phase 1 catches it.
+        old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        await _set_created_at(files, f1.id, old)
+
+        # Phase 1: tombstone (UPDATE ref_count = NULL).
+        async with files._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL "
+                "WHERE ref_count = 0 AND created_at < ?",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+        # Concurrent upload of same bytes → fresh id, both folders coexist.
+        f2 = await _add_image(files, png, "second.png")
+        assert f2.id != f1.id
+        assert (files.files_dir / f1.id).is_dir()
+        assert (files.files_dir / f2.id).is_dir()
+
+        # Now run Phase 2 (the public reaper handles both phases; we
+        # already did Phase 1 manually, so calling prune_orphan_files
+        # here just runs Phase 2 plus a no-op Phase 1).
+        pruned = await files.prune_orphan_files(max_age_hours=24)
+        assert pruned == 1
+        assert not (files.files_dir / f1.id).exists()
+        assert (files.files_dir / f2.id).is_dir()
+        # Tombstoned row is gone from the DB.
+        assert await _ref_count(files, f1.id) is None
+        # New row is intact at ref_count=0.
+        assert await _ref_count(files, f2.id) == 0
+
+    async def test_reaper_resumes_after_crashed_rmtree(self, files):
+        """Plant a row that's already tombstoned (simulating a crash
+        between Phase 1 and Phase 2). Next reaper cycle picks it up
+        regardless of age."""
+        f = await _add_image(files, _png_bytes(), "stuck.png")
+        # Tombstone manually — created_at is fresh, so Phase 1 of a
+        # subsequent reaper run wouldn't pick it up. Phase 2's
+        # `WHERE ref_count IS NULL` ignores age.
+        await self._tombstone(files, f.id)
+
+        pruned = await files.prune_orphan_files(max_age_hours=24)
+        assert pruned == 1
+        assert not (files.files_dir / f.id).exists()
+        assert await _ref_count(files, f.id) is None

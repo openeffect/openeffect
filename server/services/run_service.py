@@ -171,11 +171,13 @@ class RunService:
         for key, field in manifest.inputs.items():
             if field.type == "image" and key in request.inputs:
                 file_id = request.inputs[key]
-                await self._files.increment_ref(file_id)
                 input_ids.append(file_id)
                 saved_inputs[key] = file_id
             elif key in request.inputs:
                 saved_inputs[key] = request.inputs[key]
+        # Ref bumps happen inside `history.create_processing` (same
+        # transaction as the run row INSERT) — no half-bumped state
+        # if anything below this point throws.
 
         # Resolve everything up-front so we can persist `model_inputs` — the
         # normalized (role-keyed, fully-resolved) shape that's stable across
@@ -273,12 +275,10 @@ class RunService:
         )
         self._jobs[job_id] = job
 
-        # Hold a ref on each file so the orphan-reaper doesn't delete it
-        # while the run is still in flight.
-        input_ids: list[str] = []
-        for file_id in image_inputs.values():
-            await self._files.increment_ref(file_id)
-            input_ids.append(file_id)
+        # Ref bumps happen inside `history.create_processing` (same
+        # transaction as the run row INSERT) so there's no window
+        # where bumps could land without a corresponding run row.
+        input_ids: list[str] = list(image_inputs.values())
 
         # Route request values via the model registry, then pull out the
         # negative_prompt if it was passed via user_params.
@@ -414,7 +414,10 @@ class RunService:
             file = await self._files.add_file(
                 tmp_path, kind="video", mime="video/mp4", ext="mp4",
             )
-            await self._files.increment_ref(file.id)
+            # The output's ref_count is bumped inside `history.complete`
+            # (same transaction as setting `runs.output_id`). Until then
+            # the row sits at ref_count=0 like any eager upload — the
+            # orphan reaper's TTL covers the gap.
             return file.id
         finally:
             tmp_path.unlink(missing_ok=True)

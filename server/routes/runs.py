@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, Request
 
 from routes._errors import conflict, not_found
@@ -40,10 +38,10 @@ async def get_run(item_id: str, request: Request):
 
 @router.delete("/runs/{item_id}")
 async def delete_run(item_id: str, request: Request):
-    """Delete a run and decrement refs on every file it referenced.
-    The record's `input_ids` array tracks inputs explicitly; the output
-    is on `output_id`. Files dropped to ref_count=0 get swept by the
-    file reaper on its next cycle."""
+    """Delete a run row and decrement refs on every file it
+    referenced. Both the row delete and the ref decrements happen
+    inside `history.delete`'s transaction so a crash can't leave
+    files with phantom refs from a now-gone run."""
     history = request.app.state.history_service
     record = await history.get_by_id(item_id)
     if not record:
@@ -51,25 +49,5 @@ async def delete_run(item_id: str, request: Request):
     if record.status == "processing":
         raise conflict("Cannot delete a processing record")
 
-    files_service = request.app.state.file_service
-
-    ids: list[str] = []
-    if record.input_ids:
-        try:
-            parsed = json.loads(record.input_ids)
-            if isinstance(parsed, list):
-                ids.extend(i for i in parsed if isinstance(i, str) and i)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if record.output_id:
-        ids.append(record.output_id)
-
-    # Delete DB record first, then drop refs (best-effort).
     await history.delete(item_id)
-
-    try:
-        if ids:
-            await files_service.decrement_refs(ids)
-    except Exception:
-        pass  # ref cleanup is best-effort — record is already deleted
     return {"ok": True}

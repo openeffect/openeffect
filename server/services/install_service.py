@@ -836,19 +836,27 @@ class InstallService:
     async def _link_effect_file(
         self, effect_id: str, logical_name: str, file_id: str,
     ) -> None:
-        """Add or replace an `effect_files` row, bumping `ref_count`
-        on the referenced file. Run in a single transaction so a crash
-        between INSERT and UPDATE can't leave a row pointing at a
-        ref-counted file we never bumped."""
+        """Add an `effect_files` row, bumping `ref_count` on the
+        referenced file. Bump runs FIRST inside a single transaction:
+        if the file has been tombstoned by the GC reaper between when
+        the caller looked it up and now, the bump's `ref_count IS NOT
+        NULL` guard fails (rowcount=0), we raise, and the binding
+        INSERT never happens — the FK can't end up pointing at a
+        doomed row."""
         async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "UPDATE files SET ref_count = ref_count + 1 "
+                "WHERE id = ? AND ref_count IS NOT NULL",
+                (file_id,),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(
+                    f"File {file_id[:8]}… is no longer available"
+                )
             await conn.execute(
                 """INSERT INTO effect_files (effect_id, logical_name, file_id)
                    VALUES (?, ?, ?)""",
                 (effect_id, logical_name, file_id),
-            )
-            await conn.execute(
-                "UPDATE files SET ref_count = ref_count + 1 WHERE id = ?",
-                (file_id,),
             )
 
     async def _clear_effect_files(self, effect_id: str) -> None:
@@ -875,7 +883,13 @@ class InstallService:
         """Mirror one effect's `effect_files` rows onto another, bumping
         `ref_count` per shared file. Used by the fork-from path so a
         new local effect inherits the source's asset map without any
-        file copies on disk."""
+        file copies on disk.
+
+        Bump-first per row, same shape as `_link_effect_file`: if any
+        referenced file has been tombstoned between the SELECT and the
+        INSERT, the transaction rolls back and the fork fails cleanly
+        — partial copies would leave the new effect with a half-bound
+        manifest."""
         async with self._db.transaction() as conn:
             cursor = await conn.execute(
                 "SELECT logical_name, file_id FROM effect_files WHERE effect_id = ?",
@@ -883,14 +897,20 @@ class InstallService:
             )
             rows = await cursor.fetchall()
             for row in rows:
+                bump = await conn.execute(
+                    "UPDATE files SET ref_count = ref_count + 1 "
+                    "WHERE id = ? AND ref_count IS NOT NULL",
+                    (row["file_id"],),
+                )
+                if bump.rowcount == 0:
+                    raise ValueError(
+                        f"Source asset '{row['logical_name']}' references a "
+                        f"file that's no longer available"
+                    )
                 await conn.execute(
                     """INSERT INTO effect_files (effect_id, logical_name, file_id)
                        VALUES (?, ?, ?)""",
                     (dest_id, row["logical_name"], row["file_id"]),
-                )
-                await conn.execute(
-                    "UPDATE files SET ref_count = ref_count + 1 WHERE id = ?",
-                    (row["file_id"],),
                 )
 
     # ─── Helpers ───

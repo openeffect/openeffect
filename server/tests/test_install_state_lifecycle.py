@@ -717,3 +717,37 @@ class TestPerAssetCRUD:
             )
         with pytest.raises(ValueError, match="Effect.*not found"):
             await install_service.remove_effect_asset("tester", "ghost", "a.png")
+
+
+class TestLinkRejectsTombstoned:
+    """`_link_effect_file` runs the bump as the first statement of
+    its transaction with a `ref_count IS NOT NULL` guard. If the
+    referenced file has been tombstoned by the GC reaper, the bump
+    rowcount=0 and the whole link transaction rolls back — no
+    `effect_files` row ever lands pointing at a doomed file."""
+
+    async def test_link_effect_file_rejects_tombstoned_file(self, install_service):
+        await install_service.install_from_archive(_zip_one(_manifest()))
+        existing = await _row(install_service, "tester", "demo")
+        assert existing is not None
+
+        # Add a real file row, then tombstone it.
+        file = await install_service._files.add_file(
+            _png_bytes(), kind="image", mime="image/png", ext="png",
+        )
+        async with install_service._db.transaction() as conn:
+            await conn.execute(
+                "UPDATE files SET ref_count = NULL WHERE id = ?", (file.id,),
+            )
+
+        with pytest.raises(ValueError, match="no longer available"):
+            await install_service._link_effect_file(
+                existing["id"], "doomed.png", file.id,
+            )
+
+        # No effect_files row landed.
+        rows = await install_service._db.fetchall(
+            "SELECT * FROM effect_files WHERE effect_id = ? AND logical_name = ?",
+            (existing["id"], "doomed.png"),
+        )
+        assert rows == []

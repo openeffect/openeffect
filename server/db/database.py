@@ -118,13 +118,13 @@ async def init_db(db_path: Path) -> None:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS files (
                 id         TEXT PRIMARY KEY,        -- uuid7; the folder name and URL identifier
-                hash       TEXT NOT NULL UNIQUE,    -- sha256 for content-addressed dedup
+                hash       TEXT NOT NULL,           -- sha256; uniqueness enforced via partial index below
                 kind       TEXT NOT NULL,           -- 'image' | 'video' | 'other'
                 mime       TEXT NOT NULL,
                 ext        TEXT NOT NULL,           -- canonical original extension (no dot)
                 size       INTEGER NOT NULL,
                 variants   TEXT NOT NULL,           -- JSON array, e.g. ["original.jpg","512.webp","1024.webp"]
-                ref_count  INTEGER NOT NULL DEFAULT 0,
+                ref_count  INTEGER DEFAULT 0,       -- NULL marks a row tombstoned for GC
                 created_at TEXT NOT NULL
             )
         """)
@@ -147,6 +147,15 @@ async def init_db(db_path: Path) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_files_orphan ON files(ref_count, created_at)")
+        # Partial unique index: hash uniqueness only constrains live rows.
+        # Tombstoned rows (ref_count IS NULL) are mid-cleanup and don't
+        # block a fresh upload of identical content from claiming a new id.
+        # Required by the ON CONFLICT(hash) WHERE ref_count IS NOT NULL
+        # clause in FileService.add_file.
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_hash_live "
+            "ON files(hash) WHERE ref_count IS NOT NULL"
+        )
         await db.execute("CREATE INDEX IF NOT EXISTS idx_effect_files_file_id ON effect_files(file_id)")
         # Speeds up the GC reaper's "abandoned installing/uninstalling rows"
         # scan as the effects table grows.

@@ -84,6 +84,31 @@ def _max_size_for_ext(ext: str) -> int:
     return MAX_IMAGE_SIZE
 
 
+def _parse_manifest_yaml(yaml_text: str) -> tuple[dict[str, Any], EffectManifest]:
+    """Parse + validate manifest YAML. Maps `yaml.YAMLError` and Pydantic's
+    `ValidationError` (neither of which is a `ValueError`) to a `ValueError`
+    with a human-readable message, so the route layer's `except ValueError`
+    arms can return a clean 400 instead of the request bubbling up to a 500
+    with a stack trace."""
+    try:
+        data = yaml.safe_load(yaml_text)
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        loc = f" (line {mark.line + 1})" if mark else ""
+        raise ValueError(f"Invalid YAML syntax{loc}: {getattr(e, 'problem', str(e))}")
+
+    if not isinstance(data, dict):
+        raise ValueError("YAML must be a mapping (key: value pairs)")
+
+    try:
+        manifest = EffectManifest(**data)
+    except ValidationError as e:
+        errors = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
+        raise ValueError("; ".join(errors))
+
+    return data, manifest
+
+
 class InstallConflictError(Exception):
     """Raised when one or more incoming manifests already exist in the DB at a
     different version. `conflicts` is a list of dicts with keys
@@ -125,12 +150,8 @@ class InstallService:
             if len(resp.content) > MAX_MANIFEST_SIZE:
                 raise ValueError("Manifest too large")
 
-            data = yaml.safe_load(resp.text)
-            if not isinstance(data, dict) or "id" not in data:
-                raise ValueError("URL did not return a valid manifest YAML")
-
+            data, manifest = _parse_manifest_yaml(resp.text)
             base_url = url.rsplit("/", 1)[0] + "/"
-            manifest = EffectManifest(**data)
             self._validate_namespace(manifest.namespace)
 
             if not overwrite:
@@ -270,8 +291,13 @@ class InstallService:
 
         pending: list[tuple[Path, EffectManifest]] = []
         for manifest_path in manifest_paths:
-            data = yaml.safe_load(manifest_path.read_text())
-            manifest = EffectManifest(**data)
+            try:
+                _, manifest = _parse_manifest_yaml(manifest_path.read_text())
+            except ValueError as e:
+                # Surface which manifest in the archive is bad so the user
+                # knows where to look — the bare error wouldn't say.
+                rel = manifest_path.relative_to(folder) if folder in manifest_path.parents else manifest_path.name
+                raise ValueError(f"{rel}: {e}")
             pending.append((manifest_path, manifest))
 
         # Validate every namespace upfront so a single bad manifest can't
@@ -287,8 +313,8 @@ class InstallService:
                 raise InstallConflictError(conflicts)
 
         installed = []
-        for manifest_path, _ in pending:
-            full_id = await self._install_from_extracted(manifest_path, allow_official)
+        for manifest_path, manifest in pending:
+            full_id = await self._install_from_extracted(manifest_path, manifest, allow_official)
             installed.append(full_id)
 
         return installed
@@ -303,8 +329,7 @@ class InstallService:
 
         pending_ids: set[tuple[str, str]] = set()
         for mp in manifest_paths:
-            data = yaml.safe_load(mp.read_text())
-            m = EffectManifest(**data)
+            _, m = _parse_manifest_yaml(mp.read_text())
             pending_ids.add((m.namespace, m.slug))
 
         installed: list[str] = []
@@ -334,14 +359,12 @@ class InstallService:
         return sorted(root.rglob("manifest.yaml"))
 
     async def _install_from_extracted(
-        self, manifest_path: Path, allow_official: bool
+        self, manifest_path: Path, manifest: EffectManifest, allow_official: bool
     ) -> str:
-        # Caller (`install_from_folder`) has already validated namespace and
-        # detected conflicts upfront — reaching this loop means every
-        # manifest is clear to install.
+        # Caller (`install_from_folder`) has already parsed + validated the
+        # manifest, checked the namespace, and resolved conflicts. We only
+        # need the raw YAML text here to persist alongside the install.
         yaml_content = manifest_path.read_text()
-        data = yaml.safe_load(yaml_content)
-        manifest = EffectManifest(**data)
 
         existing = await self.get_effect(manifest.namespace, manifest.slug)
         if existing and existing["version"] == manifest.version:
@@ -475,22 +498,7 @@ class InstallService:
         """Parse + validate manifest YAML and persist via `save_local_effect`.
         All failure modes surface as `ValueError` so the route layer can map
         them to HTTP 400 without seeing implementation details."""
-        try:
-            data = yaml.safe_load(yaml_content)
-        except yaml.YAMLError as e:
-            mark = getattr(e, "problem_mark", None)
-            loc = f" (line {mark.line + 1})" if mark else ""
-            raise ValueError(f"Invalid YAML syntax{loc}: {getattr(e, 'problem', str(e))}")
-
-        if not isinstance(data, dict):
-            raise ValueError("YAML must be a mapping (key: value pairs)")
-
-        try:
-            manifest = EffectManifest(**data)
-        except ValidationError as e:
-            errors = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
-            raise ValueError("; ".join(errors))
-
+        _, manifest = _parse_manifest_yaml(yaml_content)
         return await self.save_local_effect(
             manifest, yaml_content, existing_id, fork_from=fork_from
         )
@@ -567,7 +575,12 @@ class InstallService:
         async with httpx.AsyncClient(follow_redirects=False, timeout=15.0) as client:
             resp = await client.get(row["source_url"])
             resp.raise_for_status()
-            remote = yaml.safe_load(resp.text)
+            try:
+                remote = yaml.safe_load(resp.text)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Update check failed — remote YAML is invalid: {e}")
+            if not isinstance(remote, dict):
+                raise ValueError("Update check failed — remote did not return a manifest")
             remote_version = remote.get("version", "0.0.0")
 
         return {

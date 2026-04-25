@@ -158,6 +158,49 @@ class TestArchiveInstallConflict:
         assert (await install_service.get_effect("openeffect", "sneaky")) is None
 
 
+class TestArchiveMalformedManifest:
+    """Manifest parse / schema failures inside an archive must surface as
+    `ValueError` (so the route layer translates them to a clean 400) and
+    must reject the whole archive without partially installing anything."""
+
+    async def test_invalid_yaml_syntax_rejects_archive(self, install_service):
+        m = _manifest()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{m['id']}/manifest.yaml", "this: is: not: valid yaml: : :")
+        with pytest.raises(ValueError, match="Invalid YAML syntax"):
+            await install_service.install_from_archive(buf.getvalue())
+        assert (await install_service.get_effect("tester", "demo")) is None
+
+    async def test_schema_invalid_manifest_rejects_archive(self, install_service):
+        # Missing required `name` field — Pydantic rejects on validation.
+        bad = _manifest()
+        del bad["name"]
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{bad['id']}/manifest.yaml", yaml.dump(bad))
+        # Pydantic message bubbles up, not a generic 500-style exception
+        with pytest.raises(ValueError, match="name"):
+            await install_service.install_from_archive(buf.getvalue())
+        assert (await install_service.get_effect("tester", "demo")) is None
+
+    async def test_one_bad_manifest_blocks_other_clean_effects(self, install_service):
+        clean = _manifest(id="tester/clean")
+        # Bad manifest — list under `tags` would be a string, fails schema
+        bad = _manifest(id="tester/broken")
+        bad["tags"] = "not-a-list"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{clean['id']}/manifest.yaml", yaml.dump(clean))
+            zf.writestr(f"{bad['id']}/manifest.yaml", yaml.dump(bad))
+        with pytest.raises(ValueError, match="tags"):
+            await install_service.install_from_archive(buf.getvalue())
+        # The clean one must NOT be installed — upfront pass should bail
+        # on the broken manifest before any disk write.
+        assert (await install_service.get_effect("tester", "clean")) is None
+        assert (await install_service.get_effect("tester", "broken")) is None
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Security: URL download + zip extraction safeguards
 # ──────────────────────────────────────────────────────────────────────────────

@@ -22,16 +22,32 @@ from services.storage_service import StorageService
 logger = logging.getLogger(__name__)
 
 
-async def _upload_reaper_loop(storage_service, ttl_hours: int, interval_seconds: int) -> None:
-    """Periodically prune orphan uploads (ref_count=0 older than ttl_hours).
-    Runs once immediately at startup, then on a sleep-loop."""
+async def _gc_loop(
+    storage_service,
+    install_service,
+    ttl_hours: int,
+    interval_seconds: int,
+) -> None:
+    """Unified background reaper: prunes orphan uploads (`ref_count = 0`)
+    AND abandoned installs (`state = 'installing'`) older than ttl_hours.
+    Runs once immediately at startup (so a previous-process crash gets
+    cleaned before the user notices) and then on a sleep-loop.
+
+    The TTL is the multi-instance safety knob — anything younger than
+    `ttl_hours` could still belong to a live process, so we leave it
+    alone. The first iteration's run also doubles as boot recovery for
+    the install lifecycle's `installing` rows."""
     while True:
         try:
-            pruned = await storage_service.prune_orphans(ttl_hours)
-            if pruned:
-                logger.info("upload-reaper: pruned %d orphan upload(s)", pruned)
+            uploads = await storage_service.prune_orphans(ttl_hours)
+            installs = await install_service.prune_abandoned_installs(ttl_hours)
+            if uploads or installs:
+                logger.info(
+                    "gc: pruned %d upload(s), %d install(s)",
+                    uploads, installs,
+                )
         except Exception as e:
-            logger.warning("upload-reaper: failed: %s", e)
+            logger.warning("gc: failed: %s", e)
         try:
             await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
@@ -112,12 +128,14 @@ async def lifespan(app: FastAPI):
     app.state.model_service = model_service
     app.state.storage_service = storage_service
 
-    # Spawn the orphan-upload reaper. With eager client-side uploads, any
-    # picked-but-never-run image sits at ref_count=0; this keeps disk usage
-    # bounded without deleting anything a user might still care about.
+    # Spawn the unified GC reaper. Cleans both orphan uploads (eager
+    # client-side uploads sitting at ref_count=0) and abandoned installs
+    # (in-flight when the previous process died). Same TTL covers both —
+    # under that age, a live process might still own them.
     reaper_task = asyncio.create_task(
-        _upload_reaper_loop(
+        _gc_loop(
             storage_service,
+            install_service,
             settings.upload_ttl_hours,
             settings.upload_reaper_interval_seconds,
         )

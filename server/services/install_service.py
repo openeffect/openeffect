@@ -6,7 +6,7 @@ import shutil
 import socket
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -171,36 +171,53 @@ class InstallService:
         data: dict[str, Any],
         manifest: EffectManifest,
     ) -> str:
-        """Install one manifest. Updates in place if an effect with the same
-        namespace/slug already exists (conflict detection is caller's job)."""
+        """Install one manifest via the state lifecycle:
+
+        - INSERT or `_mark_installing` flips the row to `state='installing'`
+          (invisible to the loader) before any files land on disk.
+        - On success, `_update_effect` flips `state='ready'` and writes
+          the new manifest content in one transaction.
+        - On any failure, `_cleanup_failed` drops the row and the folder.
+
+        Conflict detection (different installed version) is the caller's
+        job; this method handles the same-version no-op skip and the
+        replace-in-place flow."""
         existing = await self.get_effect(manifest.namespace, manifest.slug)
-        if existing and existing["version"] == manifest.version:
+        if (
+            existing
+            and existing["state"] == "ready"
+            and existing["version"] == manifest.version
+        ):
             return manifest.full_id
 
-        if existing:
-            old_dir = Path(existing["assets_dir"])
-            if old_dir.exists():
-                shutil.rmtree(str(old_dir), ignore_errors=True)
-            uuid = existing["id"]
-        else:
-            uuid = str(uuid_utils.uuid7())
-
+        uuid = existing["id"] if existing else str(uuid_utils.uuid7())
         effect_dir = self._effects_dir / uuid
-        assets_dir = effect_dir / "assets"
-        assets_dir.mkdir(parents=True, exist_ok=True)
+        # Same dump kwargs for both DB column and on-disk file so the two
+        # never disagree on key ordering.
+        yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
 
-        total_size = 0
+        if existing:
+            await self._mark_installing(uuid)
+        else:
+            await self._insert_effect(
+                uuid, manifest, "installed", str(effect_dir),
+                yaml_content=yaml_content,
+            )
+
         try:
-            asset_files = self._collect_asset_filenames(manifest)
-            for filename in asset_files:
+            if effect_dir.exists():
+                shutil.rmtree(str(effect_dir), ignore_errors=True)
+            assets_dir = effect_dir / "assets"
+            assets_dir.mkdir(parents=True)
+
+            total_size = 0
+            for filename in self._collect_asset_filenames(manifest):
                 _validate_asset_filename(filename)
-                asset_url = base_url + "assets/" + filename
-                resp = await client.get(asset_url)
+                resp = await client.get(base_url + "assets/" + filename)
                 resp.raise_for_status()
 
                 ext = Path(filename).suffix.lower()
-                max_size = _max_size_for_ext(ext)
-                if len(resp.content) > max_size:
+                if len(resp.content) > _max_size_for_ext(ext):
                     raise ValueError(f"Asset {filename} exceeds size limit")
 
                 total_size += len(resp.content)
@@ -211,30 +228,17 @@ class InstallService:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(resp.content)
 
-            (effect_dir / "manifest.yaml").write_text(
-                yaml.dump(data, default_flow_style=False)
+            (effect_dir / "manifest.yaml").write_text(yaml_content)
+
+            await self._update_effect(
+                uuid, manifest, "installed", str(effect_dir),
+                yaml_content=yaml_content,
             )
-
-            yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
-            if existing:
-                await self._update_effect(
-                    uuid, manifest, "installed", str(effect_dir), yaml_content=yaml_content
-                )
-            else:
-                await self._insert_effect(
-                    uuid=uuid,
-                    manifest=manifest,
-                    source="installed",
-                    assets_dir=str(effect_dir),
-                    yaml_content=yaml_content,
-                )
-
-            return manifest.full_id
-
         except Exception:
-            if not existing:
-                shutil.rmtree(str(effect_dir), ignore_errors=True)
+            await self._cleanup_failed(uuid, effect_dir)
             raise
+
+        return manifest.full_id
 
     # ─── Install from archive ───
 
@@ -361,59 +365,68 @@ class InstallService:
     async def _install_from_extracted(
         self, manifest_path: Path, manifest: EffectManifest, allow_official: bool
     ) -> str:
-        # Caller (`install_from_folder`) has already parsed + validated the
-        # manifest, checked the namespace, and resolved conflicts. We only
-        # need the raw YAML text here to persist alongside the install.
+        """Install one manifest from an extracted archive folder via the
+        same INSERT installing → write → UPDATE ready lifecycle as the
+        URL path. Caller has already parsed + validated the manifest,
+        checked the namespace, and resolved conflicts."""
         yaml_content = manifest_path.read_text()
-
-        existing = await self.get_effect(manifest.namespace, manifest.slug)
-        if existing and existing["version"] == manifest.version:
-            return manifest.full_id
-
-        if existing:
-            old_dir = Path(existing["assets_dir"])
-            if old_dir.exists():
-                shutil.rmtree(str(old_dir), ignore_errors=True)
-            uuid = existing["id"]
-        else:
-            uuid = str(uuid_utils.uuid7())
-
-        effect_dir = self._effects_dir / uuid
-        assets_dir = effect_dir / "assets"
-        assets_dir.mkdir(parents=True, exist_ok=True)
-
-        # Only copy manifest-declared assets, mirroring the URL install
-        # path. Anything else in the zip's assets/ folder is silently
-        # ignored — the manifest is the contract, not the archive layout.
-        source_assets = manifest_path.parent / "assets"
-        for filename in self._collect_asset_filenames(manifest):
-            _validate_asset_filename(filename)
-            src_file = source_assets / filename
-            if not src_file.is_file():
-                raise ValueError(
-                    f"Asset '{filename}' declared in manifest but missing from archive"
-                )
-            ext = src_file.suffix.lower()
-            if src_file.stat().st_size > _max_size_for_ext(ext):
-                raise ValueError(f"Asset {filename} exceeds size limit")
-            dest = assets_dir / filename
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src_file), str(dest))
-
-        shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
-
+        # Bundled namespace `openeffect/*` is reserved by the validator
+        # for the official set, so a manifest reaching this point under
+        # that namespace can only have come through `allow_official=True`.
         source = "official" if manifest.namespace == "openeffect" else "installed"
 
+        existing = await self.get_effect(manifest.namespace, manifest.slug)
+        if (
+            existing
+            and existing["state"] == "ready"
+            and existing["version"] == manifest.version
+        ):
+            return manifest.full_id
+
+        uuid = existing["id"] if existing else str(uuid_utils.uuid7())
+        effect_dir = self._effects_dir / uuid
+
         if existing:
-            await self._update_effect(uuid, manifest, source, str(effect_dir), yaml_content=yaml_content)
+            await self._mark_installing(uuid)
         else:
             await self._insert_effect(
-                uuid=uuid,
-                manifest=manifest,
-                source=source,
-                assets_dir=str(effect_dir),
+                uuid, manifest, source, str(effect_dir),
                 yaml_content=yaml_content,
             )
+
+        try:
+            if effect_dir.exists():
+                shutil.rmtree(str(effect_dir), ignore_errors=True)
+            assets_dir = effect_dir / "assets"
+            assets_dir.mkdir(parents=True)
+
+            # Only copy manifest-declared assets, mirroring the URL install
+            # path. Anything else in the zip's assets/ folder is silently
+            # ignored — the manifest is the contract, not the archive layout.
+            source_assets = manifest_path.parent / "assets"
+            for filename in self._collect_asset_filenames(manifest):
+                _validate_asset_filename(filename)
+                src_file = source_assets / filename
+                if not src_file.is_file():
+                    raise ValueError(
+                        f"Asset '{filename}' declared in manifest but missing from archive"
+                    )
+                ext = src_file.suffix.lower()
+                if src_file.stat().st_size > _max_size_for_ext(ext):
+                    raise ValueError(f"Asset {filename} exceeds size limit")
+                dest = assets_dir / filename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(src_file), str(dest))
+
+            shutil.copy2(str(manifest_path), str(effect_dir / "manifest.yaml"))
+
+            await self._update_effect(
+                uuid, manifest, source, str(effect_dir),
+                yaml_content=yaml_content,
+            )
+        except Exception:
+            await self._cleanup_failed(uuid, effect_dir)
+            raise
 
         return manifest.full_id
 
@@ -426,7 +439,17 @@ class InstallService:
         existing_id: str | None = None,
         fork_from: str | None = None,
     ) -> str:
-        """Save or update a locally created/forked effect. fork_from = namespace/slug to copy assets from."""
+        """Save or update a locally created/forked effect. `fork_from` =
+        `namespace/slug` to copy assets from on a fresh fork.
+
+        - Update path: write the new manifest.yaml in place, then UPDATE
+          the row to `state='ready'` with the new content. No installing
+          lifecycle — this is a small in-place edit, the row's existing
+          content is the user's last known good state and DELETE-on-fail
+          would lose the data they're trying to save.
+        - Create path: full INSERT installing → mkdir + fork-copy + write
+          → UPDATE ready lifecycle. On failure, the row + folder are
+          cleaned by `_cleanup_failed` and the user retries."""
         if existing_id:
             existing: dict[str, Any] | None = None
             if "/" in existing_id:
@@ -444,25 +467,35 @@ class InstallService:
             effect_dir.mkdir(parents=True, exist_ok=True)
 
             (effect_dir / "manifest.yaml").write_text(yaml_content)
+            await self._update_effect(
+                uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content,
+            )
+            return manifest.full_id
 
-            await self._update_effect(uuid, manifest, "local", str(effect_dir), yaml_content=yaml_content)
-        else:
-            base_slug = manifest.slug
-            suffix = 1
-            while await self.get_effect(manifest.namespace, manifest.slug):
-                suffix += 1
-                new_slug = f"{base_slug}-{suffix}"
-                data = manifest.model_dump()
-                data["slug"] = new_slug
-                manifest = EffectManifest(**data)
-                yaml_content = re.sub(
-                    r'^id:\s*.+$',
-                    f'id: {manifest.namespace}/{new_slug}',
-                    yaml_content, count=1, flags=re.MULTILINE,
-                )
+        # Create path
+        base_slug = manifest.slug
+        suffix = 1
+        while await self.get_effect(manifest.namespace, manifest.slug):
+            suffix += 1
+            new_slug = f"{base_slug}-{suffix}"
+            data = manifest.model_dump()
+            data["slug"] = new_slug
+            manifest = EffectManifest(**data)
+            yaml_content = re.sub(
+                r'^id:\s*.+$',
+                f'id: {manifest.namespace}/{new_slug}',
+                yaml_content, count=1, flags=re.MULTILINE,
+            )
 
-            uuid = str(uuid_utils.uuid7())
-            effect_dir = self._effects_dir / uuid
+        uuid = str(uuid_utils.uuid7())
+        effect_dir = self._effects_dir / uuid
+
+        await self._insert_effect(
+            uuid, manifest, "local", str(effect_dir),
+            yaml_content=yaml_content,
+        )
+
+        try:
             assets_dir = effect_dir / "assets"
             assets_dir.mkdir(parents=True)
 
@@ -475,17 +508,20 @@ class InstallService:
                         if source_assets.exists():
                             for src_file in source_assets.iterdir():
                                 if src_file.is_file():
-                                    shutil.copy2(str(src_file), str(assets_dir / src_file.name))
+                                    shutil.copy2(
+                                        str(src_file),
+                                        str(assets_dir / src_file.name),
+                                    )
 
             (effect_dir / "manifest.yaml").write_text(yaml_content)
 
-            await self._insert_effect(
-                uuid=uuid,
-                manifest=manifest,
-                source="local",
-                assets_dir=str(effect_dir),
+            await self._update_effect(
+                uuid, manifest, "local", str(effect_dir),
                 yaml_content=yaml_content,
             )
+        except Exception:
+            await self._cleanup_failed(uuid, effect_dir)
+            raise
 
         return manifest.full_id
 
@@ -506,6 +542,10 @@ class InstallService:
     # ─── Uninstall ───
 
     async def uninstall(self, namespace: str, slug: str) -> None:
+        """DB-first uninstall: drop the row inside a transaction, then
+        rmtree the folder. If rmtree fails the row is already gone (so
+        the effect is invisible to the user) and the leftover folder
+        will be picked up by ad-hoc cleanup later."""
         row = await self._db.fetchone(
             "SELECT id, source, assets_dir FROM effects WHERE namespace=? AND slug=?",
             (namespace, slug),
@@ -516,12 +556,12 @@ class InstallService:
         if row["source"] == "official":
             raise ValueError("Cannot uninstall official effects")
 
+        async with self._db.transaction() as conn:
+            await conn.execute("DELETE FROM effects WHERE id=?", (row["id"],))
+
         assets_dir = Path(row["assets_dir"])
         if assets_dir.exists():
             shutil.rmtree(str(assets_dir), ignore_errors=True)
-
-        async with self._db.transaction() as conn:
-            await conn.execute("DELETE FROM effects WHERE id=?", (row["id"],))
 
     # ─── Source / favorite toggles ───
 
@@ -636,22 +676,34 @@ class InstallService:
         return files
 
     async def _insert_effect(
-        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
+        self,
+        uuid: str,
+        manifest: EffectManifest,
+        source: str,
+        assets_dir: str,
+        yaml_content: str | None = None,
+        *,
+        state: str = "installing",
     ) -> None:
+        """Insert an effect row. Defaults to `state='installing'` — call
+        `_mark_ready` after the on-disk install completes. Pass
+        `state='ready'` to skip the lifecycle for special paths (none
+        today; the parameter is kept for forward compat / tests)."""
         now = datetime.now(timezone.utc).isoformat()
         if yaml_content is None:
             yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         async with self._db.transaction() as conn:
             await conn.execute(
                 """INSERT INTO effects (
-                       id, namespace, slug, source, source_url,
+                       id, namespace, slug, source, state, source_url,
                        manifest_yaml, assets_dir, version, installed_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     uuid,
                     manifest.namespace,
                     manifest.slug,
                     source,
+                    state,
                     manifest.url,
                     yaml_content,
                     assets_dir,
@@ -662,20 +714,36 @@ class InstallService:
             )
 
     async def _update_effect(
-        self, uuid: str, manifest: EffectManifest, source: str, assets_dir: str, yaml_content: str | None = None
+        self,
+        uuid: str,
+        manifest: EffectManifest,
+        source: str,
+        assets_dir: str,
+        yaml_content: str | None = None,
+        *,
+        state: str = "ready",
     ) -> None:
+        """Full-row update. Defaults to `state='ready'` — used by every
+        install path's commit step, and by save-local-effect's update
+        branch which doesn't go through the installing→ready lifecycle.
+
+        Raises `ValueError` if the row has been deleted out from under
+        us (concurrent GC reaper). In install paths the caller's
+        `except` arm catches this and runs `_cleanup_failed` so the
+        on-disk folder doesn't outlive the missing row."""
         now = datetime.now(timezone.utc).isoformat()
         if yaml_content is None:
             yaml_content = yaml.dump(manifest.model_dump(), default_flow_style=False, sort_keys=False)
         async with self._db.transaction() as conn:
-            await conn.execute(
-                """UPDATE effects SET namespace=?, slug=?, source=?, source_url=?,
+            cursor = await conn.execute(
+                """UPDATE effects SET namespace=?, slug=?, source=?, state=?, source_url=?,
                    manifest_yaml=?, assets_dir=?, version=?, updated_at=?
                    WHERE id=?""",
                 (
                     manifest.namespace,
                     manifest.slug,
                     source,
+                    state,
                     manifest.url,
                     yaml_content,
                     assets_dir,
@@ -684,11 +752,107 @@ class InstallService:
                     uuid,
                 ),
             )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Effect {uuid} no longer exists (concurrent delete)")
+
+    async def _mark_installing(self, uuid: str) -> None:
+        """Flag an existing row as being replaced. Bumps `updated_at` so
+        the GC reaper's "abandoned > 1h" rule can detect a stuck install,
+        but leaves manifest content untouched — until the new install
+        commits via `_update_effect`, the old `manifest_yaml`/`version`
+        in the row are still what we'd revert to. The row is invisible
+        to the loader during this window because of the state filter.
+
+        Raises `ValueError` if the row has been deleted between the
+        caller's `get_effect` and this UPDATE (e.g. by the GC reaper
+        catching it as abandoned). The caller's `except` arm runs
+        `_cleanup_failed` and surfaces the error; the user retries and
+        the retry takes the no-existing path (fresh INSERT)."""
+        now = datetime.now(timezone.utc).isoformat()
+        async with self._db.transaction() as conn:
+            cursor = await conn.execute(
+                "UPDATE effects SET state='installing', updated_at=? WHERE id=?",
+                (now, uuid),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Effect {uuid} no longer exists (concurrent delete)")
+
+    async def _cleanup_failed(self, uuid: str, effect_dir: Path) -> None:
+        """Last step of every install path's `except` arm: drop the row
+        and rmtree the folder. The `AND state='installing'` guard makes
+        the DELETE a no-op if some other coroutine already flipped the
+        row to `ready` between our failure and this cleanup — we'd
+        rather leak a folder than wipe a row a different writer just
+        committed. The rmtree is best-effort; a left-behind folder will
+        be referenced by no DB row and can be picked up later by an
+        explicit ad-hoc cleanup (out of scope here)."""
+        async with self._db.transaction() as conn:
+            await conn.execute(
+                "DELETE FROM effects WHERE id=? AND state='installing'",
+                (uuid,),
+            )
+        if effect_dir.exists():
+            shutil.rmtree(str(effect_dir), ignore_errors=True)
 
     async def effect_count(self) -> int:
-        row = await self._db.fetchone("SELECT COUNT(*) FROM effects")
+        row = await self._db.fetchone(
+            "SELECT COUNT(*) FROM effects WHERE state = 'ready'"
+        )
         return row[0] if row else 0
 
     async def get_all_effects(self) -> list[dict[str, Any]]:
-        rows = await self._db.fetchall("SELECT * FROM effects ORDER BY installed_at DESC")
+        """Return only `ready` effects. In-flight installs (`state='installing'`)
+        are server-internal and never surface in the gallery, the editor
+        list, the API, or this method. The reaper / `_cleanup_failed`
+        path is responsible for them."""
+        rows = await self._db.fetchall(
+            "SELECT * FROM effects WHERE state = 'ready' ORDER BY installed_at DESC"
+        )
         return [dict(row) for row in rows]
+
+    # ─── GC reaper hook ───
+
+    async def prune_abandoned_installs(self, max_age_hours: int) -> int:
+        """Delete `state='installing'` effects whose `updated_at` is older
+        than `max_age_hours` ago, plus their on-disk folders. Same shape
+        as `storage_service.prune_orphans`: rmtree first, then DELETE —
+        if rmtree fails the row stays for the next reaper cycle to retry.
+
+        The `AND state='installing'` guard on the DELETE makes this safe
+        under concurrent state transitions: if some other coroutine
+        flipped the row to `ready` between our SELECT and DELETE, the
+        DELETE matches no rows and silently skips.
+
+        Returns the number of effects pruned. Called from the reaper
+        loop in `main.py` once at startup and then on a sleep-loop."""
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        ).isoformat()
+
+        rows = await self._db.fetchall(
+            "SELECT id, assets_dir FROM effects "
+            "WHERE state = 'installing' AND updated_at < ?",
+            (cutoff,),
+        )
+        pruned = 0
+        for row in rows:
+            try:
+                assets_dir = Path(row["assets_dir"])
+                if assets_dir.exists():
+                    shutil.rmtree(str(assets_dir))
+            except Exception:
+                # Disk might be wedged; leave the row, retry next cycle.
+                continue
+
+            # The DELETE re-checks `updated_at < cutoff` so that if the
+            # row was retried (UPDATE bumped its timestamp) between our
+            # SELECT and DELETE, the now-fresh row escapes the reaper
+            # rather than getting wiped out from under the active install.
+            async with self._db.transaction() as conn:
+                await conn.execute(
+                    "DELETE FROM effects "
+                    "WHERE id = ? AND state = 'installing' AND updated_at < ?",
+                    (row["id"], cutoff),
+                )
+            pruned += 1
+        return pruned

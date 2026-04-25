@@ -102,6 +102,7 @@ async def init_db(db_path: Path) -> None:
                 namespace     TEXT NOT NULL,
                 slug          TEXT NOT NULL,
                 source        TEXT NOT NULL,
+                state         TEXT NOT NULL DEFAULT 'installing',
                 source_url    TEXT,
                 manifest_yaml TEXT NOT NULL,
                 assets_dir    TEXT NOT NULL,
@@ -133,4 +134,7 @@ async def init_db(db_path: Path) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_uploads_orphan ON uploads(ref_count, created_at)")
+        # Mirrors `idx_uploads_orphan` — speeds up the GC reaper's
+        # "abandoned installing rows" scan as the effects table grows.
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_effects_pending ON effects(state, updated_at)")
         await db.commit()

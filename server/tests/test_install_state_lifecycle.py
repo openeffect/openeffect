@@ -8,7 +8,6 @@ abandoned `installing` and `uninstalling` rows after a TTL.
 import io
 import zipfile
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,39 +17,14 @@ from PIL import Image
 from db.database import Database, init_db
 from services.file_service import FileService
 from services.install_service import InstallService, _validate_asset_filename
-
-MANIFEST_BASE: dict[str, Any] = {
-    "manifest_version": 1,
-    "id": "tester/demo",
-    "name": "Demo",
-    "description": "Demo effect",
-    "version": "1.0.0",
-    "author": "tester",
-    "category": "transform",
-    "tags": [],
-    "showcases": [],
-    "inputs": {
-        "image": {
-            "type": "image",
-            "role": "start_frame",
-            "required": True,
-            "label": "Image",
-        },
-    },
-    "generation": {"prompt": "Demo prompt", "models": []},
-}
+from tests._factories import make_manifest_dict
 
 
 def _manifest(**overrides) -> dict:
-    data = {
-        **MANIFEST_BASE,
-        "showcases": [dict(s) for s in MANIFEST_BASE["showcases"]],
-        "inputs": {k: dict(v) for k, v in MANIFEST_BASE["inputs"].items()},
-        "generation": dict(MANIFEST_BASE["generation"]),
-        "tags": list(MANIFEST_BASE["tags"]),
-    }
-    data.update(overrides)
-    return data
+    return make_manifest_dict(**{
+        "id": "tester/demo", "name": "Demo", "description": "Demo effect",
+        **overrides,
+    })
 
 
 def _png_bytes(

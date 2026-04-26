@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
+import aiosqlite
 import imageio_ffmpeg
 import uuid_utils
 from fastapi import UploadFile
@@ -281,13 +282,7 @@ class FileService:
         no-ops here would leak refs (`NULL + 1 = NULL`) and leave the
         caller thinking they hold a reference."""
         async with self._db.transaction() as conn:
-            cursor = await conn.execute(
-                "UPDATE files SET ref_count = ref_count + 1 "
-                "WHERE id = ? AND ref_count IS NOT NULL",
-                (file_id,),
-            )
-            if cursor.rowcount == 0:
-                raise ValueError(f"File {file_id} is no longer available")
+            await self.bump_ref_in_tx(conn, file_id)
 
     async def decrement_refs(self, ids: list[str]) -> None:
         """Drop one ref off each given id. Cleanup of `ref_count = 0`
@@ -297,10 +292,39 @@ class FileService:
             return
         async with self._db.transaction() as conn:
             for fid in ids:
-                await conn.execute(
-                    "UPDATE files SET ref_count = ref_count - 1 WHERE id = ? AND ref_count > 0",
-                    (fid,),
-                )
+                await self.drop_ref_in_tx(conn, fid)
+
+    @staticmethod
+    async def bump_ref_in_tx(conn: aiosqlite.Connection, file_id: str) -> None:
+        """Increment ref_count atomically inside the caller's transaction,
+        with the `ref_count IS NOT NULL` guard so a tombstoned (mid-GC)
+        row can't be resurrected. Raises `ValueError` on rowcount=0 —
+        callers wrap that into a domain-specific message (input file
+        unavailable, output file unavailable, etc.) so the error surfaces
+        the user-facing context. Pair the bump with the entity write in
+        the same `async with self._db.transaction()` block to keep the
+        ref count and the binding row atomic — see `_link_effect_file`
+        and `history.create_processing` for the canonical patterns."""
+        cursor = await conn.execute(
+            "UPDATE files SET ref_count = ref_count + 1 "
+            "WHERE id = ? AND ref_count IS NOT NULL",
+            (file_id,),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError(f"File {file_id} is no longer available")
+
+    @staticmethod
+    async def drop_ref_in_tx(conn: aiosqlite.Connection, file_id: str) -> None:
+        """Decrement ref_count atomically inside the caller's transaction.
+        The `> 0` guard makes already-zero rows a no-op (instead of
+        underflowing to -1) and skips tombstoned rows (`NULL > 0` is
+        false). Idempotent for unknown/missing ids. Use whenever the
+        bound entity is being deleted in the same transaction."""
+        await conn.execute(
+            "UPDATE files SET ref_count = ref_count - 1 "
+            "WHERE id = ? AND ref_count > 0",
+            (file_id,),
+        )
 
     async def prune_orphan_files(self, max_age_hours: int) -> int:
         """Two-phase orphan sweep.

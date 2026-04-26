@@ -55,6 +55,7 @@ generation:
     Only subtle natural micro-motion is allowed.
     No cut, no scene replacement, no duplicate subject.
     {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
+
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
     deformed anatomy, strong body translation, heavy jitter, blur,

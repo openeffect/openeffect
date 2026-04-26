@@ -6,30 +6,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from db.database import Database, init_db
-from effects.validator import EffectManifest, GenerationConfig, InputFieldSchema
+from effects.validator import EffectManifest
 from schemas.run import RunRequest
 from services.effect_loader import EffectLoaderService, LoadedEffect
 from services.history_service import HistoryService
 from services.run_service import RunJob, RunService
+from tests._factories import make_manifest
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 def _make_manifest() -> EffectManifest:
-    return EffectManifest.model_validate({
-        "manifest_version": 1,
-        "id": "test/test-effect",
-        "name": "Test Effect",
-        "description": "Test",
-        "category": "animation",
-        "inputs": {
-            "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
-            "prompt": InputFieldSchema(
-                type="text", required=False,
-                label="Prompt", multiline=False,
-            ),
+    return make_manifest(
+        id="test/test-effect", category="animation",
+        inputs={
+            "image": {"type": "image", "role": "start_frame", "required": True, "label": "Photo"},
+            "prompt": {"type": "text", "required": False, "label": "Prompt", "multiline": False},
         },
-        "generation": GenerationConfig(prompt="Test {{ prompt }}"),
-    })
+        generation={"prompt": "Test {{ prompt }}"},
+    )
 
 
 def _make_loaded(manifest: EffectManifest, effect_id: str = "test-uuid-001") -> LoadedEffect:

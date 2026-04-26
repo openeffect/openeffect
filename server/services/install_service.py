@@ -5,6 +5,7 @@ import re
 import socket
 import tempfile
 import zipfile
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ import yaml
 from pydantic import ValidationError
 
 from core.limits import MAX_IMAGE_SIZE, MAX_TOTAL_SIZE, MAX_VIDEO_SIZE
+from core.states import EffectSource, EffectState
 from db.database import Database
 from effects.validator import EffectManifest
 from services.file_service import FileKind, FileService
@@ -230,67 +232,21 @@ class InstallService:
         data: dict[str, Any],
         manifest: EffectManifest,
     ) -> str:
-        """Install one manifest via the state lifecycle:
-
-        - INSERT or `_mark_installing` flips the row to `state='installing'`
-          (invisible to the loader) before any asset bytes land.
-        - Each manifest asset is funneled into `FileService.add_file` and
-          a corresponding `effect_files` row gets recorded.
-        - On success, `_update_effect` flips `state='ready'` in one
-          transaction.
-        - On any failure, `_cleanup_failed` drops the row (and the
-          `effect_files` rows cascade). Files dropped to ref_count=0 will
-          be swept by the file reaper on its next cycle."""
-        existing = await self.get_effect(manifest.namespace, manifest.slug)
-        if (
-            existing
-            and existing["state"] == "ready"
-            and existing["version"] == manifest.version
-        ):
-            return manifest.full_id
-
-        uuid = existing["id"] if existing else str(uuid_utils.uuid7())
         # Same dump kwargs for both DB column and on-disk file so the two
         # never disagree on key ordering.
         yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False)
 
-        if existing:
-            await self._mark_installing(uuid)
-            # Replace mode: the old asset map is stale once the new manifest
-            # commits, so clear it now and re-record per-asset below.
-            await self._clear_effect_files(uuid)
-        else:
-            await self._insert_effect(
-                uuid, manifest, "installed", yaml_content=yaml_content,
-            )
+        async def _fetch(filename: str) -> tuple[bytes, int]:
+            resp = await client.get(base_url + "assets/" + filename)
+            resp.raise_for_status()
+            return resp.content, len(resp.content)
 
-        try:
-            total_size = 0
-            for filename in self._collect_asset_filenames(manifest):
-                _validate_asset_filename(filename)
-                resp = await client.get(base_url + "assets/" + filename)
-                resp.raise_for_status()
-
-                ext = Path(filename).suffix.lower()
-                if len(resp.content) > _max_size_for_ext(ext):
-                    raise ValueError(f"Asset {filename} exceeds size limit")
-
-                total_size += len(resp.content)
-                if total_size > MAX_TOTAL_SIZE:
-                    raise ValueError("Total effect size exceeds limit")
-
-                await self._adopt_asset_bytes(
-                    uuid, filename, resp.content, _kind_for_asset(filename),
-                )
-
-            await self._update_effect(
-                uuid, manifest, "installed", yaml_content=yaml_content,
-            )
-        except Exception:
-            await self._cleanup_failed(uuid)
-            raise
-
-        return manifest.full_id
+        return await self._install_one(
+            manifest,
+            yaml_content=yaml_content,
+            source="installed",
+            fetch_asset=_fetch,
+        )
 
     # ─── Install from archive ───
 
@@ -417,16 +373,51 @@ class InstallService:
     async def _install_from_extracted(
         self, manifest_path: Path, manifest: EffectManifest, allow_official: bool
     ) -> str:
-        """Install one manifest from an extracted archive folder via the
-        same INSERT installing → ingest assets → UPDATE ready lifecycle as
-        the URL path. Caller has already parsed + validated the manifest,
-        checked the namespace, and resolved conflicts."""
         yaml_content = manifest_path.read_text()
         # Bundled namespace `openeffect/*` is reserved by the validator
         # for the official set, so a manifest reaching this point under
         # that namespace can only have come through `allow_official=True`.
-        source = "official" if manifest.namespace == "openeffect" else "installed"
+        source: EffectSource = "official" if manifest.namespace == "openeffect" else "installed"
+        # Only adopt manifest-declared assets, mirroring the URL install
+        # path. Anything else in the zip's assets/ folder is silently
+        # ignored — the manifest is the contract, not the archive layout.
+        source_assets = manifest_path.parent / "assets"
 
+        async def _fetch(filename: str) -> tuple[Path, int]:
+            src_file = source_assets / filename
+            if not src_file.is_file():
+                raise ValueError(
+                    f"Asset '{filename}' declared in manifest but missing from archive"
+                )
+            return src_file, src_file.stat().st_size
+
+        return await self._install_one(
+            manifest,
+            yaml_content=yaml_content,
+            source=source,
+            fetch_asset=_fetch,
+        )
+
+    async def _install_one(
+        self,
+        manifest: EffectManifest,
+        *,
+        yaml_content: str,
+        source: EffectSource,
+        fetch_asset: Callable[[str], Awaitable[tuple[bytes | Path, int]]],
+    ) -> str:
+        """Shared lifecycle for both URL and folder install paths.
+
+        - INSERT or `_mark_installing` flips the row to `state='installing'`
+          (invisible to the loader) before any asset bytes land.
+        - Each manifest-declared asset is fetched via the caller-supplied
+          `fetch_asset(filename)` (which yields either bytes or an on-disk
+          Path), funneled into `FileService.add_file`, and recorded as an
+          `effect_files` row.
+        - On success, `_update_effect` flips `state='ready'` in one
+          transaction.
+        - On failure, `_cleanup_failed` drops the row (cascading the
+          `effect_files`); ref_count=0 files get swept by the file reaper."""
         existing = await self.get_effect(manifest.namespace, manifest.slug)
         if (
             existing
@@ -439,6 +430,8 @@ class InstallService:
 
         if existing:
             await self._mark_installing(uuid)
+            # Replace mode: the old asset map is stale once the new manifest
+            # commits, so clear it now and re-record per-asset below.
             await self._clear_effect_files(uuid)
         else:
             await self._insert_effect(
@@ -446,23 +439,22 @@ class InstallService:
             )
 
         try:
-            # Only adopt manifest-declared assets, mirroring the URL install
-            # path. Anything else in the zip's assets/ folder is silently
-            # ignored — the manifest is the contract, not the archive layout.
-            source_assets = manifest_path.parent / "assets"
+            total_size = 0
             for filename in self._collect_asset_filenames(manifest):
                 _validate_asset_filename(filename)
-                src_file = source_assets / filename
-                if not src_file.is_file():
-                    raise ValueError(
-                        f"Asset '{filename}' declared in manifest but missing from archive"
-                    )
-                ext = src_file.suffix.lower()
-                if src_file.stat().st_size > _max_size_for_ext(ext):
+                payload, size = await fetch_asset(filename)
+                ext = Path(filename).suffix.lower()
+                if size > _max_size_for_ext(ext):
                     raise ValueError(f"Asset {filename} exceeds size limit")
-                await self._adopt_asset_path(
-                    uuid, filename, src_file, _kind_for_asset(filename),
-                )
+                total_size += size
+                if total_size > MAX_TOTAL_SIZE:
+                    raise ValueError("Total effect size exceeds limit")
+
+                kind = _kind_for_asset(filename)
+                if isinstance(payload, (bytes, bytearray)):
+                    await self._adopt_asset_bytes(uuid, filename, bytes(payload), kind)
+                else:
+                    await self._adopt_asset_path(uuid, filename, payload, kind)
 
             await self._update_effect(
                 uuid, manifest, source, yaml_content=yaml_content,
@@ -608,7 +600,7 @@ class InstallService:
 
     # ─── Source / favorite toggles ───
 
-    async def set_source(self, namespace: str, slug: str, new_source: str) -> None:
+    async def set_source(self, namespace: str, slug: str, new_source: EffectSource) -> None:
         """Move a non-official effect between the `installed` and `local`
         buckets. Idempotent no-op when already at `new_source`. Rejects
         attempts to touch official effects or to set any value outside
@@ -824,10 +816,7 @@ class InstallService:
             if not row:
                 raise ValueError(f"Asset '{logical_name}' not found on this effect")
 
-            await conn.execute(
-                "UPDATE files SET ref_count = ref_count - 1 WHERE id = ? AND ref_count > 0",
-                (row["file_id"],),
-            )
+            await FileService.drop_ref_in_tx(conn, row["file_id"])
             await conn.execute(
                 "DELETE FROM effect_files WHERE effect_id = ? AND logical_name = ?",
                 (existing["id"], logical_name),
@@ -840,19 +829,15 @@ class InstallService:
         referenced file. Bump runs FIRST inside a single transaction:
         if the file has been tombstoned by the GC reaper between when
         the caller looked it up and now, the bump's `ref_count IS NOT
-        NULL` guard fails (rowcount=0), we raise, and the binding
-        INSERT never happens — the FK can't end up pointing at a
-        doomed row."""
+        NULL` guard fails, we raise, and the binding INSERT never
+        happens — the FK can't end up pointing at a doomed row."""
         async with self._db.transaction() as conn:
-            cursor = await conn.execute(
-                "UPDATE files SET ref_count = ref_count + 1 "
-                "WHERE id = ? AND ref_count IS NOT NULL",
-                (file_id,),
-            )
-            if cursor.rowcount == 0:
+            try:
+                await FileService.bump_ref_in_tx(conn, file_id)
+            except ValueError:
                 raise ValueError(
                     f"File {file_id[:8]}… is no longer available"
-                )
+                ) from None
             await conn.execute(
                 """INSERT INTO effect_files (effect_id, logical_name, file_id)
                    VALUES (?, ?, ?)""",
@@ -870,10 +855,7 @@ class InstallService:
             )
             rows = await cursor.fetchall()
             for row in rows:
-                await conn.execute(
-                    "UPDATE files SET ref_count = ref_count - 1 WHERE id = ? AND ref_count > 0",
-                    (row["file_id"],),
-                )
+                await FileService.drop_ref_in_tx(conn, row["file_id"])
             await conn.execute(
                 "DELETE FROM effect_files WHERE effect_id = ?",
                 (effect_id,),
@@ -897,16 +879,13 @@ class InstallService:
             )
             rows = await cursor.fetchall()
             for row in rows:
-                bump = await conn.execute(
-                    "UPDATE files SET ref_count = ref_count + 1 "
-                    "WHERE id = ? AND ref_count IS NOT NULL",
-                    (row["file_id"],),
-                )
-                if bump.rowcount == 0:
+                try:
+                    await FileService.bump_ref_in_tx(conn, row["file_id"])
+                except ValueError:
                     raise ValueError(
                         f"Source asset '{row['logical_name']}' references a "
                         f"file that's no longer available"
-                    )
+                    ) from None
                 await conn.execute(
                     """INSERT INTO effect_files (effect_id, logical_name, file_id)
                        VALUES (?, ?, ?)""",
@@ -972,10 +951,10 @@ class InstallService:
         self,
         uuid: str,
         manifest: EffectManifest,
-        source: str,
+        source: EffectSource,
         yaml_content: str | None = None,
         *,
-        state: str = "installing",
+        state: EffectState = "installing",
     ) -> None:
         """Insert an effect row. Defaults to `state='installing'` — call
         `_update_effect` after asset ingestion completes to flip to
@@ -1009,10 +988,10 @@ class InstallService:
         self,
         uuid: str,
         manifest: EffectManifest,
-        source: str,
+        source: EffectSource,
         yaml_content: str | None = None,
         *,
-        state: str = "ready",
+        state: EffectState = "ready",
     ) -> None:
         """Full-row update. Defaults to `state='ready'` — used by every
         install path's commit step, and by save-local-effect's update

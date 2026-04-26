@@ -14,8 +14,9 @@ import uuid_utils
 
 from config.config_service import ConfigService
 from core.limits import MAX_RESULT_VIDEO_SIZE
+from core.states import RunStatus
 from effects.prompt_builder import PromptBuilder
-from effects.validator import validate_run_inputs
+from effects.validator import EffectManifest, validate_run_inputs
 from providers.base import ProviderInput
 from providers.factory import ModelProviderFactory
 from providers.fal_provider import FalProvider
@@ -96,7 +97,7 @@ class RunJob:
         self.effect_id = effect_id
         self.effect_name = effect_name
         self.model_id = model_id
-        self.status = "processing"
+        self.status: RunStatus = "processing"
         self.progress = 0
         self.message = "Starting..."
         self.video_url: str | None = None
@@ -183,22 +184,17 @@ class RunService:
         # normalized (role-keyed, fully-resolved) shape that's stable across
         # effect deletion. The client uses this for "Open in playground".
         prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
-        raw_params: dict[str, Any] = {}
-        if request.output:
-            raw_params.update(request.output)
-        if request.user_params:
-            raw_params.update(request.user_params)
-        params = PromptBuilder.build_provider_io(
-            request.model_id,
-            request.provider_id,
-            raw_params=raw_params,
-            manifest=manifest,
-        )
-        negative_prompt = PromptBuilder.build_negative_prompt(
+        default_neg = PromptBuilder.build_negative_prompt(
             manifest, request.model_id, request.inputs,
         )
-        if "negative_prompt" in params:
-            negative_prompt = str(params.pop("negative_prompt"))
+        params, negative_prompt = self._resolve_provider_params(
+            model_id=request.model_id,
+            provider_id=request.provider_id,
+            output=request.output,
+            user_params=request.user_params,
+            default_negative_prompt=default_neg,
+            manifest=manifest,
+        )
 
         image_refs_by_role: dict[str, str] = {}
         for key, field in manifest.inputs.items():
@@ -225,26 +221,16 @@ class RunService:
             job, inputs_json=inputs_json, input_ids=input_ids,
         )
 
-        # Resolve hashes -> file paths for the provider (ephemeral, not stored)
-        image_paths = self._resolve_image_paths(image_refs_by_role)
-
-        provider_input = ProviderInput(
+        self._dispatch_provider_run(
+            job=job,
+            model_id=request.model_id,
+            provider_id=request.provider_id,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_inputs=image_paths,
-            parameters={
-                **params,
-                "_model_id": request.model_id,
-            },
-        )
-
-        asyncio.create_task(self._execute_provider(
-            job,
-            request.model_id,
-            request.provider_id,
-            provider_input,
+            image_refs_by_role=image_refs_by_role,
+            params=params,
             needs_reverse=manifest.generation.reverse,
-        ))
+        )
 
         return job_id
 
@@ -280,21 +266,14 @@ class RunService:
         # where bumps could land without a corresponding run row.
         input_ids: list[str] = list(image_inputs.values())
 
-        # Route request values via the model registry, then pull out the
-        # negative_prompt if it was passed via user_params.
-        raw_params: dict[str, Any] = {}
-        if request.output:
-            raw_params.update(request.output)
-        if request.user_params:
-            raw_params.update(request.user_params)
-        params = PromptBuilder.build_provider_io(
-            request.model_id,
-            request.provider_id,
-            raw_params=raw_params,
+        params, negative_prompt = self._resolve_provider_params(
+            model_id=request.model_id,
+            provider_id=request.provider_id,
+            output=request.output,
+            user_params=request.user_params,
+            default_negative_prompt=request.negative_prompt or "",
+            manifest=None,
         )
-        negative_prompt = request.negative_prompt or ""
-        if "negative_prompt" in params:
-            negative_prompt = str(params.pop("negative_prompt"))
 
         # Playground inputs are already in the normalized (role-keyed, resolved)
         # shape — no separate `model_inputs` needed, it would just duplicate this.
@@ -313,24 +292,71 @@ class RunService:
             job, inputs_json=inputs_json, input_ids=input_ids, kind="playground",
         )
 
-        # Resolve hashes -> file paths for the provider (ephemeral, not stored)
-        image_paths = self._resolve_image_paths(image_inputs)
-
-        provider_input = ProviderInput(
+        self._dispatch_provider_run(
+            job=job,
+            model_id=request.model_id,
+            provider_id=request.provider_id,
             prompt=request.prompt,
             negative_prompt=negative_prompt,
-            image_inputs=image_paths,
-            parameters={
-                **params,
-                "_model_id": request.model_id,
-            },
+            image_refs_by_role=image_inputs,
+            params=params,
+            needs_reverse=False,
         )
 
-        asyncio.create_task(self._execute_provider(
-            job, request.model_id, request.provider_id, provider_input, needs_reverse=False,
-        ))
-
         return job_id
+
+    def _resolve_provider_params(
+        self,
+        *,
+        model_id: str,
+        provider_id: str,
+        output: dict[str, Any] | None,
+        user_params: dict[str, Any] | None,
+        default_negative_prompt: str,
+        manifest: EffectManifest | None,
+    ) -> tuple[dict[str, Any], str]:
+        """Merge raw user params, route through the model registry, and pull
+        out a negative_prompt override if one was supplied via user_params.
+        Returns the cleaned `params` (no `negative_prompt` key) and the
+        resolved negative_prompt string."""
+        raw_params: dict[str, Any] = {}
+        if output:
+            raw_params.update(output)
+        if user_params:
+            raw_params.update(user_params)
+        params = PromptBuilder.build_provider_io(
+            model_id, provider_id, raw_params=raw_params, manifest=manifest,
+        )
+        negative_prompt = default_negative_prompt
+        if "negative_prompt" in params:
+            negative_prompt = str(params.pop("negative_prompt"))
+        return params, negative_prompt
+
+    def _dispatch_provider_run(
+        self,
+        *,
+        job: RunJob,
+        model_id: str,
+        provider_id: str,
+        prompt: str,
+        negative_prompt: str,
+        image_refs_by_role: dict[str, str],
+        params: dict[str, Any],
+        needs_reverse: bool,
+    ) -> None:
+        """Build ProviderInput and spawn the background `_execute_provider`
+        task. The caller is responsible for having persisted the run row
+        (via `history.create_processing`) before this is invoked."""
+        image_paths = self._resolve_image_paths(image_refs_by_role)
+        provider_input = ProviderInput(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            image_inputs=image_paths,
+            parameters={**params, "_model_id": model_id},
+        )
+        asyncio.create_task(self._execute_provider(
+            job, model_id, provider_id, provider_input, needs_reverse=needs_reverse,
+        ))
 
     def _resolve_image_paths(self, refs_by_role: dict[str, str]) -> dict[str, str]:
         """Turn `{role: file_id}` into `{role: absolute_disk_path}` for

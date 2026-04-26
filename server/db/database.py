@@ -15,6 +15,29 @@ class Database:
     reads and writes. WAL mode lets the single-writer constraint stop blocking
     readers. A single shared connection can only hold one open transaction,
     though, so `transaction()` serializes callers with `_tx_lock`.
+
+    **Single-process invariant.** This whole design assumes exactly one
+    process holds the SQLite file. The application is a desktop tool: one
+    `uvicorn` worker, one event loop, one connection. The lock and the
+    `_tx_lock` make that one process safe for concurrent coroutines, but
+    they don't extend to a second process. Several pieces would have to
+    change before scaling out:
+
+    - The reaper TTL guards (`prune_orphan_files`, `prune_stale_lifecycle_rows`)
+      assume any in-flight install/upload either belongs to *this* process
+      or has been dead long enough that its refs and rows are abandoned.
+      A second process inside the TTL window could legitimately be mid-write.
+    - `_tx_lock` is per-process, so two writers across processes race at
+      the SQLite layer — WAL would let a second BEGIN IMMEDIATE block
+      until the first commits, which is correct but pessimal.
+    - `RunService._broadcast_queues` and `_jobs` are in-process state, so
+      SSE streams only see events from runs initiated through their own
+      worker.
+
+    To run multi-process: switch to a connection pool with per-connection
+    locks (or drop `_tx_lock` entirely and let SQLite serialize), move
+    in-memory job/queue state to Redis, and shorten the reaper TTL or
+    add per-process tagging to in-flight rows.
     """
 
     def __init__(self, path: Path):

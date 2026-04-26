@@ -3,15 +3,17 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from core.states import RunKind, RunStatus
 from db.database import Database
+from services.file_service import FileService
 
 
 @dataclass
 class RunRecord:
     id: str
     model_id: str
-    status: str
-    kind: str = "effect"
+    status: RunStatus
+    kind: RunKind = "effect"
     effect_id: str | None = None
     effect_name: str | None = None
     progress: int = 0
@@ -112,7 +114,7 @@ class HistoryService:
         job: Any,
         inputs_json: str | None = None,
         input_ids: list[str] | None = None,
-        kind: str = "effect",
+        kind: RunKind = "effect",
     ) -> RunRecord:
         """Create a processing run row, bumping `ref_count` on every
         input file in the same transaction. If any input is no longer
@@ -124,15 +126,12 @@ class HistoryService:
         ids_json = json.dumps(input_ids) if input_ids else None
         async with self._db.transaction() as conn:
             for fid in input_ids or []:
-                cursor = await conn.execute(
-                    "UPDATE files SET ref_count = ref_count + 1 "
-                    "WHERE id = ? AND ref_count IS NOT NULL",
-                    (fid,),
-                )
-                if cursor.rowcount == 0:
+                try:
+                    await FileService.bump_ref_in_tx(conn, fid)
+                except ValueError:
                     raise ValueError(
                         f"Input file {fid[:8]}… is no longer available"
-                    )
+                    ) from None
             await conn.execute(
                 """INSERT INTO runs (
                        id, kind, effect_id, effect_name, model_id,
@@ -184,15 +183,12 @@ class HistoryService:
         normalized_id = output_id or None
         async with self._db.transaction() as conn:
             if normalized_id:
-                cursor = await conn.execute(
-                    "UPDATE files SET ref_count = ref_count + 1 "
-                    "WHERE id = ? AND ref_count IS NOT NULL",
-                    (normalized_id,),
-                )
-                if cursor.rowcount == 0:
+                try:
+                    await FileService.bump_ref_in_tx(conn, normalized_id)
+                except ValueError:
                     raise ValueError(
                         f"Output file {normalized_id[:8]}… is no longer available"
-                    )
+                    ) from None
             await conn.execute(
                 """UPDATE runs
                    SET status='completed', output_id=?, duration_ms=?,
@@ -214,8 +210,8 @@ class HistoryService:
         limit: int = 50,
         offset: int = 0,
         effect_id: str | None = None,
-        kind: str | None = None,
-        status: str | None = None,
+        kind: RunKind | None = None,
+        status: RunStatus | None = None,
     ) -> list[RunRecord]:
         limit = max(1, min(limit, 1000))
         offset = max(0, offset)
@@ -244,7 +240,7 @@ class HistoryService:
             return _row_to_record(row)
         return None
 
-    async def count(self, effect_id: str | None = None, kind: str | None = None) -> int:
+    async def count(self, effect_id: str | None = None, kind: RunKind | None = None) -> int:
         clauses: list[str] = []
         params: list[Any] = []
         if effect_id:
@@ -291,8 +287,4 @@ class HistoryService:
             await conn.execute("DELETE FROM runs WHERE id = ?", (job_id,))
 
             for fid in ids:
-                await conn.execute(
-                    "UPDATE files SET ref_count = ref_count - 1 "
-                    "WHERE id = ? AND ref_count > 0",
-                    (fid,),
-                )
+                await FileService.drop_ref_in_tx(conn, fid)

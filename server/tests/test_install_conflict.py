@@ -1,7 +1,6 @@
 """Tests for install conflict detection and overwrite flow."""
 import io
 import zipfile
-from typing import Any
 
 import pytest
 import yaml
@@ -10,6 +9,7 @@ from PIL import Image
 from db.database import Database, init_db
 from services.file_service import FileService
 from services.install_service import InstallConflictError, InstallService
+from tests._factories import make_manifest_dict
 
 
 def _png_bytes(color: tuple[int, int, int] = (50, 50, 50)) -> bytes:
@@ -19,42 +19,12 @@ def _png_bytes(color: tuple[int, int, int] = (50, 50, 50)) -> bytes:
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-MANIFEST_BASE: dict[str, Any] = {
-    "manifest_version": 1,
-    "id": "tester/demo",
-    "name": "Demo",
-    "description": "Demo effect",
-    "version": "1.0.0",
-    "author": "tester",
-    "category": "transform",
-    "tags": [],
-    "showcases": [],
-    "inputs": {
-        "image": {
-            "type": "image",
-            "role": "start_frame",
-            "required": True,
-            "label": "Image",
-        },
-    },
-    "generation": {
-        "prompt": "Demo prompt",
-        "models": [],
-    },
-}
-
 
 def _manifest(**overrides) -> dict:
-    """Deep-ish copy of the base manifest with shallow overrides merged in."""
-    data = {
-        **MANIFEST_BASE,
-        "showcases": [dict(s) for s in MANIFEST_BASE["showcases"]],
-        "inputs": {k: dict(v) for k, v in MANIFEST_BASE["inputs"].items()},
-        "generation": dict(MANIFEST_BASE["generation"]),
-        "tags": list(MANIFEST_BASE["tags"]),
-    }
-    data.update(overrides)
-    return data
+    return make_manifest_dict(**{
+        "id": "tester/demo", "name": "Demo", "description": "Demo effect",
+        **overrides,
+    })
 
 
 def _zip_one(manifest: dict) -> bytes:

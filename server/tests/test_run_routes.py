@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from db.database import Database, init_db
-from effects.validator import EffectManifest, GenerationConfig, InputFieldSchema
+from effects.validator import EffectManifest
 from providers.base import ProviderEvent
 from routes import register_routes
 from services.effect_loader import EffectLoaderService, LoadedEffect
@@ -23,6 +23,7 @@ from services.history_service import HistoryService
 from services.install_service import InstallService
 from services.model_service import ModelService
 from services.run_service import RunService
+from tests._factories import make_manifest
 
 
 class FakeProvider:
@@ -39,24 +40,17 @@ class FakeProvider:
 
 
 def _make_manifest() -> EffectManifest:
-    return EffectManifest.model_validate({
-        "manifest_version": 1,
-        "id": "openeffect/hdr",
-        "name": "HDR",
-        "description": "Test",
-        "category": "animation",
-        "inputs": {
-            # EffectManifest's validator requires a start_frame image input
-            "image": InputFieldSchema(
-                type="image", role="start_frame", required=True, label="Photo",
-            ),
-            "prompt": InputFieldSchema(
-                type="text", required=True,
-                label="Prompt", multiline=False, max_length=500,
-            ),
+    return make_manifest(
+        id="openeffect/hdr", name="HDR", category="animation",
+        inputs={
+            "image": {"type": "image", "role": "start_frame", "required": True, "label": "Photo"},
+            "prompt": {
+                "type": "text", "required": True, "label": "Prompt",
+                "multiline": False, "max_length": 500,
+            },
         },
-        "generation": GenerationConfig(prompt="Make {{ prompt }}"),
-    })
+        generation={"prompt": "Make {{ prompt }}"},
+    )
 
 
 @pytest.fixture
@@ -270,5 +264,111 @@ class TestStartPlaygroundRun:
         })
         assert resp.status_code == 422
         assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
+
+
+# ─── Provider failure & cleanup ──────────────────────────────────────────────
+
+
+class TestProviderFailureAndDelete:
+    """End-to-end coverage of the run-finish paths: a provider failure
+    must settle the row at `status='failed'`; DELETE-on-completed must
+    succeed and drop the row; DELETE-on-processing must 409 (the guard
+    in `routes/runs.py:delete_run`)."""
+
+    def test_provider_failure_marks_record_failed(self, client):
+        FakeProvider.next_events = [
+            ProviderEvent(type="failed", error="Provider exploded"),
+        ]
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.7",
+            "provider_id": "fal",
+            "inputs": {"prompt": "boom"},
+            "output": {},
+        })
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        final = _wait_for_record(client, job_id, statuses=("failed",))
+        assert final is not None, "run never settled to failed"
+        assert final["status"] == "failed"
+        assert "Provider exploded" in (final.get("error") or "")
+
+    def test_provider_raises_marks_record_failed(self, client):
+        """Unhandled exception inside `provider.generate` lands in
+        `_execute_provider`'s except → `_fail_job` writes status='failed'
+        with the stringified error."""
+        class _RaisingProvider:
+            def __init__(self, *_, **__):
+                pass
+
+            async def generate(self, _input):
+                raise RuntimeError("boom from inside the provider")
+                yield  # pragma: no cover  (turns this into an async generator)
+
+        with patch(
+            "services.run_service.ModelProviderFactory.create",
+            side_effect=lambda *a, **kw: _RaisingProvider(),
+        ):
+            resp = client.post("/api/run", json={
+                "effect_id": "test-uuid-001",
+                "model_id": "wan-2.7",
+                "provider_id": "fal",
+                "inputs": {"prompt": "x"},
+                "output": {},
+            })
+            assert resp.status_code == 200
+            job_id = resp.json()["job_id"]
+            final = _wait_for_record(client, job_id, statuses=("failed",))
+
+        assert final is not None
+        assert final["status"] == "failed"
+        assert "boom" in (final.get("error") or "")
+
+    def test_delete_completed_run_drops_row(self, client):
+        FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.7",
+            "provider_id": "fal",
+            "inputs": {"prompt": "ok"},
+            "output": {},
+        })
+        job_id = resp.json()["job_id"]
+        _wait_for_record(client, job_id, statuses=("completed",))
+
+        resp = client.delete(f"/api/runs/{job_id}")
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+        # Subsequent GET should 404 — row is gone.
+        assert client.get(f"/api/runs/{job_id}").status_code == 404
+
+    def test_delete_processing_run_returns_409(self, client):
+        """A FakeProvider with no events leaves _execute_provider's
+        async-for loop empty; the row stays at processing. DELETE on
+        such a row must 409 — wiping a still-live job would leak its
+        bumped input refs."""
+        FakeProvider.next_events = []
+        resp = client.post("/api/run", json={
+            "effect_id": "test-uuid-001",
+            "model_id": "wan-2.7",
+            "provider_id": "fal",
+            "inputs": {"prompt": "stuck"},
+            "output": {},
+        })
+        job_id = resp.json()["job_id"]
+
+        # No need to wait — the row was inserted at processing inside `start()`
+        # before the background task ran. Even if the task has begun, it
+        # won't transition status without a completed/failed event.
+        resp = client.delete(f"/api/runs/{job_id}")
+        assert resp.status_code == 409
+        body = resp.json()
+        assert "processing" in body["detail"]["error"].lower()
+
+    def test_delete_unknown_run_returns_404(self, client):
+        resp = client.delete("/api/runs/does-not-exist")
+        assert resp.status_code == 404
 
 

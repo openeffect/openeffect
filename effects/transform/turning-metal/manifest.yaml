@@ -7,7 +7,7 @@ description: >
   surfaces spreading across the visible body while preserving identity and pose.
 
 version: "0.1.0"
-author: openeffect-team
+author: OpenEffect
 category: transform
 
 tags:

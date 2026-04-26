@@ -24,13 +24,18 @@ id: my/new-effect
 name: New Effect
 description: >
   Describe what this effect does.
-version: "1.0.0"
+
+version: "0.1.0"
 author: me
 category: transform
+
 tags:
   - custom
 
-showcases: []
+showcases:
+  - preview: preview.mp4
+    inputs:
+      image: input-image.jpg
 
 inputs:
   image:
@@ -52,6 +57,7 @@ generation:
   models:
     - kling-3.0
     - wan-2.7
+
   default_model: kling-3.0
 
   prompt: >
@@ -63,7 +69,6 @@ generation:
 
   params:
     duration: 5
-    guidance_scale: 8.0
 `
 
 const BLANK_MANIFEST: EffectManifest = {
@@ -76,7 +81,7 @@ const BLANK_MANIFEST: EffectManifest = {
   slug: 'new-effect',
   name: 'New Effect',
   description: 'Describe what this effect does.',
-  version: '1.0.0',
+  version: '0.1.0',
   author: 'me',
   category: 'transform',
   tags: ['custom'],
@@ -103,7 +108,7 @@ const BLANK_MANIFEST: EffectManifest = {
     negative_prompt: 'low quality, blurry, watermark',
     models: ['kling-3.0', 'wan-2.7'],
     default_model: 'kling-3.0',
-    params: { duration: { default: 5 }, guidance_scale: { default: 8.0 } },
+    params: { duration: { default: 5 } },
     model_overrides: {},
     reverse: false,
   },

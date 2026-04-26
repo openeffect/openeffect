@@ -189,7 +189,7 @@ class EffectManifest(BaseModel):
     name: str
     description: str
     version: str = "1.0.0"
-    author: str = "openeffect-team"
+    author: str = "OpenEffect"
     url: str | None = None              # self-referencing URL for update checking
     category: str
     tags: list[str] = []

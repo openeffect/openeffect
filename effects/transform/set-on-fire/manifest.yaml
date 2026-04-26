@@ -7,7 +7,7 @@ description: >
   fire effect while preserving identity, pose, and scene continuity.
 
 version: "0.1.0"
-author: openeffect-team
+author: OpenEffect
 category: transform
 
 tags:

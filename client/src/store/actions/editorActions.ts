@@ -50,6 +50,7 @@ inputs:
     required: false
     label: "Describe the scene"
     placeholder: "A cinematic shot..."
+    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
     max_length: 500
     multiline: false
 
@@ -61,7 +62,8 @@ generation:
   default_model: kling-3.0
 
   prompt: >
-    Cinematic effect on the subject. {{ scene_prompt }}
+    Cinematic effect on the subject.
+    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
     High quality, 4K resolution.
 
   negative_prompt: >
@@ -99,12 +101,13 @@ const BLANK_MANIFEST: EffectManifest = {
       required: false,
       label: 'Describe the scene',
       placeholder: 'A cinematic shot...',
+      hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully",
       max_length: 500,
       multiline: false,
     },
   },
   generation: {
-    prompt: 'Cinematic effect on the subject. {{ scene_prompt }} High quality, 4K resolution.',
+    prompt: "Cinematic effect on the subject. {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %} High quality, 4K resolution.",
     negative_prompt: 'low quality, blurry, watermark',
     models: ['kling-3.0', 'wan-2.7'],
     default_model: 'kling-3.0',

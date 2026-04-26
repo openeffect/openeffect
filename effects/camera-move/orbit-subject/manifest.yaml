@@ -34,6 +34,7 @@ inputs:
     required: false
     label: "Describe the scene"
     placeholder: "A stylish woman sitting on city steps at dusk"
+    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
     max_length: 500
     multiline: false
 
@@ -52,8 +53,7 @@ generation:
     Only subtle natural micro-motion is allowed.
     Background depth and parallax shift naturally during the orbit.
     No cut, no scene replacement, no duplicate subject, no walking motion.
-    {{ scene_prompt }}
-
+    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
     deformed anatomy, strong body translation, walking motion, heavy jitter,
@@ -68,7 +68,7 @@ generation:
         No walking, no body translation, only slight blink, breathing,
         or subtle hair movement.
         Strong natural parallax, realistic depth, clean continuity, no cut.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4
         generate_audio: false
@@ -82,6 +82,6 @@ generation:
         The subject stays planted; no walking or body translation.
         Allow only subtle natural micro-motion while the background shifts with clear parallax.
         Cinematic depth, realistic motion, no scene replacement, no cut.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4

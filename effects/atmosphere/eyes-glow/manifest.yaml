@@ -34,6 +34,7 @@ inputs:
     required: false
     label: "Describe the scene"
     placeholder: "A calm woman standing in soft evening city lights"
+    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
     max_length: 500
     multiline: false
 
@@ -54,8 +55,7 @@ generation:
     The subject remains planted in the same scene.
     Only subtle natural micro-motion is allowed.
     No cut, no scene replacement, no duplicate subject.
-    {{ scene_prompt }}
-
+    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
     deformed anatomy, full face glow, entire body glow, random neon streaks,
@@ -75,7 +75,7 @@ generation:
         The same subject remains planted and recognizable throughout.
         Only slight blink, breathing, or micro-expression is allowed.
         Clean continuity, no cut, no scene replacement, no laser beams.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4
         generate_audio: false
@@ -92,6 +92,6 @@ generation:
         It should not feel like heat vision, beams, fire, or destructive power.
         The subject stays planted with only subtle natural micro-motion.
         No cut, no scene replacement, no duplicate subject.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4

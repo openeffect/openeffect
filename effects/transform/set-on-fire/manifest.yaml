@@ -34,6 +34,7 @@ inputs:
     required: false
     label: "Describe the scene"
     placeholder: "A stylish man standing in a dark city street at night"
+    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
     max_length: 500
     multiline: false
 
@@ -54,8 +55,7 @@ generation:
     Only subtle natural micro-motion is allowed.
     The effect should feel cinematic and controlled, not chaotic destruction.
     No cut, no scene replacement, no duplicate subject.
-    {{ scene_prompt }}
-
+    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
     deformed anatomy, body melting, charred skeleton, gore, horror burning,
@@ -74,7 +74,7 @@ generation:
         The subject remains planted and recognizable throughout.
         Only subtle blink, breathing, or slight body tension is allowed.
         Clean continuity, no cut, no scene replacement.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4
         generate_audio: false
@@ -90,6 +90,6 @@ generation:
         The fire should look cinematic and readable,
         not like the subject is melting or collapsing.
         No cut, no scene replacement, no duplicate subject.
-        {{ scene_prompt }}
+        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4

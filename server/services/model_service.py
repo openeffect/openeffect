@@ -75,7 +75,7 @@ MODELS: list[dict[str, Any]] = [
         "id": "kling-3.0",
         "name": "Kling 3.0",
         "group": "Kling",
-        "description": "Best for cinematic shots, supports AI audio",
+        "description": "Best for character-driven shots and emotional pacing",
         "inputs": [
             {"role": "start_frame",     "type": "image", "required": True},
             {"role": "end_frame",       "type": "image"},
@@ -159,7 +159,7 @@ MODELS: list[dict[str, Any]] = [
         "id": "pixverse-v6",
         "name": "PixVerse V6",
         "group": "PixVerse",
-        "description": "Creative styles, AI audio, up to 15s",
+        "description": "Best for movement-heavy or stylized effects",
         "inputs": [
             {"role": "start_frame",     "type": "image", "required": True},
             {"role": "end_frame",       "type": "image"},
@@ -253,7 +253,7 @@ MODELS: list[dict[str, Any]] = [
         "id": "wan-2.7",
         "name": "Wan 2.7",
         "group": "Wan",
-        "description": "Enhanced motion and fidelity, up to 15s at 1080p",
+        "description": "Best for action, transformations, and detail-rich scenes",
         "inputs": [
             {"role": "start_frame",     "type": "image", "required": True},
             {"role": "end_frame",       "type": "image"},

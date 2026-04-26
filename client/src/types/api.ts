@@ -89,6 +89,11 @@ export interface GenerationConfig {
 }
 
 export interface EffectManifest {
+  /** Manifest schema version. Currently the only supported value is 1.
+   *  Required on every manifest — the server rejects manifests without
+   *  it. Future schema changes ship as 2, 3, …; the server will then
+   *  carry a migration step for older versions. */
+  manifest_version: number
   id: string                    // UUID primary key
   namespace: string
   slug: string                  // short identifier within the namespace

@@ -40,6 +40,7 @@ class FakeProvider:
 
 def _make_manifest() -> EffectManifest:
     return EffectManifest.model_validate({
+        "manifest_version": 1,
         "id": "openeffect/hdr",
         "name": "HDR",
         "description": "Test",

@@ -18,7 +18,9 @@ import { selectEffect } from './effectsActions'
  *  edited while save was in flight. */
 const ID_LINE_RE = /^id:\s*(.+)$/m
 
-const BLANK_TEMPLATE = `id: my/new-effect
+const BLANK_TEMPLATE = `manifest_version: 1
+
+id: my/new-effect
 name: New Effect
 description: >
   Describe what this effect does.
@@ -65,6 +67,7 @@ generation:
 `
 
 const BLANK_MANIFEST: EffectManifest = {
+  manifest_version: 1,
   id: '',
   full_id: 'my/new-effect',
   compatible_models: [],

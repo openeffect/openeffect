@@ -125,6 +125,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   const slug = `from-playground-${shortId}`
 
   return {
+    manifest_version: 1,
     id: '',
     full_id: `my/${slug}`,
     compatible_models: [],

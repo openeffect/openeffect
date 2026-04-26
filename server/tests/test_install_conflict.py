@@ -20,6 +20,7 @@ def _png_bytes(color: tuple[int, int, int] = (50, 50, 50)) -> bytes:
     return buf.getvalue()
 
 MANIFEST_BASE: dict[str, Any] = {
+    "manifest_version": 1,
     "id": "tester/demo",
     "name": "Demo",
     "description": "Demo effect",

@@ -1,3 +1,5 @@
+manifest_version: 1
+
 id: openeffect/wind-to-face
 name: Wind To Face
 description: >

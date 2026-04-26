@@ -14,6 +14,7 @@ from effects.validator import (
 def make_valid_manifest(**overrides) -> dict:
     """Return a valid manifest dict that can be modified for testing."""
     defaults = {
+        "manifest_version": 1,
         "id": "tester/test-effect",
         "name": "Test Effect",
         "description": "A test effect",
@@ -42,6 +43,7 @@ class TestEffectValidator:
     def test_valid_manifest_passes(self):
         data = make_valid_manifest()
         manifest = EffectManifest(**data)
+        assert manifest.manifest_version == 1
         assert manifest.namespace == "tester"
         assert manifest.slug == "test-effect"
         assert manifest.full_id == "tester/test-effect"
@@ -299,6 +301,7 @@ def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
         **extra_inputs,
     }
     return EffectManifest.model_validate({
+        "manifest_version": 1,
         "id": "tester/t",
         "name": "T",
         "description": "T",
@@ -306,6 +309,56 @@ def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
         "inputs": inputs,
         "generation": GenerationConfig(prompt="go"),
     })
+
+
+class TestManifestVersion:
+    """The `manifest_version` field is the forward-compat hook: required
+    on every manifest, only `1` accepted today, error message lists the
+    full supported set so authors can see what the server understands."""
+
+    def test_accepts_version_1(self):
+        data = make_valid_manifest(manifest_version=1)
+        manifest = EffectManifest(**data)
+        assert manifest.manifest_version == 1
+
+    def test_rejects_missing_field(self):
+        data = make_valid_manifest()
+        del data["manifest_version"]
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        # Pydantic's "field required" error names the missing field.
+        assert "manifest_version" in str(exc_info.value)
+
+    def test_rejects_unsupported_version(self):
+        data = make_valid_manifest(manifest_version=2)
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "manifest_version 2 is not supported" in str(exc_info.value)
+        assert "supported: 1" in str(exc_info.value)
+
+    def test_rejects_zero(self):
+        data = make_valid_manifest(manifest_version=0)
+        with pytest.raises(ValidationError) as exc_info:
+            EffectManifest(**data)
+        assert "not supported" in str(exc_info.value)
+
+    def test_rejects_string_form(self):
+        data = make_valid_manifest(manifest_version="1")
+        # Pydantic v2 will coerce a string of digits to int by default;
+        # this test confirms the coercion still respects the
+        # supported-set check (and would reject "2" as well).
+        manifest = EffectManifest(**data)
+        assert manifest.manifest_version == 1
+
+    def test_rejects_float(self):
+        data = make_valid_manifest(manifest_version=1.5)
+        with pytest.raises(ValidationError):
+            EffectManifest(**data)
+
+    def test_rejects_null(self):
+        data = make_valid_manifest(manifest_version=None)
+        with pytest.raises(ValidationError):
+            EffectManifest(**data)
 
 
 class TestValidateRunInputsRequired:

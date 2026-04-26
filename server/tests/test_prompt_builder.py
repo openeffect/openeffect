@@ -30,6 +30,7 @@ def apply_wire(model_id: str, canonical: dict) -> dict:
 def make_manifest(**overrides) -> EffectManifest:
     """Create a test manifest with sensible defaults."""
     manifest_kwargs: dict[str, Any] = {
+        "manifest_version": 1,
         "id": "tester/test-effect",
         "name": "Test Effect",
         "description": "A test effect",
@@ -519,6 +520,7 @@ class TestLockedModelParams:
         """A bare scalar in YAML is coerced to {value: scalar} (locked).
         Visible seeded defaults require the explicit long form."""
         yaml_text = """
+        manifest_version: 1
         id: tester/yaml-test
         name: Yaml Test
         description: ''
@@ -544,6 +546,7 @@ class TestLockedModelParams:
 
     def test_explicit_default_form_parses_as_visible(self):
         yaml_text = """
+        manifest_version: 1
         id: tester/yaml-test
         name: Yaml Test
         description: ''

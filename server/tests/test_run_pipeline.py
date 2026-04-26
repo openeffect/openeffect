@@ -16,6 +16,7 @@ from services.run_service import RunJob, RunService
 
 def _make_manifest() -> EffectManifest:
     return EffectManifest.model_validate({
+        "manifest_version": 1,
         "id": "test/test-effect",
         "name": "Test Effect",
         "description": "Test",

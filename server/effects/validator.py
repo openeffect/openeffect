@@ -173,7 +173,14 @@ class GenerationConfig(BaseModel):
         return self
 
 
+_SUPPORTED_MANIFEST_VERSIONS = (1,)
+
+
 class EffectManifest(BaseModel):
+    # First field on purpose — model_dump's emit order puts it at the
+    # top of round-tripped YAML so the visual convention matches the
+    # one we ask authors to follow.
+    manifest_version: int
     # YAML carries a single `id: namespace/slug` field. The
     # `_parse_id` before-validator splits it into `namespace` + `slug`
     # so the rest of the code works against two clean internal fields.
@@ -189,6 +196,21 @@ class EffectManifest(BaseModel):
     showcases: list[Showcase] = []
     inputs: dict[str, InputFieldSchema]
     generation: GenerationConfig
+
+    @field_validator("manifest_version")
+    @classmethod
+    def _check_supported_version(cls, v: int) -> int:
+        """Forward-compat hook: as the manifest schema evolves, future
+        versions get added to `_SUPPORTED_MANIFEST_VERSIONS`. The error
+        message lists every accepted value so authors can see exactly
+        what their server supports."""
+        if v not in _SUPPORTED_MANIFEST_VERSIONS:
+            supported = ", ".join(str(s) for s in _SUPPORTED_MANIFEST_VERSIONS)
+            raise ValueError(
+                f"manifest_version {v} is not supported "
+                f"(supported: {supported})"
+            )
+        return v
 
     @model_validator(mode="before")
     @classmethod

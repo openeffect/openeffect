@@ -20,6 +20,7 @@ from services.file_service import FileService
 from services.install_service import InstallService, _validate_asset_filename
 
 MANIFEST_BASE: dict[str, Any] = {
+    "manifest_version": 1,
     "id": "tester/demo",
     "name": "Demo",
     "description": "Demo effect",

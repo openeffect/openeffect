@@ -4,7 +4,7 @@ import os
 import fal_client
 import pytest
 
-from providers.base import ProviderInput
+from providers.base import ImageRef, ProviderInput
 from providers.fal_provider import FalProvider
 
 
@@ -20,10 +20,16 @@ def _mk_input(
     image_inputs: dict[str, str] | None = None,
     **params,
 ) -> ProviderInput:
+    """Tests pass `{role: path}` for ergonomics; we wrap each into an
+    ImageRef with `image/jpeg` so the upload path treats it as a fal-
+    accepted format and skips the conversion branch by default."""
+    paths = image_inputs or {"start_frame": "/tmp/fake.jpg"}
     return ProviderInput(
         prompt=params.pop("prompt", "test prompt"),
         negative_prompt=params.pop("negative_prompt", ""),
-        image_inputs=image_inputs or {"start_frame": "/tmp/fake.jpg"},
+        image_inputs={
+            role: ImageRef(path=path, mime="image/jpeg") for role, path in paths.items()
+        },
         parameters={"_model_id": model_id, **params},
     )
 
@@ -219,6 +225,94 @@ class TestGenerate:
         failed = [e for e in events if e.type == "failed"]
         assert len(failed) == 1
         assert "Unexpected response" in (failed[0].error or "")
+
+    async def test_unsupported_mime_is_transcoded_before_upload(self, monkeypatch, tmp_path):
+        """A BMP input (image/bmp not in fal's whitelist) should be
+        decoded and re-encoded to PNG before fal_client sees it. The
+        provider hands `upload_file` a temp file path, not the original
+        BMP."""
+        from PIL import Image
+
+        bmp_path = tmp_path / "in.bmp"
+        Image.new("RGB", (16, 16), color=(255, 0, 0)).save(bmp_path, format="BMP")
+
+        uploaded: list[str] = []
+
+        async def fake_upload(self, path, **_kwargs):
+            uploaded.append(str(path))
+            return "https://fal.cdn/converted.png"
+
+        async def fake_subscribe(
+            self, endpoint, *, arguments,
+            with_logs=True, on_enqueue=None, on_queue_update=None, **_kwargs,
+        ):
+            if on_enqueue:
+                await on_enqueue("r")
+            return {"video": {"url": "u"}}
+
+        monkeypatch.setattr("fal_client.AsyncClient.upload_file", fake_upload)
+        monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
+
+        provider = FalProvider(api_key="k")
+        # ImageRef declares the source mime as image/bmp — outside fal's
+        # accept list, so the provider must transcode before upload.
+        inp = ProviderInput(
+            prompt="x",
+            negative_prompt="",
+            image_inputs={"start_frame": ImageRef(path=str(bmp_path), mime="image/bmp")},
+            parameters={"_model_id": "wan-2.7"},
+        )
+        async for _ in provider.generate(inp):
+            pass
+
+        assert len(uploaded) == 1
+        uploaded_path = uploaded[0]
+        # Provider must NOT have handed fal the BMP path verbatim.
+        assert uploaded_path != str(bmp_path)
+        # The converted file is a PNG sitting in a temp dir.
+        assert uploaded_path.endswith(".png")
+        # And it's been cleaned up after upload.
+        from pathlib import Path as _Path
+        assert not _Path(uploaded_path).exists()
+
+    async def test_supported_mime_passes_through_without_transcode(self, monkeypatch, tmp_path):
+        """An image/jpeg input (in fal's whitelist) should reach
+        fal_client at the original path — no Pillow re-encode."""
+        from PIL import Image
+
+        jpg_path = tmp_path / "in.jpg"
+        Image.new("RGB", (8, 8), color=(0, 255, 0)).save(jpg_path, format="JPEG")
+
+        uploaded: list[str] = []
+
+        async def fake_upload(self, path, **_kwargs):
+            uploaded.append(str(path))
+            return "https://fal.cdn/x"
+
+        async def fake_subscribe(
+            self, endpoint, *, arguments,
+            with_logs=True, on_enqueue=None, on_queue_update=None, **_kwargs,
+        ):
+            if on_enqueue:
+                await on_enqueue("r")
+            return {"video": {"url": "u"}}
+
+        monkeypatch.setattr("fal_client.AsyncClient.upload_file", fake_upload)
+        monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
+
+        provider = FalProvider(api_key="k")
+        inp = ProviderInput(
+            prompt="x",
+            negative_prompt="",
+            image_inputs={"start_frame": ImageRef(path=str(jpg_path), mime="image/jpeg")},
+            parameters={"_model_id": "wan-2.7"},
+        )
+        async for _ in provider.generate(inp):
+            pass
+
+        assert uploaded == [str(jpg_path)]
+        # Source still on disk — no transcode happened.
+        assert jpg_path.exists()
 
     async def test_generate_does_not_leak_key_into_env(self, monkeypatch):
         """The provider must keep the key bound to its AsyncClient and

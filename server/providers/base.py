@@ -5,10 +5,21 @@ from typing import Any, Literal
 
 
 @dataclass
+class ImageRef:
+    """A resolved image input handed to a provider. Carries both the
+    on-disk path (for upload) and the file row's sniffed `mime` (set
+    server-side from magic bytes at upload time). Providers consult the
+    mime against their `accepted_image_mimes` whitelist to decide
+    whether to pass-through or transcode via Pillow before sending."""
+    path: str
+    mime: str
+
+
+@dataclass
 class ProviderInput:
     prompt: str
     negative_prompt: str
-    image_inputs: dict[str, str]
+    image_inputs: dict[str, ImageRef]
     parameters: dict[str, Any]
 
 

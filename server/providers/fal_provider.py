@@ -5,6 +5,7 @@ from typing import Any
 
 import fal_client
 
+from core.image_convert import ensure_mime
 from providers.base import BaseProvider, ProviderEvent, ProviderInput
 from services.model_service import canonical_to_wire, get_model, get_provider, resolve_endpoint
 
@@ -37,15 +38,25 @@ class FalProvider(BaseProvider):
             canonical["negative_prompt"] = input.negative_prompt
 
         # Upload images — keyed by canonical role. canonical_to_wire renames
-        # to the provider's wire keys at the end.
+        # to the provider's wire keys at the end. Each image's mime is
+        # checked against this provider's `accepted_image_mimes` and
+        # transcoded to PNG via Pillow when fal can't accept it natively
+        # (HEIC, BMP, TIFF, etc). The temp file lives only for the
+        # duration of this upload call.
         yield ProviderEvent(type="progress", progress=5, message="Uploading images...")
+        accepted_mimes = provider_cfg.get("accepted_image_mimes", ())
         supported_image_roles = {
             role for role in provider_cfg.get("inputs", {})
             if role in input.image_inputs  # only roles we have a path for
         }
         for role in supported_image_roles:
-            local_path = input.image_inputs[role]
-            url = await self._client.upload_file(Path(local_path))
+            ref = input.image_inputs[role]
+            converted_path, is_temp = ensure_mime(Path(ref.path), ref.mime, accepted_mimes)
+            try:
+                url = await self._client.upload_file(converted_path)
+            finally:
+                if is_temp:
+                    converted_path.unlink(missing_ok=True)
             canonical[role] = url
 
         # Resolve the actual endpoint URL now that canonical is fully

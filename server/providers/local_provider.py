@@ -22,10 +22,13 @@ class LocalProvider(BaseProvider):
 
         output_path = self._models_dir.parent / "tmp" / f"{uuid4()}.mp4"
 
+        # Hand the runner script bare role→path strings; it doesn't
+        # know about ImageRef. Format conversion is a runner-side
+        # concern (it knows what its bundled model accepts).
         request_data = {
             "prompt": input.prompt,
             "negative_prompt": input.negative_prompt,
-            "image_inputs": input.image_inputs,
+            "image_inputs": {role: ref.path for role, ref in input.image_inputs.items()},
             "parameters": {k: v for k, v in input.parameters.items() if not k.startswith("_")},
             "output_path": str(output_path),
         }

@@ -17,7 +17,7 @@ from core.limits import MAX_RESULT_VIDEO_SIZE
 from core.states import RunStatus
 from effects.prompt_builder import PromptBuilder
 from effects.validator import EffectManifest, validate_run_inputs
-from providers.base import ProviderInput
+from providers.base import ImageRef, ProviderInput
 from providers.factory import ModelProviderFactory
 from providers.fal_provider import FalProvider
 from schemas.run import PlaygroundRunRequest, RunRequest
@@ -221,7 +221,7 @@ class RunService:
             job, inputs_json=inputs_json, input_ids=input_ids,
         )
 
-        self._dispatch_provider_run(
+        await self._dispatch_provider_run(
             job=job,
             model_id=request.model_id,
             provider_id=request.provider_id,
@@ -292,7 +292,7 @@ class RunService:
             job, inputs_json=inputs_json, input_ids=input_ids, kind="playground",
         )
 
-        self._dispatch_provider_run(
+        await self._dispatch_provider_run(
             job=job,
             model_id=request.model_id,
             provider_id=request.provider_id,
@@ -332,7 +332,7 @@ class RunService:
             negative_prompt = str(params.pop("negative_prompt"))
         return params, negative_prompt
 
-    def _dispatch_provider_run(
+    async def _dispatch_provider_run(
         self,
         *,
         job: RunJob,
@@ -347,31 +347,36 @@ class RunService:
         """Build ProviderInput and spawn the background `_execute_provider`
         task. The caller is responsible for having persisted the run row
         (via `history.create_processing`) before this is invoked."""
-        image_paths = self._resolve_image_paths(image_refs_by_role)
+        image_refs = await self._resolve_image_refs(image_refs_by_role)
         provider_input = ProviderInput(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_inputs=image_paths,
+            image_inputs=image_refs,
             parameters={**params, "_model_id": model_id},
         )
         asyncio.create_task(self._execute_provider(
             job, model_id, provider_id, provider_input, needs_reverse=needs_reverse,
         ))
 
-    def _resolve_image_paths(self, refs_by_role: dict[str, str]) -> dict[str, str]:
-        """Turn `{role: file_id}` into `{role: absolute_disk_path}` for
-        the provider. Original bytes — fal.ai handles up to the upload
-        cap fine, no separate "model" variant needed."""
-        out: dict[str, str] = {}
+    async def _resolve_image_refs(self, refs_by_role: dict[str, str]) -> dict[str, ImageRef]:
+        """Turn `{role: file_id}` into `{role: ImageRef(path, mime)}`
+        for the provider. The mime comes from the file row (sniffed
+        from magic bytes at upload time) — providers compare it to
+        their `accepted_image_mimes` whitelist to decide whether to
+        pass-through or transcode before sending."""
+        out: dict[str, ImageRef] = {}
         for role, file_id in refs_by_role.items():
             file_dir = self._files.files_dir / file_id
             if not file_dir.is_dir():
+                continue
+            file_row = await self._files.get_file(file_id)
+            if file_row is None:
                 continue
             # Find the original.* — there's exactly one, named with the
             # canonical extension recorded on the row.
             for child in file_dir.iterdir():
                 if child.name.startswith("original."):
-                    out[role] = str(child)
+                    out[role] = ImageRef(path=str(child), mime=file_row.mime)
                     break
         return out
 

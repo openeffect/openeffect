@@ -61,6 +61,16 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Per-provider image-mime whitelists. Compared against each input file's
+# sniffed `mime` (set server-side from magic bytes at upload time). The
+# run-dispatch path consults this and transcodes unsupported uploads to
+# PNG via `core.image_convert.ensure_mime` before sending. Single source
+# of truth — every provider entry below references the constant rather
+# than duplicating the list.
+FAL_IMAGE_MIMES: tuple[str, ...] = (
+    "image/jpeg", "image/png", "image/webp", "image/gif", "image/avif",
+)
+
 
 MODELS: list[dict[str, Any]] = [
     # Registry entries are ordered alphabetically by `id`. Within each
@@ -118,6 +128,7 @@ MODELS: list[dict[str, Any]] = [
         ],
         "providers": {
             "fal": {
+                "accepted_image_mimes": FAL_IMAGE_MIMES,
                 # Endpoint is a function so we can route 1080p to fal's
                 # pro tier. Any provider whose URL depends on a canonical
                 # value can do the same.
@@ -220,6 +231,7 @@ MODELS: list[dict[str, Any]] = [
         ],
         "providers": {
             "fal": {
+                "accepted_image_mimes": FAL_IMAGE_MIMES,
                 "endpoint": "fal-ai/pixverse/v6/image-to-video",
                 "cost": (
                     "360p   $0.025/s  $0.035/s with audio\n"
@@ -284,6 +296,7 @@ MODELS: list[dict[str, Any]] = [
         ],
         "providers": {
             "fal": {
+                "accepted_image_mimes": FAL_IMAGE_MIMES,
                 "endpoint": "fal-ai/wan/v2.7/image-to-video",
                 # Flat rate across resolution and audio — no tier table.
                 "cost": "$0.10/s",

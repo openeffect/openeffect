@@ -261,6 +261,11 @@ export async function deleteEffect(namespace: string, slug: string): Promise<voi
         s.history.effectItems = new Map()
       }
     }, 'effects/delete')
+    // The state mutation above clears `selectedId` via `mutateSelectEffect`
+    // directly, which doesn't run the navigation that the `selectEffect`
+    // action would. Sync the URL back to the gallery so we don't leave
+    // the address bar pointing at a now-deleted effect.
+    navigate('/')
   } catch {
     // API failed — don't mutate state
   }

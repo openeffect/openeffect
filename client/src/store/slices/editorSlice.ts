@@ -9,6 +9,7 @@ export const initialEditorState: EditorSlice = {
   isOpen: false,
   isSaving: false,
   isForking: false,
+  isEditing: false,
   saveError: null,
   saveVersion: 0,
 }

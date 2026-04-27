@@ -110,6 +110,11 @@ export interface EditorSlice {
   isOpen: boolean
   isSaving: boolean
   isForking: boolean
+  /** True while `editEffect` is fetching the YAML + asset list before
+   *  it can hand them to `openEditor`. Drives the header spinner so a
+   *  click on Edit gives immediate feedback even when the round-trip
+   *  is slow. */
+  isEditing: boolean
   saveError: string | null
   saveVersion: number
 }

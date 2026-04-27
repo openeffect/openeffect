@@ -257,11 +257,14 @@ export async function forkFromManifest(manifest: EffectManifest): Promise<void> 
 }
 
 export async function editEffect(effect: EffectManifest): Promise<void> {
+  setState((s) => { s.editor.isEditing = true }, 'editor/editStart')
   try {
     const { yaml, files } = await api.getEffectEditorData(effect.namespace, effect.slug)
     openEditor(yaml, effect.id, effect, files)
   } catch {
     forkEffect(effect)
+  } finally {
+    setState((s) => { s.editor.isEditing = false }, 'editor/editFinish')
   }
 }
 

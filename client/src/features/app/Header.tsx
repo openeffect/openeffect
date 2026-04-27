@@ -2,7 +2,7 @@ import { RefreshCw, History, Package, Settings, Loader2, Plus, FlaskConical } fr
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/store'
 import { selectActiveJobCount, selectRestoringFromUrl } from '@/store/selectors/runSelectors'
-import { selectIsForking } from '@/store/selectors/editorSelectors'
+import { selectIsEditing, selectIsForking } from '@/store/selectors/editorSelectors'
 import { selectUpdateAvailable } from '@/store/selectors/configSelectors'
 import { openHistory } from '@/store/actions/historyActions'
 import { openBlankEditor } from '@/store/actions/editorActions'
@@ -21,8 +21,9 @@ export function Header({ onEffectsOpen, onSettingsOpen }: HeaderProps) {
   const activeCount = useStore(selectActiveJobCount)
   const restoringFromUrl = useStore(selectRestoringFromUrl)
   const isForking = useStore(selectIsForking)
+  const isEditing = useStore(selectIsEditing)
   const updateAvailable = useStore(selectUpdateAvailable)
-  const isLoading = restoringFromUrl || isForking
+  const isLoading = restoringFromUrl || isForking || isEditing
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">

@@ -12,18 +12,17 @@ def _build_context(
     manifest: EffectManifest,
     user_inputs: dict[str, str],
 ) -> dict[str, str]:
-    """All declared inputs seeded empty, then overlaid with user values.
-    Select fields resolve to the chosen option's `label` (not `value`) so
-    authors write `{{ mood }}` and get "Joyful", not "happy"."""
+    """All declared inputs seeded empty, then overlaid with the user's
+    submitted values. The substituted text is whatever the form sent —
+    for select fields that's the option's `value`, not its `label`.
+    Authors who want human-readable phrasing in the prompt branch on
+    the value with Jinja, e.g.
+    `{% if mood == 'happy' %}joyful{% else %}calm{% endif %}`. Keeps
+    every input type (text, number, slider, boolean, select) using
+    identical substitution semantics."""
     ctx: dict[str, str] = {key: "" for key in manifest.inputs}
-    for key, field in manifest.inputs.items():
-        raw = user_inputs.get(key, "")
-        if field.type == "select" and field.options and raw:
-            for opt in field.options:
-                if opt.value == raw:
-                    raw = opt.label
-                    break
-        ctx[key] = raw
+    for key in manifest.inputs:
+        ctx[key] = user_inputs.get(key, "")
     return ctx
 
 

@@ -105,7 +105,7 @@ class TestBuildPrompt:
         assert "dramatic" in result
         assert "{{" not in result
 
-    def test_select_field_uses_label_not_value(self):
+    def test_select_field_uses_value_not_label(self):
         manifest = make_manifest(
             inputs={
                 "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
@@ -128,8 +128,40 @@ class TestBuildPrompt:
             ),
         )
         result = PromptBuilder.build_prompt(manifest, "kling-3.0", {"style": "liquid"})
-        assert "Liquid Flow" in result
-        assert "liquid" not in result.lower().replace("liquid flow", "")
+        assert result == "Cinematic liquid transition."
+        assert "Liquid Flow" not in result
+
+    def test_select_value_drives_jinja_conditional(self):
+        """Authors who want human-readable phrasing branch on the raw
+        value via Jinja — both arms of the conditional should resolve
+        cleanly when the matching option is picked."""
+        manifest = make_manifest(
+            inputs={
+                "image": InputFieldSchema(type="image", role="start_frame", required=True, label="Photo"),
+                "style": InputFieldSchema(
+                    type="select",
+                    required=False,
+                    label="Style",
+                    options=[
+                        SelectOption(value="particles", label="Particles"),
+                        SelectOption(value="liquid", label="Liquid Flow"),
+                    ],
+                    default="particles",
+                ),
+            },
+            generation=GenerationConfig(
+                prompt=(
+                    "{% if style == 'liquid' %}flowing{% else %}sparkling{% endif %} transition"
+                ),
+                models=["kling-3.0"],
+                default_model="kling-3.0",
+                params={},
+            ),
+        )
+        liquid = PromptBuilder.build_prompt(manifest, "kling-3.0", {"style": "liquid"})
+        particles = PromptBuilder.build_prompt(manifest, "kling-3.0", {"style": "particles"})
+        assert liquid == "flowing transition"
+        assert particles == "sparkling transition"
 
     def test_model_override_uses_different_template(self):
         manifest = make_manifest(

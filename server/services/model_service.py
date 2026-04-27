@@ -566,6 +566,12 @@ class ModelService:
     def __init__(self, models_dir: Path):
         self._models_dir = models_dir
 
+    @property
+    def models_dir(self) -> Path:
+        """Directory where local-provider model weights live. Public so
+        callers (e.g. RunService) don't have to reach into `_models_dir`."""
+        return self._models_dir
+
     def get_available_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
         models = []
         for model in MODELS:

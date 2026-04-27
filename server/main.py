@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config.config_service import ConfigService
@@ -99,6 +98,21 @@ async def lifespan(app: FastAPI):
     )
     await effect_loader.load_all()
 
+    async def _on_install_change(effect_id: str | None) -> None:
+        # Per-effect reload when the mutation affects exactly one row
+        # (favorite/source/asset CRUD, uninstall) — much cheaper than
+        # re-parsing every manifest. None means "set membership might
+        # have changed, do a full reload" (install/save).
+        if effect_id is None:
+            await effect_loader.reload()
+        else:
+            await effect_loader.reload_one(effect_id)
+
+    # Wire AFTER load_all so the boot-time bundled sync doesn't redundantly
+    # trigger a reload from inside install_from_folder (load_all does its
+    # own reload at the end already).
+    install_service.set_on_change(_on_install_change)
+
     history_service = HistoryService(database)
     model_service = ModelService(settings.user_data_dir / "models")
     run_service = RunService(
@@ -147,15 +161,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # No CORS middleware: every legitimate request is same-origin. In prod the
+    # built `client/dist` is served from this same FastAPI instance; in dev
+    # Vite proxies `/api/*` to here so the browser only sees :5173. Allowing
+    # cross-origin requests would just open the door to drive-by CSRF (a tab
+    # on any site could POST to http://127.0.0.1:3131/api/run and drain the
+    # user's fal credits).
     app = FastAPI(title="OpenEffect", version="0.1.0", lifespan=lifespan)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
     register_routes(app)
 

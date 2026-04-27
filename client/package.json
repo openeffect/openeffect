@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . && tsc --noEmit"
+    "lint": "eslint . && tsc --noEmit",
+    "gen-types": "openapi-typescript ../openapi.json -o src/types/api.gen.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -44,6 +45,7 @@
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.5.0",
+    "openapi-typescript": "^7.4.4",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.0",

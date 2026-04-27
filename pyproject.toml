@@ -9,7 +9,6 @@ dependencies = [
     "uvicorn[standard]>=0.45.0",
     "pydantic>=2.13.3",
     "pydantic-settings>=2.14.0",
-    "sqlalchemy[asyncio]>=2.0.49",
     "aiosqlite>=0.20.0",
     "pyyaml>=6.0.0",
     "fal-client>=0.5.0",
@@ -39,12 +38,27 @@ openeffect = "run:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+# `client/dist/` is gitignored (it's a build artifact). Hatchling honors
+# `.gitignore` by default, so we have to explicitly mark dist as a build
+# artifact for it to land in the wheel.
+artifacts = ["client/dist/**"]
+# Keep test code and bytecode out of the published wheel.
+exclude = [
+    "server/tests",
+    "**/__pycache__",
+    "**/*.pyc",
+]
+
 [tool.hatch.build.targets.wheel]
-include = [
+# Strict whitelist. Without `only-include`, hatch falls back to globbing
+# the project root (modulo .gitignore), which would pull in `client/src/`,
+# `server/tests/`, etc. Only these paths ship in the wheel.
+only-include = [
     "run.py",
-    "server/",
-    "client/dist/",
-    "effects/",
+    "server",
+    "client/dist",
+    "effects",
 ]
 
 [tool.ruff]

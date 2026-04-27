@@ -21,6 +21,11 @@ from routes._errors import (
     unsupported_type,
 )
 from services.effect_loader import FileRef, LoadedEffect
+from services.errors import (
+    AssetNotFoundError,
+    EffectNotFoundError,
+    OfficialReadOnlyError,
+)
 from services.file_service import FileTooLargeError, UnreadableMediaError
 from services.install_service import InstallConflictError
 from services.model_service import get_compatible_model_ids
@@ -130,11 +135,9 @@ async def install_effect_from_url(
     mixing a Pydantic body with an UploadFile on one handler breaks
     FastAPI's content-type routing (body silently arrives as None)."""
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     try:
         installed = await install_service.install_from_url(body.url, overwrite=overwrite)
-        await loader.reload()
         return {"installed": installed}
     except InstallConflictError as e:
         raise conflict("Already installed", ErrorCode.INSTALL_CONFLICT, conflicts=e.conflicts)
@@ -150,7 +153,6 @@ async def install_effect_from_upload(
 ):
     """Multipart upload: `file=<zip>`."""
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     if not file.filename:
         raise bad_request("Empty upload", ErrorCode.INVALID_REQUEST)
@@ -158,7 +160,6 @@ async def install_effect_from_upload(
     try:
         content = await file.read()
         installed = await install_service.install_from_archive(content, overwrite=overwrite)
-        await loader.reload()
         return {"installed": installed}
     except InstallConflictError as e:
         raise conflict("Already installed", ErrorCode.INSTALL_CONFLICT, conflicts=e.conflicts)
@@ -177,43 +178,42 @@ class SourceRequest(BaseModel):
 @router.patch("/effects/{namespace}/{slug}/source")
 async def set_effect_source(namespace: str, slug: str, body: SourceRequest, request: Request):
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     try:
         await install_service.set_source(namespace, slug, body.source)
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
+    except OfficialReadOnlyError as e:
+        raise bad_request(str(e), ErrorCode.OFFICIAL_READONLY)
     except ValueError as e:
-        msg = str(e)
-        if "not found" in msg:
-            raise not_found(msg)
-        raise bad_request(msg, ErrorCode.OFFICIAL_READONLY)
+        raise bad_request(str(e), ErrorCode.INVALID_REQUEST)
 
-    await loader.reload()
     return {"ok": True, "source": body.source}
 
 
 @router.patch("/effects/{namespace}/{slug}/favorite")
 async def toggle_favorite(namespace: str, slug: str, body: FavoriteRequest, request: Request):
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     try:
         await install_service.set_favorite(namespace, slug, body.favorite)
-    except ValueError as e:
-        raise not_found(str(e))
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
 
-    await loader.reload()
     return {"ok": True, "is_favorite": body.favorite}
 
 
 @router.delete("/effects/{namespace}/{slug}")
 async def uninstall_effect(namespace: str, slug: str, request: Request):
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     try:
         await install_service.uninstall(namespace, slug)
-        await loader.reload()
         return {"ok": True}
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
+    except OfficialReadOnlyError as e:
+        raise bad_request(str(e), ErrorCode.OFFICIAL_READONLY)
     except ValueError as e:
         raise bad_request(str(e), ErrorCode.UNINSTALL_ERROR)
 
@@ -240,10 +240,13 @@ async def save_effect(body: SaveEffectRequest, request: Request):
             body.effect_id,
             fork_from=body.fork_from,
         )
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
+    except OfficialReadOnlyError as e:
+        raise bad_request(str(e), ErrorCode.OFFICIAL_READONLY)
     except ValueError as e:
         raise bad_request(str(e), ErrorCode.SAVE_ERROR)
 
-    await loader.reload()
     loaded = loader.get_loaded(full_id)
     manifest_data = _serialize_effect(loaded) if loaded else {}
     return {"full_id": full_id, "manifest": manifest_data}
@@ -346,7 +349,6 @@ async def upload_effect_asset(
     the upload's filename). Returns an `AssetFile`-shaped row the
     client can append to its in-memory list."""
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
 
     if not file.content_type or file.content_type not in _ALLOWED_ASSET_TYPES:
         raise unsupported_type("Unsupported media type")
@@ -371,15 +373,11 @@ async def upload_effect_asset(
         raise payload_too_large("File too large")
     except UnreadableMediaError as e:
         raise bad_request(f"Could not process file: {e}", ErrorCode.INVALID_REQUEST)
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
     except ValueError as e:
-        msg = str(e)
-        if "not found" in msg:
-            raise not_found(msg, ErrorCode.EFFECT_NOT_FOUND)
-        raise bad_request(msg, ErrorCode.SAVE_ERROR)
+        raise bad_request(str(e), ErrorCode.SAVE_ERROR)
 
-    # The loader cache is what the gallery serializer reads from. Refresh
-    # so a freshly-attached asset shows up next time the effect is fetched.
-    await loader.reload()
     return result
 
 
@@ -392,17 +390,16 @@ async def rename_effect_asset(
     request: Request,
 ):
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
     try:
         result = await install_service.rename_effect_asset(
             namespace, slug, logical_name, body.new_name,
         )
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
+    except AssetNotFoundError as e:
+        raise not_found(str(e), ErrorCode.ASSET_NOT_FOUND)
     except ValueError as e:
-        msg = str(e)
-        if "not found" in msg:
-            raise not_found(msg, ErrorCode.ASSET_NOT_FOUND)
-        raise bad_request(msg, ErrorCode.SAVE_ERROR)
-    await loader.reload()
+        raise bad_request(str(e), ErrorCode.SAVE_ERROR)
     return result
 
 
@@ -414,13 +411,12 @@ async def delete_effect_asset(
     request: Request,
 ):
     install_service = request.app.state.install_service
-    loader = request.app.state.effect_loader
     try:
         await install_service.remove_effect_asset(namespace, slug, logical_name)
+    except EffectNotFoundError as e:
+        raise not_found(str(e), ErrorCode.EFFECT_NOT_FOUND)
+    except AssetNotFoundError as e:
+        raise not_found(str(e), ErrorCode.ASSET_NOT_FOUND)
     except ValueError as e:
-        msg = str(e)
-        if "not found" in msg:
-            raise not_found(msg, ErrorCode.ASSET_NOT_FOUND)
-        raise bad_request(msg, ErrorCode.SAVE_ERROR)
-    await loader.reload()
+        raise bad_request(str(e), ErrorCode.SAVE_ERROR)
     return {"ok": True}

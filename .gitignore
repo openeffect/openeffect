@@ -39,3 +39,7 @@ coverage/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# OpenAPI codegen artifacts (regenerated via `make gen-types`)
+openapi.json
+client/src/types/api.gen.ts

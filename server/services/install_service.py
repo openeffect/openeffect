@@ -20,6 +20,11 @@ from core.limits import MAX_IMAGE_SIZE, MAX_TOTAL_SIZE, MAX_VIDEO_SIZE
 from core.states import EffectSource, EffectState
 from db.database import Database
 from effects.validator import EffectManifest
+from services.errors import (
+    AssetNotFoundError,
+    EffectNotFoundError,
+    OfficialReadOnlyError,
+)
 from services.file_service import FileKind, FileService
 
 logger = logging.getLogger(__name__)
@@ -190,6 +195,25 @@ class InstallService:
     def __init__(self, db: Database, file_service: FileService):
         self._db = db
         self._files = file_service
+        # Notified after every public mutation so the loader cache stays
+        # fresh without each route having to remember to call reload().
+        # The callback receives an optional effect UUID — None means a
+        # full reload is required (install/uninstall/save can change the
+        # set of effects), a UUID asks the loader to refresh just that
+        # one entry (favorite/source/asset-CRUD path, the gallery-hot
+        # mutations). `EffectLoaderService` registers itself in `main.py`
+        # after both services are constructed (the dep direction would
+        # otherwise be circular — the loader holds an InstallService too).
+        self._on_change: Callable[[str | None], Awaitable[None]] | None = None
+
+    def set_on_change(
+        self, callback: Callable[[str | None], Awaitable[None]] | None,
+    ) -> None:
+        self._on_change = callback
+
+    async def _notify_changed(self, effect_id: str | None = None) -> None:
+        if self._on_change is not None:
+            await self._on_change(effect_id)
 
     # ─── Install from URL ───
 
@@ -223,6 +247,7 @@ class InstallService:
             full_id = await self._install_single_from_url(
                 client, base_url, data, manifest
             )
+            await self._notify_changed()
             return [full_id]
 
     async def _install_single_from_url(
@@ -329,6 +354,8 @@ class InstallService:
             full_id = await self._install_from_extracted(manifest_path, manifest, allow_official)
             installed.append(full_id)
 
+        if installed:
+            await self._notify_changed()
         return installed
 
     async def sync_bundled_folder(self, folder: Path) -> list[str]:
@@ -440,6 +467,14 @@ class InstallService:
 
         try:
             total_size = 0
+            # Stage all (logical_name → file_id) pairs first; link them in
+            # a single transaction at the end. Cuts what used to be N
+            # transactions (one per asset, each grabbing `_tx_lock`) down
+            # to 2 (one for `add_file`'s file-store INSERT per asset, then
+            # one for the entire effect_files batch). Concurrent writers
+            # like progress-update queries no longer queue behind a long
+            # multi-asset install on the global tx lock for as long.
+            pairs: list[tuple[str, str]] = []
             for filename in self._collect_asset_filenames(manifest):
                 _validate_asset_filename(filename)
                 payload, size = await fetch_asset(filename)
@@ -452,9 +487,13 @@ class InstallService:
 
                 kind = _kind_for_asset(filename)
                 if isinstance(payload, (bytes, bytearray)):
-                    await self._adopt_asset_bytes(uuid, filename, bytes(payload), kind)
+                    file_id = await self._ingest_asset_bytes(filename, bytes(payload), kind)
                 else:
-                    await self._adopt_asset_path(uuid, filename, payload, kind)
+                    file_id = await self._ingest_asset_path(filename, payload, kind)
+                pairs.append((filename, file_id))
+
+            if pairs:
+                await self._link_effect_files_batch(uuid, pairs)
 
             await self._update_effect(
                 uuid, manifest, source, yaml_content=yaml_content,
@@ -497,9 +536,9 @@ class InstallService:
             else:
                 existing = await self.get_effect_by_uuid(existing_id)
             if not existing:
-                raise ValueError(f"Effect {existing_id} not found")
+                raise EffectNotFoundError(f"Effect {existing_id} not found")
             if existing["source"] not in ("local", "installed"):
-                raise ValueError("Cannot edit non-local effects")
+                raise OfficialReadOnlyError("Cannot edit non-local effects")
 
             uuid = existing["id"]
             await self._update_effect(
@@ -557,9 +596,11 @@ class InstallService:
         All failure modes surface as `ValueError` so the route layer can map
         them to HTTP 400 without seeing implementation details."""
         _, manifest = _parse_manifest_yaml(yaml_content)
-        return await self.save_local_effect(
+        full_id = await self.save_local_effect(
             manifest, yaml_content, existing_id, fork_from=fork_from,
         )
+        await self._notify_changed()
+        return full_id
 
     # ─── Uninstall ───
 
@@ -583,10 +624,10 @@ class InstallService:
             (namespace, slug),
         )
         if not row:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
 
         if row["source"] == "official":
-            raise ValueError("Cannot uninstall official effects")
+            raise OfficialReadOnlyError("Cannot uninstall official effects")
 
         await self._mark_uninstalling(row["id"])
 
@@ -597,6 +638,10 @@ class InstallService:
                 "DELETE FROM effects WHERE id=? AND state='uninstalling'",
                 (row["id"],),
             )
+
+        # Per-effect reload: reload_one sees the row is gone and evicts
+        # the entry from both cache views — cheaper than a full reload.
+        await self._notify_changed(row["id"])
 
     # ─── Source / favorite toggles ───
 
@@ -611,9 +656,9 @@ class InstallService:
             )
         existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
         if existing["source"] == "official":
-            raise ValueError("Cannot change the source of official effects")
+            raise OfficialReadOnlyError("Cannot change the source of official effects")
         if existing["source"] == new_source:
             return  # no-op
 
@@ -622,17 +667,19 @@ class InstallService:
                 "UPDATE effects SET source=? WHERE namespace=? AND slug=?",
                 (new_source, namespace, slug),
             )
+        await self._notify_changed(existing["id"])
 
     async def set_favorite(self, namespace: str, slug: str, favorite: bool) -> None:
         existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
 
         async with self._db.transaction() as conn:
             await conn.execute(
                 "UPDATE effects SET is_favorite=? WHERE namespace=? AND slug=?",
                 (1 if favorite else 0, namespace, slug),
             )
+        await self._notify_changed(existing["id"])
 
     # ─── Update check ───
 
@@ -666,26 +713,25 @@ class InstallService:
 
     # ─── Asset adoption helpers ───
 
-    async def _adopt_asset_bytes(
-        self, effect_id: str, logical_name: str, content: bytes, kind: FileKind,
-    ) -> None:
-        """Ingest in-memory asset bytes into the file store and record
-        the per-effect mapping. Idempotent for re-installs — the
-        composite PRIMARY KEY on `effect_files` would otherwise reject
-        the duplicate, so callers clear `effect_files` upfront via
-        `_clear_effect_files`."""
+    async def _ingest_asset_bytes(
+        self, logical_name: str, content: bytes, kind: FileKind,
+    ) -> str:
+        """Ingest in-memory asset bytes into the file store and return
+        the resulting file_id. Linking the effect↔file binding is the
+        caller's responsibility (the install path batches all links in
+        one transaction at the end)."""
         ext = Path(logical_name).suffix.lstrip(".").lower() or None
         file = await self._files.add_file(content, kind=kind, ext=ext)
-        await self._link_effect_file(effect_id, logical_name, file.id)
+        return file.id
 
-    async def _adopt_asset_path(
-        self, effect_id: str, logical_name: str, src: Path, kind: FileKind,
-    ) -> None:
-        """Like `_adopt_asset_bytes` but for an on-disk source — used
+    async def _ingest_asset_path(
+        self, logical_name: str, src: Path, kind: FileKind,
+    ) -> str:
+        """Like `_ingest_asset_bytes` but for an on-disk source — used
         from the archive-extract install path."""
         ext = src.suffix.lstrip(".").lower() or None
         file = await self._files.add_file(src, kind=kind, ext=ext)
-        await self._link_effect_file(effect_id, logical_name, file.id)
+        return file.id
 
     # ─── Per-asset CRUD (used by the editor's asset panel) ───
 
@@ -710,7 +756,7 @@ class InstallService:
         their YAML before the asset panel becomes interactive."""
         existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
 
         original = upload.filename or ""
         chosen_name = (logical_name or original).strip()
@@ -734,6 +780,7 @@ class InstallService:
         )
         await self._link_effect_file(existing["id"], chosen_name, file.id)
 
+        await self._notify_changed(existing["id"])
         return _asset_response(
             file.id, file.ext, file.size, filename=chosen_name,
         )
@@ -748,7 +795,7 @@ class InstallService:
         Returns the resulting `AssetFile`-shaped dict."""
         existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
 
         new_name = new_name.strip()
         _validate_asset_filename(new_name)
@@ -761,7 +808,7 @@ class InstallService:
                 (existing["id"], old_name),
             )
             if not row:
-                raise ValueError(f"Asset '{old_name}' not found on this effect")
+                raise AssetNotFoundError(f"Asset '{old_name}' not found on this effect")
             return _asset_response(
                 row["id"], row["ext"], row["size"], filename=old_name,
             )
@@ -780,7 +827,7 @@ class InstallService:
                 (new_name, existing["id"], old_name),
             )
             if cursor.rowcount == 0:
-                raise ValueError(f"Asset '{old_name}' not found on this effect")
+                raise AssetNotFoundError(f"Asset '{old_name}' not found on this effect")
 
         row = await self._db.fetchone(
             "SELECT f.id, f.ext, f.size FROM effect_files ef "
@@ -791,6 +838,7 @@ class InstallService:
         if row is None:
             # Should be unreachable — we just renamed to this name.
             raise ValueError(f"Asset '{new_name}' not found after rename")
+        await self._notify_changed(existing["id"])
         return _asset_response(
             row["id"], row["ext"], row["size"], filename=new_name,
         )
@@ -804,7 +852,7 @@ class InstallService:
         references it."""
         existing = await self.get_effect(namespace, slug)
         if not existing:
-            raise ValueError(f"Effect {namespace}/{slug} not found")
+            raise EffectNotFoundError(f"Effect {namespace}/{slug} not found")
 
         async with self._db.transaction() as conn:
             cursor = await conn.execute(
@@ -814,13 +862,14 @@ class InstallService:
             )
             row = await cursor.fetchone()
             if not row:
-                raise ValueError(f"Asset '{logical_name}' not found on this effect")
+                raise AssetNotFoundError(f"Asset '{logical_name}' not found on this effect")
 
             await FileService.drop_ref_in_tx(conn, row["file_id"])
             await conn.execute(
                 "DELETE FROM effect_files WHERE effect_id = ? AND logical_name = ?",
                 (existing["id"], logical_name),
             )
+        await self._notify_changed(existing["id"])
 
     async def _link_effect_file(
         self, effect_id: str, logical_name: str, file_id: str,
@@ -843,6 +892,33 @@ class InstallService:
                    VALUES (?, ?, ?)""",
                 (effect_id, logical_name, file_id),
             )
+
+    async def _link_effect_files_batch(
+        self, effect_id: str, pairs: list[tuple[str, str]],
+    ) -> None:
+        """Atomic version of `_link_effect_file` for many bindings at
+        once. Bumps each file's `ref_count` and INSERTs each
+        `effect_files` row inside a single transaction — if any bump
+        fails (tombstoned mid-install), the whole transaction rolls
+        back and previous bumps in this batch are reverted.
+
+        `pairs` is a list of `(logical_name, file_id)` tuples — same
+        shape as `_link_effect_file`'s arguments, just batched."""
+        if not pairs:
+            return
+        async with self._db.transaction() as conn:
+            for logical_name, file_id in pairs:
+                try:
+                    await FileService.bump_ref_in_tx(conn, file_id)
+                except ValueError:
+                    raise ValueError(
+                        f"File {file_id[:8]}… is no longer available"
+                    ) from None
+                await conn.execute(
+                    """INSERT INTO effect_files (effect_id, logical_name, file_id)
+                       VALUES (?, ?, ?)""",
+                    (effect_id, logical_name, file_id),
+                )
 
     async def _clear_effect_files(self, effect_id: str) -> None:
         """Drop every `effect_files` row for an effect, decrementing

@@ -366,29 +366,34 @@ class RunService:
         pass-through or transcode before sending."""
         out: dict[str, ImageRef] = {}
         for role, file_id in refs_by_role.items():
-            file_dir = self._files.files_dir / file_id
-            if not file_dir.is_dir():
-                continue
             file_row = await self._files.get_file(file_id)
             if file_row is None:
                 continue
-            # Find the original.* — there's exactly one, named with the
-            # canonical extension recorded on the row.
-            for child in file_dir.iterdir():
-                if child.name.startswith("original."):
-                    out[role] = ImageRef(path=str(child), mime=file_row.mime)
-                    break
+            # `File.ext` is the canonical extension recorded at ingest, so
+            # the path is determined directly — no need to scan the variant
+            # directory looking for `original.*`.
+            original = self._files.files_dir / file_id / f"original.{file_row.ext}"
+            if not original.is_file():
+                continue
+            out[role] = ImageRef(path=str(original), mime=file_row.mime)
         return out
 
     def _broadcast(self, event: dict[str, Any]) -> None:
         """Fan out an event to every open broadcast subscriber. Sync on purpose
         — `put_nowait` can't stall, and a slow/dead consumer's QueueFull is
         silently dropped for that one subscriber so the event path never
-        blocks the provider."""
+        blocks the provider. The drop is logged so a stuck progress bar in
+        the UI has at least one trail to follow."""
         for queue in list(self._broadcast_queues):
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
+                logger.warning(
+                    "SSE subscriber queue full (size=%d); dropping %s event for job %s",
+                    queue.qsize(),
+                    event.get("event"),
+                    event.get("data", {}).get("job_id"),
+                )
                 continue
 
     async def stream_all(self) -> AsyncIterator[dict[str, Any]]:
@@ -465,7 +470,7 @@ class RunService:
         Shared tail used by both effect runs and playground runs."""
         try:
             api_key = await self._config.get_api_key()
-            models_dir = self._model_service._models_dir if hasattr(self._model_service, '_models_dir') else None
+            models_dir = self._model_service.models_dir
             provider = ModelProviderFactory.create(model_id, provider_id, api_key=api_key, models_dir=models_dir)
 
             async for event in provider.generate(provider_input):

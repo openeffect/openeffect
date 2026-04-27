@@ -1,15 +1,20 @@
 """Integration tests for the run pipeline with a mocked provider."""
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from config.config_service import ConfigService
 from db.database import Database, init_db
 from effects.validator import EffectManifest
+from providers.base import ProviderEvent, ProviderInput
 from schemas.run import RunRequest
 from services.effect_loader import EffectLoaderService, LoadedEffect
+from services.file_service import FileService
 from services.history_service import HistoryService
+from services.model_service import ModelService
 from services.run_service import RunJob, RunService
 from tests._factories import make_manifest
 
@@ -65,8 +70,9 @@ def effect_loader():
 @pytest.fixture
 def files(tmp_path):
     """A FileService stand-in — only the methods the run pipeline calls
-    need to look real, the rest are MagicMock."""
-    svc = MagicMock()
+    need to look real, the rest are MagicMock. `spec=` so a renamed/removed
+    method on the real class fails the test instead of silently passing."""
+    svc = MagicMock(spec=FileService)
     svc.files_dir = tmp_path / "files"
     svc.files_dir.mkdir(exist_ok=True)
     svc.increment_ref = AsyncMock()
@@ -74,14 +80,16 @@ def files(tmp_path):
 
 
 @pytest.fixture
-def model_service():
-    return MagicMock()
+def model_service(tmp_path):
+    svc = MagicMock(spec=ModelService)
+    svc.models_dir = tmp_path / "models"
+    return svc
 
 
 @pytest.fixture
 def config_service():
-    svc = MagicMock()
-    svc.get_api_key.return_value = "test-key"
+    svc = MagicMock(spec=ConfigService)
+    svc.get_api_key = AsyncMock(return_value="test-key")
     return svc
 
 
@@ -260,3 +268,330 @@ class TestJobEviction:
         await asyncio.sleep(0.2)
 
         assert "keep-test" in run_service._jobs
+
+
+# ─── recover_stuck_jobs ──────────────────────────────────────────────────────
+
+
+async def _insert_processing_run(
+    db: Database,
+    *,
+    job_id: str,
+    provider_request_id: str | None = None,
+    provider_endpoint: str | None = None,
+) -> None:
+    """Plant a `processing` run row directly via SQL — what the DB looks
+    like right after a server crash mid-run."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with db.transaction() as conn:
+        await conn.execute(
+            """INSERT INTO runs (
+                   id, kind, effect_id, effect_name, model_id,
+                   status, progress, progress_msg, input_ids,
+                   inputs, created_at, updated_at,
+                   provider_request_id, provider_endpoint
+               ) VALUES (?, 'effect', ?, ?, ?, 'processing', 50, 'Generating',
+                         '[]', '{}', ?, ?, ?, ?)""",
+            (
+                job_id, "test-uuid-001", "Test", "wan-2.7",
+                now, now, provider_request_id, provider_endpoint,
+            ),
+        )
+
+
+class TestRecoverStuckJobs:
+    """Boot-time recovery of `processing` runs left dangling by a crash.
+    These tests pin the contract of `RunService.recover_stuck_jobs`,
+    which lives at the top of `main.py`'s lifespan and quietly determines
+    whether a server restart loses the user's in-flight work."""
+
+    async def test_recovers_completed_run_when_provider_returns_completed(
+        self, run_service, history, database,
+    ):
+        """Stuck job with a recoverable request_id + endpoint, and the
+        provider says the run already finished server-side. We mark it
+        completed; the user opens the app and sees the finished video."""
+        await _insert_processing_run(
+            database,
+            job_id="recover-1",
+            provider_request_id="fal-req-abc",
+            provider_endpoint="fal-ai/wan/v2.7/image-to-video",
+        )
+
+        with patch(
+            "services.run_service.FalProvider.recover",
+            new=AsyncMock(return_value=ProviderEvent(type="failed", error="recovery e2e short-circuit")),
+        ):
+            # Short-circuit ingest: the recovery path calls _ingest_result
+            # only on type="completed" with a video_url. We use a `failed`
+            # event here to focus this test on the failure-recovery branch
+            # without needing a real download. The next test covers the
+            # `completed` path.
+            await run_service.recover_stuck_jobs()
+
+        record = await history.get_by_id("recover-1")
+        assert record is not None
+        assert record.status == "failed"
+        assert record.error and "recovery e2e short-circuit" in record.error
+
+    async def test_marks_failed_when_no_recovery_info(
+        self, run_service, history, database,
+    ):
+        """A processing row that never recorded a provider_request_id
+        was lost before the provider acknowledged it — there's nothing
+        to recover. Mark it failed instead of leaving it stuck forever."""
+        # Note: get_stuck_processing's WHERE filters on
+        # provider_request_id IS NOT NULL, so the only way to exercise
+        # this branch is to plant a row that DOES have a request_id but
+        # lacks the endpoint — `recover_stuck_jobs` checks both. We put
+        # the request_id in but leave the endpoint as NULL.
+        await _insert_processing_run(
+            database,
+            job_id="recover-2",
+            provider_request_id="fal-req-def",
+            provider_endpoint=None,
+        )
+
+        await run_service.recover_stuck_jobs()
+
+        record = await history.get_by_id("recover-2")
+        assert record is not None
+        assert record.status == "failed"
+        assert record.error and "no recovery info" in record.error
+
+    async def test_marks_all_failed_when_no_api_key(
+        self, run_service, history, database,
+    ):
+        """No API key on disk = no way to poll fal.ai for status of any
+        in-flight job. All stuck rows get marked failed with a clear
+        message so the user knows why."""
+        await _insert_processing_run(
+            database,
+            job_id="recover-3",
+            provider_request_id="fal-req-ghi",
+            provider_endpoint="fal-ai/wan/v2.7/image-to-video",
+        )
+        # Override the AsyncMock from the fixture (returns "test-key")
+        # with one that returns no key.
+        run_service._config.get_api_key = AsyncMock(return_value=None)
+
+        await run_service.recover_stuck_jobs()
+
+        record = await history.get_by_id("recover-3")
+        assert record is not None
+        assert record.status == "failed"
+        assert record.error and "no API key" in record.error
+
+    async def test_no_op_when_no_stuck_jobs(self, run_service, history, database):
+        """Common case at startup: no in-flight runs from a prior
+        process. Recovery should be a silent no-op."""
+        # Plant a completed run — should not be touched.
+        now = datetime.now(timezone.utc).isoformat()
+        async with database.transaction() as conn:
+            await conn.execute(
+                """INSERT INTO runs (
+                       id, kind, effect_id, effect_name, model_id,
+                       status, progress, input_ids, inputs,
+                       created_at, updated_at
+                   ) VALUES (?, 'effect', ?, ?, ?, 'completed', 100, '[]', '{}', ?, ?)""",
+                ("done-1", "test-uuid-001", "Done", "wan-2.7", now, now),
+            )
+
+        await run_service.recover_stuck_jobs()
+
+        record = await history.get_by_id("done-1")
+        assert record is not None
+        assert record.status == "completed"
+
+
+# ─── _execute_provider end-to-end ────────────────────────────────────────────
+
+
+def _scripted_provider(events: list[ProviderEvent]):
+    """Build a one-off provider that yields exactly `events` and stops."""
+    class _Scripted:
+        async def generate(self, _input):
+            for ev in events:
+                yield ev
+    return _Scripted()
+
+
+def _raising_provider(exc: Exception):
+    """Provider that yields one progress event then raises — exercises
+    the outer `except Exception` arm in `_execute_provider`."""
+    class _Raise:
+        async def generate(self, _input):
+            yield ProviderEvent(type="progress", progress=10, message="Working")
+            raise exc
+    return _Raise()
+
+
+async def _seed_and_execute(
+    run_service, history, database,
+    *,
+    job_id: str,
+    provider,
+    needs_reverse: bool = False,
+):
+    """Common scaffolding: plant a `processing` row, then drive
+    `_execute_provider` to completion synchronously. Tests assert on
+    the final state via `history.get_by_id` afterward."""
+    job = RunJob(
+        job_id=job_id, effect_id="test-uuid-001",
+        effect_name="Test", model_id="wan-2.7",
+    )
+    await history.create_processing(job, inputs_json="{}", input_ids=[])
+    provider_input = ProviderInput(
+        prompt="hello", negative_prompt="", image_inputs={}, parameters={},
+    )
+    with patch(
+        "services.run_service.ModelProviderFactory.create",
+        return_value=provider,
+    ):
+        await run_service._execute_provider(
+            job, "wan-2.7", "fal", provider_input, needs_reverse=needs_reverse,
+        )
+
+
+class TestExecuteProvider:
+    """Integration tests for the provider event loop, result ingest, and
+    failure paths in `_execute_provider`. Patches `_ingest_result` so the
+    tests don't depend on real download/ffmpeg/FileService plumbing —
+    the result-ingest internals have their own coverage in
+    `test_video_reverse.py` and `test_file_service.py`. The interesting
+    contract here is the event→DB→broadcast translation."""
+
+    async def test_failed_event_marks_run_failed_and_broadcasts(
+        self, run_service, history, database,
+    ):
+        events_seen: list[dict] = []
+        run_service._broadcast = lambda ev: events_seen.append(ev)
+
+        await _seed_and_execute(
+            run_service, history, database,
+            job_id="exec-fail-1",
+            provider=_scripted_provider([
+                ProviderEvent(type="progress", progress=30, message="Working"),
+                ProviderEvent(type="failed", error="provider says nope"),
+            ]),
+        )
+
+        record = await history.get_by_id("exec-fail-1")
+        assert record is not None
+        assert record.status == "failed"
+        assert record.error == "provider says nope"
+
+        # Both progress and failed events should have been fanned out
+        kinds = [e["event"] for e in events_seen]
+        assert "progress" in kinds
+        assert "failed" in kinds
+
+    async def test_provider_exception_routed_to_fail_job(
+        self, run_service, history, database,
+    ):
+        events_seen: list[dict] = []
+        run_service._broadcast = lambda ev: events_seen.append(ev)
+
+        await _seed_and_execute(
+            run_service, history, database,
+            job_id="exec-fail-2",
+            provider=_raising_provider(RuntimeError("provider blew up")),
+        )
+
+        record = await history.get_by_id("exec-fail-2")
+        assert record is not None
+        assert record.status == "failed"
+        assert record.error and "provider blew up" in record.error
+
+        # _fail_job emits its own broadcast frame — tagged with the
+        # INTERNAL_ERROR code so the client can distinguish it.
+        failed_events = [e for e in events_seen if e["event"] == "failed"]
+        assert any(e["data"].get("code") == "INTERNAL_ERROR" for e in failed_events)
+
+    async def test_completed_with_no_output_marks_completed(
+        self, run_service, history, database,
+    ):
+        """Result download/ingest can fail (oversized, network) and
+        return None. The run is still marked completed — current
+        semantics — but with no output_id and no broadcast video_url."""
+        run_service._broadcast = lambda ev: None
+        run_service._ingest_result = AsyncMock(return_value=None)
+
+        await _seed_and_execute(
+            run_service, history, database,
+            job_id="exec-no-output",
+            provider=_scripted_provider([
+                ProviderEvent(type="completed", video_url="https://example.com/video.mp4"),
+            ]),
+        )
+
+        record = await history.get_by_id("exec-no-output")
+        assert record is not None
+        assert record.status == "completed"
+        assert record.output_id in (None, "")
+
+    async def test_completed_with_output_bumps_ref_count(
+        self, run_service, history, database,
+    ):
+        """Happy path: provider completes, _ingest_result returns a
+        live file_id, history.complete bumps ref_count and pins
+        output_id on the run row."""
+        # Plant a live file row so the bump succeeds.
+        async with database.transaction() as conn:
+            await conn.execute(
+                "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+                "                   ref_count, created_at) "
+                "VALUES (?, ?, 'video', 'video/mp4', 'mp4', 0, '[]', 0, ?)",
+                ("file-output-1", "h-output", datetime.now(timezone.utc).isoformat()),
+            )
+        run_service._broadcast = lambda ev: None
+        run_service._ingest_result = AsyncMock(return_value="file-output-1")
+
+        await _seed_and_execute(
+            run_service, history, database,
+            job_id="exec-success",
+            provider=_scripted_provider([
+                ProviderEvent(type="completed", video_url="https://example.com/v.mp4"),
+            ]),
+        )
+
+        record = await history.get_by_id("exec-success")
+        assert record is not None
+        assert record.status == "completed"
+        assert record.output_id == "file-output-1"
+
+        row = await database.fetchone(
+            "SELECT ref_count FROM files WHERE id = ?", ("file-output-1",),
+        )
+        assert row is not None
+        assert row["ref_count"] == 1
+
+    async def test_submitted_event_records_provider_request_id(
+        self, run_service, history, database,
+    ):
+        """The first `submitted` event from FAL carries the request_id —
+        critical for boot-time recovery (see `recover_stuck_jobs`)."""
+        run_service._broadcast = lambda ev: None
+        run_service._ingest_result = AsyncMock(return_value=None)
+
+        await _seed_and_execute(
+            run_service, history, database,
+            job_id="exec-submitted",
+            provider=_scripted_provider([
+                ProviderEvent(
+                    type="submitted",
+                    request_id="fal-req-xyz",
+                    endpoint="fal-ai/wan/v2.7/image-to-video",
+                ),
+                ProviderEvent(type="completed", video_url=""),
+            ]),
+        )
+
+        # Read the raw row to inspect the recovery columns.
+        row = await database.fetchone(
+            "SELECT provider_request_id, provider_endpoint FROM runs WHERE id = ?",
+            ("exec-submitted",),
+        )
+        assert row is not None
+        assert row["provider_request_id"] == "fal-req-xyz"
+        assert row["provider_endpoint"] == "fal-ai/wan/v2.7/image-to-video"

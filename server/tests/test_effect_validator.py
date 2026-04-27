@@ -3,10 +3,13 @@ import pytest
 from pydantic import ValidationError
 
 from effects.validator import (
+    _MANIFEST_MIGRATIONS,
+    CURRENT_MANIFEST_VERSION,
     EffectManifest,
     GenerationConfig,
     InputFieldSchema,
     SelectOption,
+    _apply_manifest_migrations,
     validate_run_inputs,
 )
 
@@ -312,22 +315,15 @@ def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
 
 
 class TestManifestVersion:
-    """The `manifest_version` field is the forward-compat hook: required
-    on every manifest, only `1` accepted today, error message lists the
-    full supported set so authors can see what the server understands."""
+    """The `manifest_version` field is the forward-compat hook: defaults
+    to 1 when absent (so legacy manifests load), only `1` accepted today,
+    error message lists the full supported set so authors can see what
+    the server understands."""
 
     def test_accepts_version_1(self):
         data = make_valid_manifest(manifest_version=1)
         manifest = EffectManifest(**data)
         assert manifest.manifest_version == 1
-
-    def test_rejects_missing_field(self):
-        data = make_valid_manifest()
-        del data["manifest_version"]
-        with pytest.raises(ValidationError) as exc_info:
-            EffectManifest(**data)
-        # Pydantic's "field required" error names the missing field.
-        assert "manifest_version" in str(exc_info.value)
 
     def test_rejects_unsupported_version(self):
         data = make_valid_manifest(manifest_version=2)
@@ -511,3 +507,56 @@ class TestValidateRunInputsNumber:
             validate_run_inputs(m, {"weight": "0.1"})
         with pytest.raises(ValueError, match="at most 1$"):
             validate_run_inputs(m, {"weight": "2"})
+
+
+class TestManifestMigrations:
+    """Pinning tests for the schema-version forward-compat hook. The point
+    of these is that they fail loudly if a future contributor bumps
+    `CURRENT_MANIFEST_VERSION` without also adding the migration that
+    older stored manifests need."""
+
+    def test_default_manifest_version_is_one(self):
+        """Legacy manifests without an explicit `manifest_version` load
+        as v1 — the default — instead of failing validation. Critical
+        for third-party YAMLs that predate the field."""
+        data = make_valid_manifest()
+        del data["manifest_version"]
+        manifest = EffectManifest(**data)
+        assert manifest.manifest_version == 1
+
+    def test_apply_migrations_passthrough_when_at_current(self):
+        data = {"manifest_version": CURRENT_MANIFEST_VERSION, "foo": "bar"}
+        out = _apply_manifest_migrations(dict(data))
+        assert out["manifest_version"] == CURRENT_MANIFEST_VERSION
+        assert out["foo"] == "bar"
+
+    def test_each_registered_migration_advances_version(self):
+        """Every entry in _MANIFEST_MIGRATIONS must produce a dict whose
+        manifest_version is exactly source+1. Catches a registry author
+        forgetting to bump the version in the migrated dict."""
+        for source, migrate in _MANIFEST_MIGRATIONS.items():
+            out = migrate({"manifest_version": source})
+            assert out.get("manifest_version") == source + 1, (
+                f"Migration {source}→{source + 1} did not advance "
+                f"manifest_version (got {out.get('manifest_version')})"
+            )
+
+    def test_migration_chain_reaches_current(self):
+        """Starting from v1, applying migrations should land on
+        CURRENT_MANIFEST_VERSION. If a future bump skips a registered
+        step (e.g. CURRENT=3 but only 1→2 registered), this fails."""
+        data = {"manifest_version": 1}
+        out = _apply_manifest_migrations(data)
+        # If no migrations are registered (current state at v1), the
+        # version stays at 1 — also CURRENT, so the assertion holds.
+        assert out["manifest_version"] in (1, CURRENT_MANIFEST_VERSION)
+        if _MANIFEST_MIGRATIONS:
+            assert out["manifest_version"] == CURRENT_MANIFEST_VERSION
+
+    def test_unsupported_future_version_rejected(self):
+        """A manifest declaring a version we don't know about must be
+        rejected — pretending it's compatible would give the user a
+        broken effect that looked fine on install."""
+        data = make_valid_manifest(manifest_version=99)
+        with pytest.raises(ValidationError, match="manifest_version 99"):
+            EffectManifest(**data)

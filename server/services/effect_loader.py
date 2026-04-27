@@ -127,6 +127,67 @@ class EffectLoaderService:
 
         logger.info(f"Loaded {len(self._cache)} effects from database")
 
+    async def reload_one(self, effect_id: str) -> None:
+        """Refresh exactly one effect's cache entry from the DB instead of
+        re-parsing every manifest. Used by the metadata-only mutation
+        paths (favorite, source, single-asset CRUD) so flipping a star
+        on a 100-effect gallery doesn't re-parse the other 99 manifests.
+        If the row is missing or not 'ready' (e.g. just uninstalled, or
+        mid-lifecycle), evict the effect from both cache views."""
+        row = await self._db.fetchone(
+            "SELECT * FROM effects WHERE id = ? AND state = 'ready'",
+            (effect_id,),
+        )
+        if row is None:
+            existing = self._uuid_cache.pop(effect_id, None)
+            if existing is not None:
+                self._cache.pop(existing.full_id, None)
+            return
+
+        # Pull this effect's asset bindings in the same single-JOIN shape
+        # `reload()` uses, so the resulting `LoadedEffect` is byte-for-byte
+        # identical to what a full reload would produce.
+        file_rows = await self._db.fetchall(
+            "SELECT ef.logical_name, f.id, f.mime, f.ext, f.variants "
+            "FROM effect_files ef "
+            "JOIN files f ON f.id = ef.file_id "
+            "WHERE ef.effect_id = ?",
+            (effect_id,),
+        )
+        files: dict[str, FileRef] = {
+            fr["logical_name"]: FileRef(
+                id=fr["id"], mime=fr["mime"], ext=fr["ext"],
+                variants=json.loads(fr["variants"]),
+            )
+            for fr in file_rows
+        }
+
+        try:
+            manifest_data = yaml.safe_load(row["manifest_yaml"])
+            manifest = EffectManifest(**manifest_data)
+        except Exception as e:
+            logger.warning(f"Failed to reload effect {effect_id}: {e}")
+            return
+
+        full_id = manifest.full_id
+        loaded = LoadedEffect(
+            manifest=manifest,
+            id=effect_id,
+            full_id=full_id,
+            source=row["source"],
+            is_favorite=bool(row["is_favorite"] if "is_favorite" in row.keys() else 0),
+            files=files,
+        )
+
+        # If the effect's full_id changed (rare — would require namespace/slug
+        # rewrite via the YAML save path), drop the stale entry from `_cache`
+        # so we don't end up with two live entries pointing to the same uuid.
+        prev = self._uuid_cache.get(effect_id)
+        if prev is not None and prev.full_id != full_id:
+            self._cache.pop(prev.full_id, None)
+        self._cache[full_id] = loaded
+        self._uuid_cache[effect_id] = loaded
+
     def get_all(self) -> list[EffectManifest]:
         return [e.manifest for e in self._cache.values()]
 

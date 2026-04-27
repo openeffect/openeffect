@@ -11,9 +11,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from config.config_service import ConfigService
 from db.database import Database, init_db
 from routes import register_routes
 from services.effect_loader import EffectLoaderService
+from services.install_service import InstallService
 
 
 @pytest.fixture
@@ -22,7 +24,7 @@ def client(tmp_path):
     asyncio.run(init_db(db_path))
     database = Database(db_path)
 
-    install_service = MagicMock()
+    install_service = MagicMock(spec=InstallService)
     install_service.install_from_url = AsyncMock(return_value=["me/hello"])
     install_service.install_from_archive = AsyncMock(return_value=["me/hello"])
 
@@ -35,7 +37,9 @@ def client(tmp_path):
         app.state.database = database
         app.state.install_service = install_service
         app.state.effect_loader = effect_loader
-        app.state.config_service = MagicMock(get_api_key=AsyncMock(return_value="k"))
+        config_service = MagicMock(spec=ConfigService)
+        config_service.get_api_key = AsyncMock(return_value="k")
+        app.state.config_service = config_service
         app.state.settings = MagicMock()
         app.state.file_service = MagicMock()
         app.state.history_service = MagicMock()

@@ -169,6 +169,10 @@ async def init_db(db_path: Path) -> None:
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
+        # Default `/api/runs` (no effect_id filter) does ORDER BY created_at DESC;
+        # without this the composite index above can't help (leading column
+        # `effect_id` isn't in the WHERE), so the query degrades to a full sort.
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_files_orphan ON files(ref_count, created_at)")
         # Partial unique index: hash uniqueness only constrains live rows.
         # Tombstoned rows (ref_count IS NULL) are mid-cleanup and don't

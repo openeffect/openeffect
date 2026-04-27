@@ -173,14 +173,56 @@ class GenerationConfig(BaseModel):
         return self
 
 
-_SUPPORTED_MANIFEST_VERSIONS = (1,)
+CURRENT_MANIFEST_VERSION = 1
+
+# Migrations bring an older manifest dict up to the current schema. Keyed
+# by *source* version: `_MANIFEST_MIGRATIONS[N]` upgrades a v-N dict to
+# v-(N+1). Stored manifests live in users' SQLite for the full lifetime
+# of the install — without this registry, a schema change would silently
+# break every previously-installed effect.
+#
+# To add a migration when bumping from N to N+1:
+#   1. Bump CURRENT_MANIFEST_VERSION to N+1.
+#   2. Register `_MANIFEST_MIGRATIONS[N] = lambda d: {...}` that returns
+#      the v-(N+1) shape (and remember to set `d["manifest_version"]`
+#      to N+1 in the returned dict — the runner does NOT do that for you).
+#   3. Add a test pinning a v-N dict and asserting the resulting model.
+_MANIFEST_MIGRATIONS: dict[int, Any] = {
+    # 1: lambda data: {...},  # uncomment when bumping past v1
+}
+
+
+def _apply_manifest_migrations(data: dict[str, Any]) -> dict[str, Any]:
+    """Walk the registry from `data["manifest_version"]` up to the current
+    version, applying each step in turn. Returns the migrated dict (a
+    reference to the same object after in-place mutations from migrations
+    is fine — callers only feed the result onward to Pydantic)."""
+    current = data.get("manifest_version", 1)
+    if not isinstance(current, int):
+        # Let Pydantic surface the type error with its richer location.
+        return data
+    while current < CURRENT_MANIFEST_VERSION:
+        migrate = _MANIFEST_MIGRATIONS.get(current)
+        if migrate is None:
+            # No migration registered for this step — leave it; the
+            # `_check_supported_version` validator will reject the manifest
+            # with a clear error.
+            return data
+        data = migrate(data)
+        current = data.get("manifest_version", current + 1)
+    return data
+
+
+_SUPPORTED_MANIFEST_VERSIONS = (CURRENT_MANIFEST_VERSION,)
 
 
 class EffectManifest(BaseModel):
     # First field on purpose — model_dump's emit order puts it at the
     # top of round-tripped YAML so the visual convention matches the
-    # one we ask authors to follow.
-    manifest_version: int
+    # one we ask authors to follow. Defaults to 1 so legacy manifests
+    # without the field (third-party YAMLs predating the version stamp)
+    # still load cleanly.
+    manifest_version: int = 1
     # YAML carries a single `id: namespace/slug` field. The
     # `_parse_id` before-validator splits it into `namespace` + `slug`
     # so the rest of the code works against two clean internal fields.
@@ -214,13 +256,14 @@ class EffectManifest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _parse_id(cls, data: Any) -> Any:
-        """Accept either the YAML-authoring form `id: namespace/slug`
-        or the model_dump round-trip form with separate `namespace` +
-        `slug` keys. When `id` is present it wins — that matches the
-        semantics an author expects when editing YAML."""
+    def _migrate_and_parse_id(cls, data: Any) -> Any:
+        """Run schema migrations first, then parse the `id` shorthand.
+        Both happen in one before-validator so a future migration that
+        renames `id` (or anything else) sees the original key shapes
+        before the rest of validation moves on."""
         if not isinstance(data, dict):
             return data
+        data = _apply_manifest_migrations(data)
         raw = data.pop("id", None)
         if raw is not None:
             if not isinstance(raw, str) or raw.count("/") != 1:

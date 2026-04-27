@@ -119,10 +119,16 @@ def main() -> None:
 
     print(dim("  Starting server..."))
 
-    # Dev source checkouts contain client/src/; installed wheels and Docker
-    # images don't. Use that as the signal to enable uvicorn --reload so
-    # editing server/ hot-reloads without any extra flag from the user.
-    is_dev = (root_dir / "client" / "src").exists()
+    # Bundled wheels ship `client/dist/index.html`. If it's present, serve
+    # it straight from uvicorn (production-like) and skip the Vite dev
+    # server. Source checkouts without a `pnpm build` have no dist, so we
+    # fall through to dev mode (uvicorn --reload + spawn `pnpm dev`).
+    # Devs who already built the frontend and want hot-reload again can
+    # delete `client/dist/` or run `pnpm dev` manually.
+    # Detection by file presence (not by path) survives the wheel-install
+    # case where Python resolves the LOCAL `run.py` over the installed
+    # one because the source dir was the cwd.
+    is_dev = not (root_dir / "client" / "dist" / "index.html").exists()
     cmd = [sys.executable, "-m", "uvicorn", "main:app",
            "--host", host, "--port", str(port)]
     if is_dev:

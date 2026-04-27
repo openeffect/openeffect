@@ -59,9 +59,18 @@ export function EffectPanel() {
   // History tab is always rendered; just disabled when there's no effectId
   // (i.e. brand-new unsaved effect in the editor).
   const isHistoryEnabled = !!effectId
-  // Which tab content is visible. The form is always mounted (just hidden)
-  // so its useState survives tab switches; only its visibility flips.
-  const showFormView = (rightTab === 'form' && showFormTab) || !isHistoryEnabled
+  // The "active" tab is what the user sees on screen. When only one tab is
+  // available we override the sticky `rightTab` preference so the visual
+  // indicator matches reality:
+  //   - no form (orphaned effect, history-only)        → history
+  //   - no history (brand-new unsaved effect, form-only) → form
+  //   - both available → follow the user's last pick
+  const activeTab: 'form' | 'history' = !showFormTab
+    ? 'history'
+    : !isHistoryEnabled
+      ? 'form'
+      : rightTab
+  const showFormView = activeTab === 'form'
 
   return (
     <div className="flex h-full flex-col">
@@ -112,7 +121,7 @@ export function EffectPanel() {
           <button
             className={cn(
               'flex-1 py-2.5 text-xs font-medium transition-colors',
-              rightTab === 'form' || !isHistoryEnabled
+              activeTab === 'form'
                 ? 'border-b-2 border-primary text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
@@ -125,7 +134,7 @@ export function EffectPanel() {
           disabled={!isHistoryEnabled}
           className={cn(
             'flex-1 py-2.5 text-xs font-medium transition-colors',
-            rightTab === 'history' && isHistoryEnabled
+            activeTab === 'history'
               ? 'border-b-2 border-primary text-foreground'
               : 'text-muted-foreground',
             isHistoryEnabled ? 'hover:text-foreground' : 'cursor-not-allowed opacity-40',

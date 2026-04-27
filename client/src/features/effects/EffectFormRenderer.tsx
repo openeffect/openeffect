@@ -6,9 +6,12 @@ interface EffectFormRendererProps {
   values: Record<string, unknown>
   errors?: Record<string, string | null>
   onChange: (key: string, value: unknown) => void
+  /** Set of input keys whose images are currently being uploaded. Forwarded
+   *  to EffectFormField/ImageUploader to paint the busy state. */
+  uploadingKeys?: ReadonlySet<string>
 }
 
-export function EffectFormRenderer({ manifest, values, errors, onChange }: EffectFormRendererProps) {
+export function EffectFormRenderer({ manifest, values, errors, onChange, uploadingKeys }: EffectFormRendererProps) {
   // Separate inputs by role for smart layout, skip advanced inputs
   const nonAdvanced = Object.entries(manifest.inputs ?? {}).filter(([_, s]) => !s.advanced)
   const imageInputs = nonAdvanced.filter(([_, s]) => s.type === 'image')
@@ -22,6 +25,7 @@ export function EffectFormRenderer({ manifest, values, errors, onChange }: Effec
         value={values[key]}
         error={errors?.[key]}
         onChange={(v) => onChange(key, v)}
+        uploading={uploadingKeys?.has(key)}
       />
     </div>
   )

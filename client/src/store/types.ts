@@ -118,6 +118,39 @@ export interface PlaygroundSlice {
   isOpen: boolean
 }
 
+/** A carried image — either a not-yet-uploaded `File` (the user picked
+ *  it but hasn't clicked Generate yet) or a `file_id` string (already on
+ *  the server). Both shapes are renderable: `File` via `URL.createObjectURL`,
+ *  `file_id` via `/api/files/<id>/512.webp`. */
+export type CarriedImage = File | string
+
+export interface FormCarrySlice {
+  /** Role-keyed (`start_frame`, `end_frame`, `reference`) — survives effect
+   *  switches in memory only. Resets on page reload. */
+  lastImagesByRole: Record<string, CarriedImage>
+  /** Manifest input values keyed by input name (`scene_prompt`, `mood`, …).
+   *  Transferred to a new effect only when the same key exists there and
+   *  the value is valid for the target's `InputFieldSchema`. */
+  lastInputsByName: Record<string, string | number | boolean>
+  /** User-tunable model param values, canonical-keyed (`resolution`,
+   *  `duration`, `aspect_ratio`, …). Transferred when the target model's
+   *  variant declares the same canonical key and the value is valid for
+   *  that variant's range/options. Manifest-locked params never reach
+   *  this bucket because they're filtered out of the user-editable list. */
+  lastModelParams: Record<string, string | number | boolean>
+  /** The user's last-picked model id. Used only as a fallback for effects
+   *  whose manifest doesn't declare `default_model` — when it does, that
+   *  always wins. */
+  lastModelId: string | null
+  /** Last prompt typed in the Playground. Persists across navigation
+   *  away and back so the user doesn't have to re-type when popping over
+   *  to an effect. Playground-only — never read by EffectFormTab (effect
+   *  prompts are manifest-driven). */
+  lastPlaygroundPrompt: string
+  /** Last negative prompt typed in the Playground. Same scope as above. */
+  lastPlaygroundNegativePrompt: string
+}
+
 // ─── Root state ──────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -127,4 +160,5 @@ export interface AppState {
   config: ConfigSlice
   editor: EditorSlice
   playground: PlaygroundSlice
+  formCarry: FormCarrySlice
 }

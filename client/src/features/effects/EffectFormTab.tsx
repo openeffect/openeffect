@@ -12,6 +12,17 @@ import {
   selectEditorLastSavedYaml,
 } from '@/store/selectors/editorSelectors'
 import { startRun } from '@/store/actions/runActions'
+import { setState } from '@/store'
+import { api } from '@/utils/api'
+import {
+  mutateClearCarriedImage,
+  mutateClearCarriedInput,
+  mutateSetCarriedImage,
+  mutateSetCarriedInput,
+  mutateSetCarriedModel,
+  mutateSetCarriedParam,
+} from '@/store/mutations/formCarryMutations'
+import { isValidInputValue, isValidParamValue } from '@/utils/formCarry'
 import {
   effectAdvancedParams,
   effectMainParams,
@@ -60,21 +71,67 @@ export function EffectFormTab() {
 
   // Initialize form values from manifest at mount. Parent remounts this
   // component via `key` whenever manifest changes, so lazy init is sufficient.
+  // Image fields are seeded from the cross-effect carry slice when a matching
+  // role has been used recently. Non-image inputs are seeded from the
+  // by-name carry where the carried value is valid for the target schema —
+  // that's how a `scene_prompt` typed on Effect A flows over to Effect B
+  // when both declare the same input key.
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     if (!manifest) return {}
     const init: Record<string, unknown> = {}
+    const imageCarry = useStore.getState().formCarry.lastImagesByRole
+    const inputCarry = useStore.getState().formCarry.lastInputsByName
     for (const [key, schema] of Object.entries(manifest.inputs ?? {})) {
-      if (schema.type === 'select' && 'default' in schema) init[key] = schema.default
+      if (schema.type === 'image') {
+        if (schema.role && imageCarry[schema.role]) {
+          const carried = imageCarry[schema.role]
+          // The form uses two image-cell shapes: a raw `File` (pre-upload)
+          // or `{ __restored, filename }` (already on the server). The
+          // carry slice normalizes on `File | string` to keep things flat —
+          // convert at the boundary so the form's render code stays unchanged.
+          init[key] = carried instanceof File
+            ? carried
+            : { __restored: true, filename: carried }
+        }
+        continue
+      }
+      const carried = inputCarry[key]
+      if (carried !== undefined && isValidInputValue(carried, schema)) {
+        init[key] = carried
+      } else if (schema.type === 'select' && 'default' in schema) {
+        init[key] = schema.default
+      }
+      // Other types with no carry: leave undefined; form components fall
+      // back to schema defaults at render time.
     }
     return init
   })
-  const [selectedModel, setSelectedModel] = useState(defaultModel)
+  // `selectedModel` initial value: manifest's `default_model` always wins —
+  // it's the effect author's curated pick. Only when it's missing
+  // (typically blank/unsaved effects in the editor) do we fall back to the
+  // user's last-picked model from the carry slice, and only if it's
+  // actually compatible with this effect's role requirements. The
+  // `compatibleModels[0]` fallback covers fresh sessions with no carry.
+  const [selectedModel, setSelectedModel] = useState(() => {
+    if (manifest?.generation?.default_model) {
+      return manifest.generation.default_model
+    }
+    const carriedModel = useStore.getState().formCarry.lastModelId
+    if (carriedModel && compatibleModels.includes(carriedModel)) {
+      return carriedModel
+    }
+    return defaultModel
+  })
   const [selectedProvider, setSelectedProvider] = useState('')
   const [outputValues, setOutputValues] = useState<Record<string, string | number | boolean>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
   const [isGenerating, setIsGenerating] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // Set of input keys whose eager upload is in flight. Drives the per-cell
+  // busy state on ImageUploader, and disables Generate while non-empty so
+  // the run never races a half-uploaded image.
+  const [uploadingKeys, setUploadingKeys] = useState<ReadonlySet<string>>(new Set())
   const formRef = useRef<HTMLDivElement>(null)
 
   // Get model params for the active (provider, variant), filtering out
@@ -113,14 +170,32 @@ export function EffectFormTab() {
     const skip = prevSeedKey === ''
     setPrevSeedKey(seedKey)
     if (!skip) {
+      // Carry-aware seeding: prefer the user's last-tweaked param value
+      // (when valid for this variant) over the manifest/variant default.
+      // Locked params don't appear in `outputParams`/`advancedParams` —
+      // they're filtered by `lockedKeys` above — so carry can never bypass
+      // a manifest-author lock.
+      const paramCarry = useStore.getState().formCarry.lastModelParams
       const defaults: Record<string, string | number | boolean> = {}
       for (const param of outputParams) {
+        const carried = paramCarry[param.key]
+        if (carried !== undefined && isValidParamValue(carried, param)) {
+          defaults[param.key] = carried
+          continue
+        }
         const v = manifest ? paramDefault(manifest, selectedModel, param.key) : undefined
         const fallback = v ?? param.default
         if (fallback !== undefined) defaults[param.key] = fallback
       }
       setOutputValues(defaults)
-      setAdvancedValues({})
+      const advancedDefaults: Record<string, unknown> = {}
+      for (const param of advancedParams) {
+        const carried = paramCarry[param.key]
+        if (carried !== undefined && isValidParamValue(carried, param)) {
+          advancedDefaults[param.key] = carried
+        }
+      }
+      setAdvancedValues(advancedDefaults)
     }
   }
 
@@ -135,17 +210,29 @@ export function EffectFormTab() {
   if (prevRestored !== restoredParams) {
     setPrevRestored(restoredParams)
     if (restoredParams && manifest) {
-      setSelectedModel(
+      const resolvedModelId =
         restoredParams.modelId && compatibleModels.includes(restoredParams.modelId)
           ? restoredParams.modelId
           : defaultModel
-      )
+      setSelectedModel(resolvedModelId)
+      // Mirror the actual selected model into carry — once applied to the
+      // form, this run's model is the user's "current" pick.
+      if (resolvedModelId) {
+        setState((s) => mutateSetCarriedModel(s, resolvedModelId), 'formCarry/setModel')
+      }
       // Tell the seed-defaults block to skip this cycle — otherwise it would
       // overwrite the restored output/advanced values on the next render.
       setPrevSeedKey('')
 
       if (restoredParams.output) {
         setOutputValues(restoredParams.output as Record<string, string | number>)
+        // Mirror to model param carry so a follow-on effect switch sees
+        // the just-applied param values.
+        for (const [key, value] of Object.entries(restoredParams.output)) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+          }
+        }
       }
 
       const next: Record<string, unknown> = {}
@@ -153,9 +240,24 @@ export function EffectFormTab() {
         for (const [key, schema] of Object.entries(manifest.inputs ?? {})) {
           if (key in restoredParams.inputs) {
             if (schema.type === 'image') {
-              next[key] = { __restored: true, filename: restoredParams.inputs[key] }
+              const fileId = restoredParams.inputs[key]
+              if (typeof fileId === 'string' && fileId) {
+                next[key] = { __restored: true, filename: fileId }
+                // Mirror restored images into the carry slice too — once
+                // applied to the form, they're "loaded" in the workspace
+                // and should carry to the next effect like any other upload.
+                if (schema.role) {
+                  const role = schema.role
+                  setState((s) => mutateSetCarriedImage(s, role, fileId), 'formCarry/setImage')
+                }
+              }
             } else {
-              next[key] = restoredParams.inputs[key]
+              const v = restoredParams.inputs[key]
+              next[key] = v
+              // Mirror restored non-image inputs into the by-name carry too.
+              if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                setState((s) => mutateSetCarriedInput(s, key, v), 'formCarry/setInput')
+              }
             }
           }
         }
@@ -164,12 +266,96 @@ export function EffectFormTab() {
 
       const restored = restoredParams.userParams ?? {}
       setAdvancedValues(restored)
+      for (const [key, value] of Object.entries(restored)) {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+        }
+      }
     }
   }
 
   const handleChange = (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }))
     setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: null } : prev))
+
+    // Mirror image changes into the cross-effect carry slice so an upload
+    // here survives a switch to another effect that declares the same role.
+    const schema = manifest?.inputs?.[key]
+    if (schema?.type === 'image' && schema.role) {
+      const role = schema.role
+      if (value instanceof File) {
+        // Hold the File in carry immediately — covers a fast effect-switch
+        // before the upload below completes.
+        setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
+        // Mark this key as uploading so the cell shows the busy spinner
+        // and Generate stays disabled until the upload settles.
+        setUploadingKeys((prev) => {
+          const next = new Set(prev)
+          next.add(key)
+          return next
+        })
+        const finishUpload = () => {
+          setUploadingKeys((prev) => {
+            if (!prev.has(key)) return prev
+            const next = new Set(prev)
+            next.delete(key)
+            return next
+          })
+        }
+        // Eagerly upload to swap to a file_id-backed shape. Subsequent
+        // effect mounts render the 512.webp thumbnail (~50KB) via URL
+        // instead of decoding the full File on every switch — that decode
+        // is what causes the per-switch lag for big images. Server-side
+        // sha256 dedup makes a re-upload a no-op if the run flow ever
+        // races and re-submits the same bytes.
+        const file = value
+        void api.uploadFile(file)
+          .then((uploaded) => {
+            setValues((prev) =>
+              prev[key] === file
+                ? { ...prev, [key]: { __restored: true, filename: uploaded.id } }
+                : prev,
+            )
+            setState((s) => {
+              if (s.formCarry.lastImagesByRole[role] === file) {
+                mutateSetCarriedImage(s, role, uploaded.id)
+              }
+            }, 'formCarry/imageUploaded')
+          })
+          .catch(() => {
+            // Upload failed — leave the File in place. `prepareInputs`
+            // (runActions.ts) will retry at submit time.
+          })
+          .finally(finishUpload)
+      } else if (value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)) {
+        const fileId = (value as { filename: string }).filename
+        setState((s) => mutateSetCarriedImage(s, role, fileId), 'formCarry/setImage')
+      } else if (value === null || value === undefined) {
+        setState((s) => mutateClearCarriedImage(s, role), 'formCarry/clearImage')
+        // Hide the busy spinner immediately if a pending upload was in
+        // flight for this cell — its eventual completion is harmless
+        // (the carry guard fails because we just cleared) but the
+        // spinner shouldn't keep claiming "Uploading…" once the user
+        // has explicitly cleared the cell.
+        setUploadingKeys((prev) => {
+          if (!prev.has(key)) return prev
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+      }
+    } else if (schema && schema.type !== 'image') {
+      // Non-image input change: mirror by NAME so a `scene_prompt` typed
+      // here can flow over to another effect that also declares
+      // `scene_prompt`. Type-validation against the target's schema
+      // happens at restore time (in `isValidInputValue`), not here —
+      // this side just records what the user has.
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        setState((s) => mutateSetCarriedInput(s, key, value), 'formCarry/setInput')
+      } else if (value === null || value === undefined) {
+        setState((s) => mutateClearCarriedInput(s, key), 'formCarry/clearInput')
+      }
+    }
   }
 
   // Auto-detect aspect ratio from uploaded image
@@ -198,6 +384,12 @@ export function EffectFormTab() {
 
   const handleAdvancedChange = (key: string, value: unknown) => {
     setAdvancedValues((prev) => ({ ...prev, [key]: value }))
+    // Mirror canonical-keyed model param tweaks into carry. Same-shape
+    // values transfer to other effects/playground when the new variant's
+    // param accepts them.
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+    }
   }
 
   // Compute unmatched restored inputs
@@ -267,7 +459,9 @@ export function EffectFormTab() {
   const selectedProviderInfo = modelInfo?.providers.find((p) => p.id === selectedProvider)
   const editorDirty = isEditorOpen && editorYaml !== editorLastSaved
   const editorUnsaved = isEditorOpen && !editingEffectId
-  const canGenerate = selectedProviderInfo?.is_available === true && !editorDirty && !editorUnsaved
+  const isAnyUploading = uploadingKeys.size > 0
+  const canGenerate =
+    selectedProviderInfo?.is_available === true && !editorDirty && !editorUnsaved && !isAnyUploading
 
   return (
     <>
@@ -279,10 +473,13 @@ export function EffectFormTab() {
           availableModels={availableModels}
           selectedModel={selectedModel || defaultModel}
           selectedProvider={selectedProvider}
-          onModelChange={setSelectedModel}
+          onModelChange={(id) => {
+            setSelectedModel(id)
+            setState((s) => mutateSetCarriedModel(s, id), 'formCarry/setModel')
+          }}
           onProviderChange={setSelectedProvider}
         />
-        <EffectFormRenderer manifest={manifest} values={values} errors={fieldErrors} onChange={handleChange} />
+        <EffectFormRenderer manifest={manifest} values={values} errors={fieldErrors} onChange={handleChange} uploadingKeys={uploadingKeys} />
 
         {outputParams.length > 0 && (
           <div className="space-y-5">
@@ -291,7 +488,10 @@ export function EffectFormTab() {
                 key={param.key}
                 param={param}
                 value={outputValues[param.key] ?? param.default ?? ''}
-                onChange={(v) => setOutputValues((prev) => ({ ...prev, [param.key]: v }))}
+                onChange={(v) => {
+                  setOutputValues((prev) => ({ ...prev, [param.key]: v }))
+                  setState((s) => mutateSetCarriedParam(s, param.key, v), 'formCarry/setParam')
+                }}
               />
             ))}
           </div>
@@ -304,7 +504,13 @@ export function EffectFormTab() {
             onChange={handleAdvancedChange}
           >
             {advancedInputs.map(([key, schema]) => (
-              <EffectFormField key={key} schema={schema} value={values[key]} onChange={(v) => handleChange(key, v)} />
+              <EffectFormField
+                key={key}
+                schema={schema}
+                value={values[key]}
+                onChange={(v) => handleChange(key, v)}
+                uploading={uploadingKeys.has(key)}
+              />
             ))}
           </AdvancedSettings>
         )}
@@ -333,6 +539,10 @@ export function EffectFormTab() {
         ) : editorDirty ? (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Save your changes first to generate
+          </p>
+        ) : isAnyUploading ? (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Waiting for upload to finish…
           </p>
         ) : !selectedProviderInfo?.is_available && (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">

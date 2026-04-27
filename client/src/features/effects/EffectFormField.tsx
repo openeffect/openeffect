@@ -11,9 +11,13 @@ interface EffectFormFieldProps {
   value: unknown
   error?: string | null
   onChange: (value: unknown) => void
+  /** Forwarded to ImageUploader for image fields — paints the busy state
+   *  while the parent's eager upload is in flight. Ignored for non-image
+   *  field types. */
+  uploading?: boolean
 }
 
-export function EffectFormField({ schema, value, error, onChange }: EffectFormFieldProps) {
+export function EffectFormField({ schema, value, error, onChange, uploading }: EffectFormFieldProps) {
   // A field only needs an asterisk when the user must act. Image/text fields
   // have no default, so required=true means "user must fill this". Select/
   // slider/number always carry a default, so they never show the asterisk —
@@ -33,6 +37,7 @@ export function EffectFormField({ schema, value, error, onChange }: EffectFormFi
           value={isRestored ? null : (value as File | null)}
           onChange={onChange}
           restoredUrl={restoredUrl}
+          uploading={uploading}
         />
       )
     }

@@ -1,9 +1,19 @@
 import { useRef, useState } from 'react'
 import { AlertCircle, X as XIcon } from 'lucide-react'
-import { useStore } from '@/store'
+import { useStore, setState } from '@/store'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
 import { selectRestoredParams } from '@/store/selectors/runSelectors'
 import { startPlaygroundRun } from '@/store/actions/playgroundActions'
+import {
+  mutateClearCarriedImage,
+  mutateSetCarriedImage,
+  mutateSetCarriedModel,
+  mutateSetCarriedParam,
+  mutateSetCarriedPlaygroundNegativePrompt,
+  mutateSetCarriedPlaygroundPrompt,
+} from '@/store/mutations/formCarryMutations'
+import { isValidParamValue } from '@/utils/formCarry'
+import { api } from '@/utils/api'
 import { ModelSelector } from '@/features/effects/ModelSelector'
 import { AdvancedSettings } from '@/features/effects/AdvancedSettings'
 import { GenerateButton } from '@/features/effects/GenerateButton'
@@ -41,17 +51,44 @@ export function PlaygroundForm() {
   const availableModels = useStore(selectAvailableModels)
   const restoredParams = useStore(selectRestoredParams)
 
-  const initialModelId = availableModels[0]?.id || ''
-  const [selectedModel, setSelectedModel] = useState<string>(initialModelId)
+  // Playground has no manifest, so the user's last-picked model from the
+  // carry slice is always preferred (when it's actually a known model).
+  // Falls back to the first available model on a fresh session.
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    const carriedModel = useStore.getState().formCarry.lastModelId
+    if (carriedModel && availableModels.some((m) => m.id === carriedModel)) {
+      return carriedModel
+    }
+    return availableModels[0]?.id || ''
+  })
   const [selectedProvider, setSelectedProvider] = useState<string>('')
-  const [prompt, setPrompt] = useState('')
-  const [negativePrompt, setNegativePrompt] = useState('')
-  const [imageInputs, setImageInputs] = useState<Record<string, File | string>>({})
+  // Hydrate from carry so navigating away from the playground (to an
+  // effect / settings / history) and back preserves what was typed.
+  // restoredParams ("Open in Playground" / "Try in Playground") still
+  // overrides further down the render — those are explicit "load this"
+  // intents, not a session continuation.
+  const [prompt, setPrompt] = useState(
+    () => useStore.getState().formCarry.lastPlaygroundPrompt,
+  )
+  const [negativePrompt, setNegativePrompt] = useState(
+    () => useStore.getState().formCarry.lastPlaygroundNegativePrompt,
+  )
+  // Seed image inputs from the cross-effect carry slice. Keys are roles
+  // (`start_frame`, `end_frame`, `reference`); values are either `File` (not
+  // yet uploaded) or `file_id` strings. Roles incompatible with the selected
+  // model are filtered out by the seed-defaults block below when the model
+  // changes.
+  const [imageInputs, setImageInputs] = useState<Record<string, File | string>>(
+    () => ({ ...useStore.getState().formCarry.lastImagesByRole }),
+  )
   const [outputValues, setOutputValues] = useState<Record<string, string | number | boolean>>({})
   const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({})
   const [isGenerating, setIsGenerating] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({})
+  // Roles whose eager upload is in flight. Drives the per-cell busy state
+  // and disables Generate while non-empty.
+  const [uploadingRoles, setUploadingRoles] = useState<ReadonlySet<string>>(new Set())
   const formRef = useRef<HTMLDivElement>(null)
 
   const modelInfo: ModelInfo | undefined = availableModels.find((m) => m.id === selectedModel)
@@ -89,21 +126,43 @@ export function PlaygroundForm() {
 
   // Re-seed output/advanced/image params to the provider-variant defaults
   // whenever (model, provider) changes. An empty prevSeedKey acts as a
-  // "skip this cycle" sentinel so restore handlers and the initial mount
-  // don't re-seed over freshly-set values.
-  const [prevSeedKey, setPrevSeedKey] = useState<string>('')
+  // "skip this cycle" sentinel that the restore handler sets explicitly
+  // when applying restoredParams — that's how it tells this block "the
+  // values are already populated, don't overwrite them." The lazy init
+  // mirrors the current `${selectedModel}|${selectedProvider}` pair (with
+  // an empty provider on first mount) so once the ModelSelector
+  // auto-picks a provider, the seed block runs once with skip=false and
+  // applies the carry-aware defaults below.
+  const [prevSeedKey, setPrevSeedKey] = useState<string>(
+    () => `${selectedModel}|${selectedProvider}`,
+  )
   if (selectedModel && selectedProvider) {
     const seedKey = `${selectedModel}|${selectedProvider}`
     if (seedKey !== prevSeedKey) {
       const skip = prevSeedKey === ''
       setPrevSeedKey(seedKey)
       if (!skip) {
+        // Carry-aware seeding: prefer the user's last-tweaked model param
+        // value (when valid for this variant) over the variant's default.
+        const paramCarry = useStore.getState().formCarry.lastModelParams
         const defaults: Record<string, string | number | boolean> = {}
         for (const param of outputParams) {
+          const carried = paramCarry[param.key]
+          if (carried !== undefined && isValidParamValue(carried, param)) {
+            defaults[param.key] = carried
+            continue
+          }
           if (param.default !== undefined) defaults[param.key] = param.default
         }
         setOutputValues(defaults)
-        setAdvancedValues({})
+        const advancedDefaults: Record<string, unknown> = {}
+        for (const param of advancedParams) {
+          const carried = paramCarry[param.key]
+          if (carried !== undefined && isValidParamValue(carried, param)) {
+            advancedDefaults[param.key] = carried
+          }
+        }
+        setAdvancedValues(advancedDefaults)
         setImageInputs((prev) => {
           const next: Record<string, File | string> = {}
           for (const role of supportedRoles) {
@@ -135,12 +194,14 @@ export function PlaygroundForm() {
         : undefined
       if (restoredModel) {
         setSelectedModel(restoredModel.id)
+        // Mirror to carry — applied = "current pick."
+        setState((s) => mutateSetCarriedModel(s, restoredModel.id), 'formCarry/setModel')
       }
       setPrevSeedKey('')
 
       // Pull prompt + negative_prompt; everything else is a role-keyed image ref
       const inputs = restoredParams.inputs ?? {}
-      const nextImages: Record<string, File | string> = {}
+      const nextImages: Record<string, string> = {}
       let restoredPrompt = ''
       let restoredNegative = ''
       for (const [key, value] of Object.entries(inputs)) {
@@ -150,16 +211,45 @@ export function PlaygroundForm() {
       }
       setPrompt(restoredPrompt)
       setNegativePrompt(restoredNegative)
-      setImageInputs(nextImages)
+      // Mirror restored prompts into carry so the "current" playground
+      // state is what survives a nav-away-and-back, not whatever was
+      // typed before the restore.
+      setState((s) => mutateSetCarriedPlaygroundPrompt(s, restoredPrompt), 'formCarry/setPrompt')
+      setState((s) => mutateSetCarriedPlaygroundNegativePrompt(s, restoredNegative), 'formCarry/setNegativePrompt')
+      // Merge instead of replace: roles explicitly in `restoredParams` override,
+      // but roles that were already in the form (typically seeded from the
+      // cross-effect carry slice when the user clicked "Try in Playground"
+      // from an effect with images) are preserved. Without this merge, the
+      // carry-seeded images would be wiped on every restore even when the
+      // restored shape contains no images at all (the "Try in Playground"
+      // case where only prompt + negative are populated).
+      setImageInputs((prev) => ({ ...prev, ...nextImages }))
+      // Mirror restored role-keyed images into the carry slice — same intent
+      // as a fresh upload, just sourced from a historical run.
+      for (const [role, value] of Object.entries(nextImages)) {
+        setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
+      }
 
       if (restoredParams.output) {
         setOutputValues(restoredParams.output as Record<string, string | number | boolean>)
+        // Mirror to model param carry so a follow-on switch sees the
+        // just-applied param values.
+        for (const [key, value] of Object.entries(restoredParams.output)) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+          }
+        }
       } else {
         setOutputValues({})
       }
 
       const restoredUserParams = (restoredParams.userParams ?? {}) as Record<string, unknown>
       setAdvancedValues(restoredUserParams)
+      for (const [key, value] of Object.entries(restoredUserParams)) {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+        }
+      }
     }
   }
 
@@ -173,10 +263,58 @@ export function PlaygroundForm() {
       }
       return next
     })
+    if (!file) {
+      setState((s) => mutateClearCarriedImage(s, role), 'formCarry/clearImage')
+      // Hide the busy spinner if a pending upload was in flight.
+      setUploadingRoles((prev) => {
+        if (!prev.has(role)) return prev
+        const next = new Set(prev)
+        next.delete(role)
+        return next
+      })
+      return
+    }
+    // Hold the File in carry immediately so a fast effect-switch sees it.
+    setState((s) => mutateSetCarriedImage(s, role, file), 'formCarry/setImage')
+    setUploadingRoles((prev) => {
+      const next = new Set(prev)
+      next.add(role)
+      return next
+    })
+    const finishUpload = () => {
+      setUploadingRoles((prev) => {
+        if (!prev.has(role)) return prev
+        const next = new Set(prev)
+        next.delete(role)
+        return next
+      })
+    }
+    // Eagerly upload, then swap form state and carry to the file_id so
+    // subsequent renders use the 512.webp thumbnail instead of decoding the
+    // full File on every effect switch. Server-side sha256 dedup makes a
+    // re-upload a no-op if the run flow races us.
+    void api.uploadFile(file)
+      .then((uploaded) => {
+        setImageInputs((prev) => prev[role] === file ? { ...prev, [role]: uploaded.id } : prev)
+        setState((s) => {
+          if (s.formCarry.lastImagesByRole[role] === file) {
+            mutateSetCarriedImage(s, role, uploaded.id)
+          }
+        }, 'formCarry/imageUploaded')
+      })
+      .catch(() => {
+        // Upload failed — leave the File in place. `startPlaygroundRun`
+        // (playgroundActions.ts) will retry at submit time.
+      })
+      .finally(finishUpload)
   }
 
   const handleAdvancedChange = (key: string, value: unknown) => {
     setAdvancedValues((prev) => ({ ...prev, [key]: value }))
+    // Mirror canonical-keyed model param tweaks into carry.
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
+    }
   }
 
   const handleGenerate = async () => {
@@ -236,10 +374,12 @@ export function PlaygroundForm() {
   }
 
   const selectedProviderInfo = modelInfo?.providers.find((p) => p.id === selectedProvider)
+  const isAnyUploading = uploadingRoles.size > 0
   // Match the effect page: only gate on having an available provider. Required
   // fields are validated on click and surfaced inline, so the button stays
   // visible (just dimmed) and tells the user what's missing on attempt.
-  const canGenerate = !!selectedProviderInfo?.is_available
+  // Also gated on in-flight uploads so the run never races a half-uploaded image.
+  const canGenerate = !!selectedProviderInfo?.is_available && !isAnyUploading
 
   return (
     <>
@@ -250,7 +390,10 @@ export function PlaygroundForm() {
           availableModels={availableModels}
           selectedModel={selectedModel}
           selectedProvider={selectedProvider}
-          onModelChange={setSelectedModel}
+          onModelChange={(id) => {
+            setSelectedModel(id)
+            setState((s) => mutateSetCarriedModel(s, id), 'formCarry/setModel')
+          }}
           onProviderChange={setSelectedProvider}
         />
 
@@ -269,6 +412,7 @@ export function PlaygroundForm() {
                     error={!!fieldErrors[slot.key]}
                     value={value instanceof File ? value : null}
                     restoredUrl={typeof value === 'string' && value ? `/api/files/${value}/512.webp` : null}
+                    uploading={uploadingRoles.has(slot.key)}
                     onChange={(f) => {
                       handleImageChange(slot.key, f)
                       setFieldErrors((prev) => (prev[slot.key] ? { ...prev, [slot.key]: null } : prev))
@@ -286,7 +430,9 @@ export function PlaygroundForm() {
           <Textarea
             value={prompt}
             onChange={(e) => {
-              setPrompt(e.target.value)
+              const v = e.target.value
+              setPrompt(v)
+              setState((s) => mutateSetCarriedPlaygroundPrompt(s, v), 'formCarry/setPrompt')
               if (fieldErrors.prompt) setFieldErrors((prev) => ({ ...prev, prompt: null }))
             }}
             placeholder="Describe what you want to generate..."
@@ -300,7 +446,11 @@ export function PlaygroundForm() {
           <Label variant="form">Negative prompt</Label>
           <Textarea
             value={negativePrompt}
-            onChange={(e) => setNegativePrompt(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value
+              setNegativePrompt(v)
+              setState((s) => mutateSetCarriedPlaygroundNegativePrompt(s, v), 'formCarry/setNegativePrompt')
+            }}
             placeholder="What to avoid..."
             rows={2}
           />
@@ -314,7 +464,10 @@ export function PlaygroundForm() {
                 key={param.key}
                 param={param}
                 value={outputValues[param.key] ?? param.default ?? ''}
-                onChange={(v) => setOutputValues((prev) => ({ ...prev, [param.key]: v }))}
+                onChange={(v) => {
+                  setOutputValues((prev) => ({ ...prev, [param.key]: v }))
+                  setState((s) => mutateSetCarriedParam(s, param.key, v), 'formCarry/setParam')
+                }}
               />
             ))}
           </div>
@@ -346,7 +499,11 @@ export function PlaygroundForm() {
           disabled={!canGenerate}
           loading={isGenerating}
         />
-        {!selectedProviderInfo?.is_available && (
+        {isAnyUploading ? (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Waiting for upload to finish…
+          </p>
+        ) : !selectedProviderInfo?.is_available && (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Add your API key in Settings to generate
           </p>

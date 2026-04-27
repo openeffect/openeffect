@@ -9,6 +9,7 @@ import { initialHistoryState } from './slices/historySlice'
 import { initialConfigState } from './slices/configSlice'
 import { initialEditorState } from './slices/editorSlice'
 import { initialPlaygroundState } from './slices/playgroundSlice'
+import { initialFormCarryState } from './slices/formCarrySlice'
 
 // Enable Map/Set support for immer (must be called before store creation)
 enableMapSet()
@@ -22,6 +23,7 @@ export const useStore = create<AppState>()(
       config: initialConfigState,
       editor: initialEditorState,
       playground: initialPlaygroundState,
+      formCarry: initialFormCarryState,
     })),
     {
       name: 'OpenEffect',

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { AlertCircle, ChevronDown, X as XIcon } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useStore } from '@/store'
 import { selectSelectedEffect } from '@/store/selectors/effectsSelectors'
 import { selectRestoredParams } from '@/store/selectors/runSelectors'
@@ -132,6 +132,11 @@ export function EffectFormTab() {
   // busy state on ImageUploader, and disables Generate while non-empty so
   // the run never races a half-uploaded image.
   const [uploadingKeys, setUploadingKeys] = useState<ReadonlySet<string>>(new Set())
+  // Per-input upload error messages. Set by the eager-upload `.catch` and
+  // cleared when the user re-picks the same cell. Surfaces under the
+  // ImageUploader as small destructive text — same shape as the asset and
+  // zip-install flows.
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string | undefined>>({})
   const formRef = useRef<HTMLDivElement>(null)
 
   // Get model params for the active (provider, variant), filtering out
@@ -284,6 +289,8 @@ export function EffectFormTab() {
     if (schema?.type === 'image' && schema.role) {
       const role = schema.role
       if (value instanceof File) {
+        // Re-picking clears any prior failed-upload error for this cell.
+        setUploadErrors((prev) => (prev[key] !== undefined ? { ...prev, [key]: undefined } : prev))
         // Hold the File in carry immediately — covers a fast effect-switch
         // before the upload below completes.
         setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
@@ -322,9 +329,12 @@ export function EffectFormTab() {
               }
             }, 'formCarry/imageUploaded')
           })
-          .catch(() => {
-            // Upload failed — leave the File in place. `prepareInputs`
-            // (runActions.ts) will retry at submit time.
+          .catch((err) => {
+            // Surface the failure inline so the user can react. Run
+            // submission's prepareInputs (runActions.ts) will still retry
+            // the upload if the user clicks Generate before re-picking.
+            const msg = err instanceof Error ? err.message : 'Upload failed'
+            setUploadErrors((prev) => ({ ...prev, [key]: msg }))
           })
           .finally(finishUpload)
       } else if (value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)) {
@@ -343,6 +353,7 @@ export function EffectFormTab() {
           next.delete(key)
           return next
         })
+        setUploadErrors((prev) => (prev[key] !== undefined ? { ...prev, [key]: undefined } : prev))
       }
     } else if (schema && schema.type !== 'image') {
       // Non-image input change: mirror by NAME so a `scene_prompt` typed
@@ -479,7 +490,7 @@ export function EffectFormTab() {
           }}
           onProviderChange={setSelectedProvider}
         />
-        <EffectFormRenderer manifest={manifest} values={values} errors={fieldErrors} onChange={handleChange} uploadingKeys={uploadingKeys} />
+        <EffectFormRenderer manifest={manifest} values={values} errors={fieldErrors} onChange={handleChange} uploadingKeys={uploadingKeys} uploadErrors={uploadErrors} />
 
         {outputParams.length > 0 && (
           <div className="space-y-5">
@@ -510,6 +521,7 @@ export function EffectFormTab() {
                 value={values[key]}
                 onChange={(v) => handleChange(key, v)}
                 uploading={uploadingKeys.has(key)}
+                uploadErrorMessage={uploadErrors[key] ?? null}
               />
             ))}
           </AdvancedSettings>
@@ -522,17 +534,10 @@ export function EffectFormTab() {
 
       {/* Footer */}
       <div className="shrink-0 border-t p-4">
-        {submitError && (
-          <div className="mb-2 flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <p className="flex-1">{submitError}</p>
-            <button onClick={() => setSubmitError(null)} className="shrink-0 opacity-60 hover:opacity-100">
-              <XIcon size={14} />
-            </button>
-          </div>
-        )}
         <GenerateButton onClick={handleGenerate} disabled={!canGenerate} loading={isGenerating} />
-        {editorUnsaved ? (
+        {submitError ? (
+          <p className="mt-2 text-center text-[11px] text-destructive">{submitError}</p>
+        ) : editorUnsaved ? (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Create the effect first to generate
           </p>

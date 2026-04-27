@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { AlertCircle, X as XIcon } from 'lucide-react'
 import { useStore, setState } from '@/store'
 import { selectAvailableModels } from '@/store/selectors/configSelectors'
 import { selectRestoredParams } from '@/store/selectors/runSelectors'
@@ -89,6 +88,9 @@ export function PlaygroundForm() {
   // Roles whose eager upload is in flight. Drives the per-cell busy state
   // and disables Generate while non-empty.
   const [uploadingRoles, setUploadingRoles] = useState<ReadonlySet<string>>(new Set())
+  // Per-role upload error messages. Surfaces under the ImageUploader as
+  // small destructive text — same shape as asset/zip-install error UX.
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string | undefined>>({})
   const formRef = useRef<HTMLDivElement>(null)
 
   const modelInfo: ModelInfo | undefined = availableModels.find((m) => m.id === selectedModel)
@@ -272,8 +274,11 @@ export function PlaygroundForm() {
         next.delete(role)
         return next
       })
+      setUploadErrors((prev) => (prev[role] !== undefined ? { ...prev, [role]: undefined } : prev))
       return
     }
+    // Re-picking clears any prior failed-upload error.
+    setUploadErrors((prev) => (prev[role] !== undefined ? { ...prev, [role]: undefined } : prev))
     // Hold the File in carry immediately so a fast effect-switch sees it.
     setState((s) => mutateSetCarriedImage(s, role, file), 'formCarry/setImage')
     setUploadingRoles((prev) => {
@@ -302,9 +307,12 @@ export function PlaygroundForm() {
           }
         }, 'formCarry/imageUploaded')
       })
-      .catch(() => {
-        // Upload failed — leave the File in place. `startPlaygroundRun`
-        // (playgroundActions.ts) will retry at submit time.
+      .catch((err) => {
+        // Surface the failure inline so the user can react. Submit will
+        // still retry the upload via startPlaygroundRun if they click
+        // Generate before re-picking.
+        const msg = err instanceof Error ? err.message : 'Upload failed'
+        setUploadErrors((prev) => ({ ...prev, [role]: msg }))
       })
       .finally(finishUpload)
   }
@@ -413,6 +421,7 @@ export function PlaygroundForm() {
                     value={value instanceof File ? value : null}
                     restoredUrl={typeof value === 'string' && value ? `/api/files/${value}/512.webp` : null}
                     uploading={uploadingRoles.has(slot.key)}
+                    errorMessage={uploadErrors[slot.key] ?? null}
                     onChange={(f) => {
                       handleImageChange(slot.key, f)
                       setFieldErrors((prev) => (prev[slot.key] ? { ...prev, [slot.key]: null } : prev))
@@ -485,21 +494,14 @@ export function PlaygroundForm() {
       </div>
 
       <div className="shrink-0 border-t p-4">
-        {submitError && (
-          <div className="mb-2 flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <p className="flex-1">{submitError}</p>
-            <button onClick={() => setSubmitError(null)} className="shrink-0 opacity-60 hover:opacity-100">
-              <XIcon size={14} />
-            </button>
-          </div>
-        )}
         <GenerateButton
           onClick={handleGenerate}
           disabled={!canGenerate}
           loading={isGenerating}
         />
-        {isAnyUploading ? (
+        {submitError ? (
+          <p className="mt-2 text-center text-[11px] text-destructive">{submitError}</p>
+        ) : isAnyUploading ? (
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             Waiting for upload to finish…
           </p>

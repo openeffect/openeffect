@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Loader2, Upload, X, ImageIcon } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { Label } from '@/components/ui/Label'
@@ -17,35 +17,24 @@ interface ImageUploaderProps {
    *  consistency. While true, the dropzone can't be re-clicked (the parent
    *  also disables Generate until upload completes). */
   uploading?: boolean
+  /** Surfaced when the parent's eager upload fails. Painted as small
+   *  destructive-colored text below the cell, matching the asset/zip
+   *  install error patterns. The parent owns clearing this on re-pick. */
+  errorMessage?: string | null
 }
 
-export function ImageUploader({ label, hint, required, error, value, onChange, restoredUrl, uploading }: ImageUploaderProps) {
+export function ImageUploader({ label, hint, required, error, value, onChange, restoredUrl, uploading, errorMessage }: ImageUploaderProps) {
+  const showErrorBorder = !!error || !!errorMessage
   const inputRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-
-  // Use restored URL as preview if no local preview
-  const displayPreview = preview || restoredUrl || null
   const [dragActive, setDragActive] = useState(false)
 
-  // Generate the blob preview URL from `value` and revoke it on swap or
-  // unmount. This makes the effect the single source of truth for the
-  // preview lifecycle, so a File arriving via *any* path (drag-drop,
-  // file picker, parent-controlled props like the cross-effect carry)
-  // gets a thumbnail. setState-in-effect is the right tool here because
-  // we need both a render-visible URL string AND a guaranteed cleanup
-  // when value changes — useMemo can't run cleanup, and computing during
-  // render would orphan blob URLs on every re-render.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (!value) {
-      setPreview(null)
-      return
-    }
-    const url = URL.createObjectURL(value)
-    setPreview(url)
-    return () => URL.revokeObjectURL(url)
-  }, [value])
-  /* eslint-enable react-hooks/set-state-in-effect */
+  // Preview is server-driven now: parents eagerly upload on pick and pass
+  // back `restoredUrl` (the 512.webp thumbnail) once the upload settles.
+  // The brief File-only window in between is covered by the `uploading`
+  // spinner, so we never need a local blob URL. The only place blob URLs
+  // *could* still appear is the failed-upload state — but the file name
+  // in the empty-state cell is honest UX in that case (the file isn't on
+  // the server, no preview is real).
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -60,8 +49,6 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
   }
 
   const clear = () => {
-    // The useEffect above handles preview revocation when value transitions
-    // to null — we just clear the file input and tell the parent.
     onChange(null)
     if (inputRef.current) inputRef.current.value = ''
   }
@@ -81,7 +68,7 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
           'relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed p-5 text-center transition-colors',
           dragActive
             ? 'border-primary bg-accent-dim'
-            : error
+            : showErrorBorder
               ? 'border-destructive bg-destructive/5 hover:border-destructive'
               : 'border-border bg-muted hover:border-foreground/20',
           uploading && 'pointer-events-none',
@@ -93,10 +80,10 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
             <Loader2 size={28} className="animate-spin text-primary" />
             <p className="text-xs text-muted-foreground">Uploading…</p>
           </div>
-        ) : displayPreview ? (
+        ) : restoredUrl ? (
           <div className="relative inline-block">
             <img
-              src={displayPreview}
+              src={restoredUrl}
               alt="Preview"
               loading="lazy"
               decoding="async"
@@ -122,11 +109,11 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
           </div>
         )}
       </div>
-      {hint && (
-        <p className="text-[11px] text-muted-foreground">
-          {hint}
-        </p>
-      )}
+      {errorMessage ? (
+        <p className="text-[11px] text-destructive">{errorMessage}</p>
+      ) : hint ? (
+        <p className="text-[11px] text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   )
 }

@@ -119,9 +119,11 @@ export interface PlaygroundSlice {
 }
 
 /** A carried image — either a not-yet-uploaded `File` (the user picked
- *  it but hasn't clicked Generate yet) or a `file_id` string (already on
- *  the server). Both shapes are renderable: `File` via `URL.createObjectURL`,
- *  `file_id` via `/api/files/<id>/512.webp`. */
+ *  it but the eager-upload .then hasn't landed yet) or a `file_id` string
+ *  (already on the server). Both shapes are valid for the run-submission
+ *  path; for preview, only the `file_id` form renders (via the server's
+ *  `/api/files/<id>/512.webp`). The brief `File` window is covered by the
+ *  ImageUploader's "Uploading…" spinner. */
 export type CarriedImage = File | string
 
 export interface FormCarrySlice {

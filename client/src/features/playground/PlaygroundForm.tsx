@@ -308,11 +308,22 @@ export function PlaygroundForm() {
         }, 'formCarry/imageUploaded')
       })
       .catch((err) => {
-        // Surface the failure inline so the user can react. Submit will
-        // still retry the upload via startPlaygroundRun if they click
-        // Generate before re-picking.
+        // Match the asset / zip-install error pattern: clear the cell
+        // (form state + carry) and surface the error inline so the user
+        // can re-pick.
         const msg = err instanceof Error ? err.message : 'Upload failed'
         setUploadErrors((prev) => ({ ...prev, [role]: msg }))
+        setImageInputs((prev) => {
+          if (prev[role] !== file) return prev
+          const next = { ...prev }
+          delete next[role]
+          return next
+        })
+        setState((s) => {
+          if (s.formCarry.lastImagesByRole[role] === file) {
+            mutateClearCarriedImage(s, role)
+          }
+        }, 'formCarry/clearImage')
       })
       .finally(finishUpload)
   }

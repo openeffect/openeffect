@@ -330,11 +330,19 @@ export function EffectFormTab() {
             }, 'formCarry/imageUploaded')
           })
           .catch((err) => {
-            // Surface the failure inline so the user can react. Run
-            // submission's prepareInputs (runActions.ts) will still retry
-            // the upload if the user clicks Generate before re-picking.
+            // Match the asset / zip-install error pattern: clear the
+            // cell (form state + carry) and surface the error inline.
+            // The user re-picks to retry — leaving the failed File in
+            // place would either re-upload at submit (wasted, the same
+            // bytes that just failed) or render a stale preview.
             const msg = err instanceof Error ? err.message : 'Upload failed'
             setUploadErrors((prev) => ({ ...prev, [key]: msg }))
+            setValues((prev) => (prev[key] === file ? { ...prev, [key]: null } : prev))
+            setState((s) => {
+              if (s.formCarry.lastImagesByRole[role] === file) {
+                mutateClearCarriedImage(s, role)
+              }
+            }, 'formCarry/clearImage')
           })
           .finally(finishUpload)
       } else if (value && typeof value === 'object' && '__restored' in (value as Record<string, unknown>)) {

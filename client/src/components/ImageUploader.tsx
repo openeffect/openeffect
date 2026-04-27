@@ -24,7 +24,10 @@ interface ImageUploaderProps {
 }
 
 export function ImageUploader({ label, hint, required, error, value, onChange, restoredUrl, uploading, errorMessage }: ImageUploaderProps) {
-  const showErrorBorder = !!error || !!errorMessage
+  // Required-field validation paints the dropzone red. An upload error
+  // doesn't — it shows up as plain destructive-colored text below the
+  // empty cell, matching the asset / zip-install error pattern.
+  const showErrorBorder = !!error
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
 

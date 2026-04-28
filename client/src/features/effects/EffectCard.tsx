@@ -85,8 +85,12 @@ export function EffectCard({ effect }: EffectCardProps) {
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
         ))}
-        {/* Gradient overlay at bottom */}
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent" />
+        {/* Gradient overlay at bottom. The negative `bottom` + matching extra
+            height push the gradient's anti-aliased bottom edge below the
+            container so the parent's overflow-hidden clips it — without this,
+            the hover scale(1.03) makes the fading edge visible as a thin
+            bright strip at the bottom of the video. */}
+        <div className="absolute inset-x-0 -bottom-px h-[calc(33.333%+1px)] bg-gradient-to-t from-black/60 to-transparent" />
         {/* Category badge */}
         <Badge variant="overlay" className="absolute left-2 top-2 uppercase tracking-wide">
           {formatEffectCategory(effect.category)}

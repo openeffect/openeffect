@@ -16,7 +16,6 @@ export async function loadConfig(): Promise<void> {
         availableModels: config.available_models,
         updateAvailable: config.update_available,
         showOnboarding: !config.has_api_key,
-        keyringAvailable: config.keyring_available,
       })
     }, 'config/load')
     applyTheme(theme)
@@ -32,7 +31,6 @@ export async function saveApiKey(key: string): Promise<void> {
       hasApiKey: config.has_api_key,
       availableModels: config.available_models,
       showOnboarding: false,
-      keyringAvailable: config.keyring_available,
     })
   }, 'config/saveApiKey')
 }
@@ -52,7 +50,6 @@ export async function updateConfig(patch: Record<string, unknown>): Promise<void
       hasApiKey: config.has_api_key,
       theme: parseTheme(config.theme),
       availableModels: config.available_models,
-      keyringAvailable: config.keyring_available,
     })
   }, 'config/update')
 }

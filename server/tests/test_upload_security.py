@@ -87,7 +87,7 @@ def client(tmp_path, files_dir):
         await effect_loader.load_all()
 
         app.state.settings = MagicMock(update_version="")
-        app.state.config_service = ConfigService(database)
+        app.state.config_service = ConfigService(database, tmp_path / "config.json")
         app.state.install_service = install_service
         app.state.effect_loader = effect_loader
         app.state.run_service = MagicMock()

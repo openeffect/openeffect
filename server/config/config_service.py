@@ -1,9 +1,9 @@
+import asyncio
+import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
-
-import keyring
-import keyring.errors
 
 from db.database import Database
 
@@ -15,67 +15,45 @@ DEFAULTS: dict[str, Any] = {
     "theme": "dark",
 }
 
-# Keyring service + username for the FAL API key. The key is stored in the OS
-# credential store (macOS Keychain, Windows Credential Manager, Linux
-# SecretService) when available; see precedence in `get_api_key`.
-_KEYRING_SERVICE = "openeffect"
-_KEYRING_KEY_USER = "fal_api_key"
-_PROBE_USER = "__openeffect_keyring_probe__"
-# DB row key used as a last-resort plaintext fallback on hosts where the OS
-# keyring isn't usable (headless Linux, some Docker images). The UI surfaces
-# `keyring_available=False` so users can choose to set `FAL_KEY` via env var
-# instead of persisting plaintext.
-_FAL_KEY_DB_KEY = "fal_api_key"
-
 
 class ConfigService:
-    """Reads / writes non-sensitive settings from a `config` KV table in the
-    app's SQLite DB. The FAL API key is stored in the OS keychain when the
-    backend supports it, otherwise in the same `config` table as a plaintext
-    fallback (for Docker / headless hosts where no OS keyring exists)."""
+    """Reads / writes non-sensitive settings (theme, etc.) from the SQLite
+    `config` KV table. The FAL API key lives separately in a JSON file at
+    `~/.openeffect/config.json` with mode 0o600 — a single-user desktop app
+    on localhost uses filesystem perms as the security boundary, so we skip
+    the OS keyring and its native dependency."""
 
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, config_path: Path):
         self._db = db
-        self._keyring_available = self._probe_keyring()
-        if not self._keyring_available:
-            logger.warning(
-                "OS keyring is not available — FAL API key saved from the UI "
-                "will be stored as plaintext in the SQLite `config` table. "
-                "For hosted deployments, set FAL_KEY via env var instead."
-            )
+        self._config_path = config_path
+        # Serializes concurrent writers to the JSON file so two near-
+        # simultaneous saves don't fight over the same tmp path.
+        self._lock = asyncio.Lock()
 
     # ─── Public surface ──────────────────────────────────────────────────────
 
     async def get_public_config(self) -> dict[str, Any]:
         return {
             "has_api_key": bool(await self.get_api_key()),
-            # When FAL_KEY is set in the environment it wins over any
-            # keyring / DB value and can't be overridden from the UI.
-            # The client uses this to render a read-only settings notice
-            # instead of the editable input.
+            # When FAL_KEY is set in the environment it wins over any saved
+            # value and can't be overridden from the UI. The client uses this
+            # to render a read-only settings notice instead of the editable
+            # input.
             "api_key_from_env": bool(os.environ.get("FAL_KEY", "")),
             "theme": await self._get("theme"),
-            "keyring_available": self._keyring_available,
         }
 
     async def get_api_key(self) -> str | None:
-        """Precedence: env FAL_KEY > keychain > DB fallback > None."""
+        """Precedence: env FAL_KEY > config.json > None."""
         env_key = os.environ.get("FAL_KEY", "")
         if env_key:
             return env_key
-        if self._keyring_available:
-            try:
-                value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_KEY_USER)
-                if value:
-                    return value
-            except keyring.errors.KeyringError as e:
-                logger.warning("keyring read failed: %s", e)
-        # DB plaintext fallback (only used on hosts without a usable keyring)
-        return await self._get_raw(_FAL_KEY_DB_KEY)
+        secrets = await asyncio.to_thread(self._read_secrets_sync)
+        return secrets.get("fal_api_key") or None
 
     async def update(self, patch: dict[str, Any]) -> dict[str, Any]:
-        """Apply a partial patch. FAL key → keychain or DB fallback; other
-        fields → SQLite `config` table."""
+        """Apply a partial patch. FAL key → config.json; other fields →
+        SQLite `config` table."""
         for key, value in patch.items():
             if key == "fal_api_key":
                 await self._set_api_key(value)
@@ -88,17 +66,6 @@ class ConfigService:
         return await self.get_public_config()
 
     # ─── Internals ──────────────────────────────────────────────────────────
-
-    def _probe_keyring(self) -> bool:
-        """Round-trip a sentinel credential to verify the backend can actually
-        read + write (distinct from `get_keyring()` which returns a backend
-        object but may still raise on use)."""
-        try:
-            keyring.set_password(_KEYRING_SERVICE, _PROBE_USER, "probe")
-            keyring.delete_password(_KEYRING_SERVICE, _PROBE_USER)
-            return True
-        except keyring.errors.KeyringError:
-            return False
 
     async def _get(self, key: str) -> Any:
         """Read a setting with default-fallback."""
@@ -119,36 +86,60 @@ class ConfigService:
                 (key, value),
             )
 
-    async def _delete(self, key: str) -> None:
-        async with self._db.transaction() as conn:
-            await conn.execute("DELETE FROM config WHERE key = ?", (key,))
-
     async def _set_api_key(self, value: str | None) -> None:
-        """Empty/None clears the key from every storage location. A non-empty
-        value goes into the keychain when available, otherwise into the DB as
-        plaintext. When a keychain write succeeds we also scrub any stale DB
-        row to avoid split state."""
-        if not value:
-            if self._keyring_available:
-                try:
-                    keyring.delete_password(_KEYRING_SERVICE, _KEYRING_KEY_USER)
-                except keyring.errors.PasswordDeleteError:
-                    pass  # nothing to delete — fine
-                except keyring.errors.KeyringError as e:
-                    logger.warning("keyring delete failed: %s", e)
-            await self._delete(_FAL_KEY_DB_KEY)
-            return
+        """Empty/None removes the key from the JSON file (no-op when nothing
+        is stored). A non-empty value replaces it. The lock serializes writers
+        so two saves don't race over the tmp file."""
+        async with self._lock:
+            secrets = await asyncio.to_thread(self._read_secrets_sync)
+            if value:
+                secrets["fal_api_key"] = value
+            elif "fal_api_key" in secrets:
+                secrets.pop("fal_api_key")
+            else:
+                return  # nothing to clear — skip the write
+            await asyncio.to_thread(self._write_secrets_sync, secrets)
 
-        if self._keyring_available:
-            try:
-                keyring.set_password(_KEYRING_SERVICE, _KEYRING_KEY_USER, value)
-                # Scrub any stale DB fallback so get_api_key can't return a
-                # different value than the keychain on a later read.
-                await self._delete(_FAL_KEY_DB_KEY)
-                return
-            except keyring.errors.KeyringError as e:
-                logger.warning("keyring write failed, falling back to DB: %s", e)
+    def _read_secrets_sync(self) -> dict[str, Any]:
+        """Read the JSON secrets file. Missing → empty dict. Malformed →
+        empty dict + warn so the user can repair the file by hand (we don't
+        crash on a manually-edited typo)."""
+        try:
+            text = self._config_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return {}
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            logger.warning(
+                "config file %s is not valid JSON (%s) — ignoring saved key. "
+                "Re-save from Settings to repair.",
+                self._config_path, e,
+            )
+            return {}
+        if not isinstance(data, dict):
+            logger.warning(
+                "config file %s does not contain a JSON object — ignoring.",
+                self._config_path,
+            )
+            return {}
+        return data
 
-        # Fallback: plaintext in SQLite. The UI is expected to have surfaced
-        # `keyring_available=False` so the user made an informed choice.
-        await self._set(_FAL_KEY_DB_KEY, value)
+    def _write_secrets_sync(self, data: dict[str, Any]) -> None:
+        """Atomically replace the secrets file with `data`. Any leftover tmp
+        file from a crashed write is unlinked first so `O_EXCL`'s `0o600`
+        mode arg actually applies — `O_CREAT|O_TRUNC` wouldn't reset perms
+        on an already-existing file."""
+        tmp_path = self._config_path.with_suffix(".json.tmp")
+        tmp_path.unlink(missing_ok=True)
+        fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp_path, 0o600)  # belt-and-suspenders against umask
+            os.replace(tmp_path, self._config_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise

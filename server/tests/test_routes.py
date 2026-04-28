@@ -52,7 +52,7 @@ def client(tmp_path):
         await effect_loader.load_all()
 
         app.state.settings = MagicMock(update_version="")
-        app.state.config_service = ConfigService(database)
+        app.state.config_service = ConfigService(database, tmp_path / "config.json")
         app.state.install_service = install_service
         app.state.effect_loader = effect_loader
         app.state.run_service = MagicMock()
@@ -108,11 +108,10 @@ class TestConfigRoute:
         assert "has_api_key" in data
         assert isinstance(data["has_api_key"], bool)
         assert "theme" in data
-        assert "keyring_available" in data
-        assert isinstance(data["keyring_available"], bool)
         # Dropped surface: these fields no longer exist
         assert "default_model" not in data
         assert "history_limit" not in data
+        assert "keyring_available" not in data
 
     def test_get_config_never_exposes_api_key(self, client):
         resp = client.get("/api/config")

@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
     database = Database(db_path)
     await database.connect()
 
-    config_service = ConfigService(database)
+    config_service = ConfigService(database, settings.user_data_dir / "config.json")
 
     file_service = FileService(files_dir=files_dir, db=database)
     install_service = InstallService(db=database, file_service=file_service)

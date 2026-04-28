@@ -1,6 +1,9 @@
-"""Tests for ConfigService — SQLite-backed settings with keychain or
-DB-plaintext-fallback storage for the FAL API key."""
-import sqlite3
+"""Tests for ConfigService — SQLite-backed `theme` plus a JSON file for the
+FAL API key (mode 0o600 at `~/.openeffect/config.json` in production)."""
+import json
+import logging
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -20,25 +23,22 @@ async def database(tmp_path: Path):
 
 
 @pytest.fixture
-def db_path(tmp_path: Path, database: Database) -> Path:
-    """Tests that poke the DB directly via sync sqlite3 need the file path.
-    Depends on `database` to guarantee the schema is initialized first."""
-    return database._path
+def config_path(tmp_path: Path) -> Path:
+    return tmp_path / "config.json"
 
 
 @pytest.fixture
-async def service(database: Database) -> ConfigService:
-    return ConfigService(database)
+async def service(database: Database, config_path: Path) -> ConfigService:
+    return ConfigService(database, config_path)
 
 
 class TestDefaults:
-    async def test_empty_db_returns_defaults(self, service: ConfigService):
+    async def test_empty_state_returns_defaults(self, service: ConfigService):
         config = await service.get_public_config()
         assert config == {
             "has_api_key": False,
             "api_key_from_env": False,
             "theme": "dark",
-            "keyring_available": True,
         }
 
     async def test_api_key_missing_returns_none(self, service: ConfigService):
@@ -46,10 +46,13 @@ class TestDefaults:
 
 
 class TestThemeRoundTrip:
-    async def test_set_theme_persists(self, service: ConfigService, database: Database):
+    async def test_set_theme_persists(
+        self, service: ConfigService, database: Database, config_path: Path
+    ):
         await service.update({"theme": "light"})
         # Fresh instance on the same Database reads the persisted value
-        assert (await ConfigService(database).get_public_config())["theme"] == "light"
+        fresh = ConfigService(database, config_path)
+        assert (await fresh.get_public_config())["theme"] == "light"
 
     async def test_unknown_key_ignored_by_service(self, service: ConfigService):
         """Unknown keys at the service layer are no-ops (the route's
@@ -58,60 +61,90 @@ class TestThemeRoundTrip:
         assert (await service.get_public_config())["theme"] == "light"
 
 
-class TestApiKeyKeychainPath:
-    async def test_save_key_goes_to_keychain_not_db(
-        self, service: ConfigService, db_path: Path, _isolate_keyring
+class TestApiKeyFileStorage:
+    async def test_save_writes_to_config_json(
+        self, service: ConfigService, config_path: Path
     ):
         await service.update({"fal_api_key": "sk-live-abc"})
+        assert json.loads(config_path.read_text()) == {"fal_api_key": "sk-live-abc"}
 
-        assert _isolate_keyring[("openeffect", "fal_api_key")] == "sk-live-abc"
-        with sqlite3.connect(str(db_path)) as db:
-            rows = db.execute("SELECT key FROM config").fetchall()
-        assert all(r[0] != "fal_api_key" for r in rows)
-
-    async def test_get_api_key_reads_keychain(
-        self, service: ConfigService, _isolate_keyring
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permission semantics")
+    async def test_file_is_mode_0o600(
+        self, service: ConfigService, config_path: Path
     ):
+        await service.update({"fal_api_key": "sk-live-abc"})
+        mode = stat.S_IMODE(config_path.stat().st_mode)
+        assert mode == 0o600, f"expected 0o600, got 0o{mode:03o}"
+
+    async def test_get_reads_from_config_json(self, service: ConfigService):
         await service.update({"fal_api_key": "sk-live-xyz"})
         assert await service.get_api_key() == "sk-live-xyz"
         assert (await service.get_public_config())["has_api_key"] is True
 
+    async def test_overwrite_replaces_value(
+        self, service: ConfigService, config_path: Path
+    ):
+        await service.update({"fal_api_key": "sk-old"})
+        await service.update({"fal_api_key": "sk-new"})
+        assert await service.get_api_key() == "sk-new"
+        assert json.loads(config_path.read_text()) == {"fal_api_key": "sk-new"}
+
     async def test_empty_string_clears_key(
-        self, service: ConfigService, _isolate_keyring
+        self, service: ConfigService, config_path: Path
     ):
         await service.update({"fal_api_key": "sk-initial"})
         await service.update({"fal_api_key": ""})
         assert await service.get_api_key() is None
         assert (await service.get_public_config())["has_api_key"] is False
+        # File still exists (room for future fields), but the key is gone
+        assert "fal_api_key" not in json.loads(config_path.read_text())
 
-    async def test_clear_when_no_existing_key_is_noop(self, service: ConfigService):
+    async def test_clear_when_no_existing_key_is_noop(
+        self, service: ConfigService, config_path: Path
+    ):
+        """Saving an empty key when nothing is stored shouldn't create a
+        useless empty file on disk."""
         await service.update({"fal_api_key": ""})
         assert await service.get_api_key() is None
+        assert not config_path.exists()
 
-    async def test_successful_keychain_write_scrubs_stale_db_row(
-        self, service: ConfigService, database: Database, _isolate_keyring
+    async def test_missing_file_returns_none(
+        self, service: ConfigService, config_path: Path
     ):
-        """Imagine the user previously saved a key while keyring was broken
-        (landed in the DB), then the keyring became available. Saving a new
-        key should write to keyring AND remove the DB row."""
-        async with database.transaction() as conn:
-            await conn.execute(
-                "INSERT INTO config (key, value) VALUES ('fal_api_key', 'stale')"
-            )
+        assert not config_path.exists()
+        assert await service.get_api_key() is None
+        assert (await service.get_public_config())["has_api_key"] is False
 
-        await service.update({"fal_api_key": "sk-new"})
-        assert await service.get_api_key() == "sk-new"
-        row = await database.fetchone(
-            "SELECT value FROM config WHERE key = 'fal_api_key'"
-        )
-        assert row is None
+    async def test_corrupt_json_returns_none_and_warns(
+        self,
+        service: ConfigService,
+        config_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        config_path.write_text("{not valid json")
+        with caplog.at_level(logging.WARNING):
+            assert await service.get_api_key() is None
+        assert any("not valid JSON" in m for m in caplog.messages)
+
+    async def test_non_object_json_returns_none_and_warns(
+        self,
+        service: ConfigService,
+        config_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """A user editing the file to a JSON array or string shouldn't
+        crash the app; treat it the same as an empty config."""
+        config_path.write_text('"just a string"')
+        with caplog.at_level(logging.WARNING):
+            assert await service.get_api_key() is None
+        assert any("does not contain a JSON object" in m for m in caplog.messages)
 
 
 class TestEnvPrecedence:
-    async def test_env_var_overrides_keychain(
-        self, service: ConfigService, _isolate_keyring, monkeypatch
+    async def test_env_var_overrides_file(
+        self, service: ConfigService, monkeypatch
     ):
-        await service.update({"fal_api_key": "sk-from-keychain"})
+        await service.update({"fal_api_key": "sk-from-file"})
         monkeypatch.setenv("FAL_KEY", "sk-from-env")
         assert await service.get_api_key() == "sk-from-env"
 
@@ -122,7 +155,7 @@ class TestEnvPrecedence:
         assert (await service.get_public_config())["has_api_key"] is True
 
     async def test_api_key_from_env_flag_reflects_env(
-        self, service: ConfigService, _isolate_keyring, monkeypatch
+        self, service: ConfigService, monkeypatch
     ):
         """Client uses `api_key_from_env` to swap the settings input for a
         read-only notice — it should be True only when FAL_KEY is set."""
@@ -130,71 +163,12 @@ class TestEnvPrecedence:
         assert (await service.get_public_config())["api_key_from_env"] is True
 
         monkeypatch.setenv("FAL_KEY", "")
-        await service.update({"fal_api_key": "sk-keychain"})
+        await service.update({"fal_api_key": "sk-file"})
         assert (await service.get_public_config())["api_key_from_env"] is False
 
-    async def test_empty_env_falls_back_to_keychain(
-        self, service: ConfigService, _isolate_keyring, monkeypatch
+    async def test_empty_env_falls_back_to_file(
+        self, service: ConfigService, monkeypatch
     ):
-        await service.update({"fal_api_key": "sk-keychain"})
+        await service.update({"fal_api_key": "sk-file"})
         monkeypatch.setenv("FAL_KEY", "")
-        assert await service.get_api_key() == "sk-keychain"
-
-
-class TestKeyringUnavailable:
-    """When the probe fails (headless Linux / minimal Docker), the service
-    exposes `keyring_available=False` and transparently stores the FAL key as
-    plaintext in the `config` table — the UI is expected to have warned the
-    user and recommended setting FAL_KEY via env var instead."""
-
-    @pytest.fixture
-    def broken_keyring(self, monkeypatch):
-        import keyring.errors
-
-        def _boom(*_args, **_kwargs):
-            raise keyring.errors.KeyringError("backend unavailable")
-
-        monkeypatch.setattr("keyring.get_password", _boom)
-        monkeypatch.setattr("keyring.set_password", _boom)
-        monkeypatch.setattr("keyring.delete_password", _boom)
-
-    @pytest.fixture
-    async def service_no_keyring(self, database: Database, broken_keyring) -> ConfigService:
-        return ConfigService(database)
-
-    async def test_probe_reports_unavailable(self, service_no_keyring: ConfigService):
-        assert (await service_no_keyring.get_public_config())["keyring_available"] is False
-
-    async def test_save_falls_back_to_db(
-        self, service_no_keyring: ConfigService, database: Database
-    ):
-        await service_no_keyring.update({"fal_api_key": "sk-fallback"})
-        row = await database.fetchone(
-            "SELECT value FROM config WHERE key = 'fal_api_key'"
-        )
-        assert row is not None
-        assert row[0] == "sk-fallback"
-
-    async def test_get_reads_db_fallback(self, service_no_keyring: ConfigService):
-        await service_no_keyring.update({"fal_api_key": "sk-fallback"})
-        assert await service_no_keyring.get_api_key() == "sk-fallback"
-        assert (await service_no_keyring.get_public_config())["has_api_key"] is True
-
-    async def test_clear_removes_from_db(
-        self, service_no_keyring: ConfigService, database: Database
-    ):
-        await service_no_keyring.update({"fal_api_key": "sk-initial"})
-        await service_no_keyring.update({"fal_api_key": ""})
-        assert await service_no_keyring.get_api_key() is None
-
-        row = await database.fetchone(
-            "SELECT value FROM config WHERE key = 'fal_api_key'"
-        )
-        assert row is None
-
-    async def test_env_var_still_overrides(
-        self, service_no_keyring: ConfigService, monkeypatch
-    ):
-        await service_no_keyring.update({"fal_api_key": "sk-db-value"})
-        monkeypatch.setenv("FAL_KEY", "sk-env-wins")
-        assert await service_no_keyring.get_api_key() == "sk-env-wins"
+        assert await service.get_api_key() == "sk-file"

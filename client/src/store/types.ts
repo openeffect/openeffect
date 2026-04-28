@@ -98,7 +98,6 @@ export interface ConfigSlice {
   availableModels: ModelInfo[]
   updateAvailable: string | null
   showOnboarding: boolean
-  keyringAvailable: boolean
 }
 
 export interface EditorSlice {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Cloud } from 'lucide-react'
 import { useStore } from '@/store'
-import { selectHasApiKey, selectApiKeyFromEnv, selectTheme, selectAvailableModels, selectKeyringAvailable } from '@/store/selectors/configSelectors'
+import { selectHasApiKey, selectApiKeyFromEnv, selectTheme, selectAvailableModels } from '@/store/selectors/configSelectors'
 import { setTheme, updateConfig } from '@/store/actions/configActions'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import { Input } from '@/components/ui/Input'
@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
 import { Separator } from '@/components/ui/Separator'
 import { PricingBadge } from '@/components/PricingBadge'
-import { KeyringFallbackNotice } from '@/components/KeyringFallbackNotice'
 
 interface SettingsDialogProps {
   isOpen: boolean
@@ -23,7 +22,6 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const apiKeyFromEnv = useStore(selectApiKeyFromEnv)
   const theme = useStore(selectTheme)
   const availableModels = useStore(selectAvailableModels)
-  const keyringAvailable = useStore(selectKeyringAvailable)
 
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -62,7 +60,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 Key is set via the <code className="rounded bg-foreground/10 px-1 font-mono">FAL_KEY</code>{' '}
                 environment variable. To change it, update the env var and restart the app.
               </p>
-            ) : keyringAvailable ? (
+            ) : (
               <ApiKeyRow
                 apiKey={apiKey}
                 setApiKey={setApiKey}
@@ -71,17 +69,6 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 hasApiKey={hasApiKey}
                 onSave={handleSaveKey}
               />
-            ) : (
-              <KeyringFallbackNotice>
-                <ApiKeyRow
-                  apiKey={apiKey}
-                  setApiKey={setApiKey}
-                  showKey={showKey}
-                  setShowKey={setShowKey}
-                  hasApiKey={hasApiKey}
-                  onSave={handleSaveKey}
-                />
-              </KeyringFallbackNotice>
             )}
           </div>
 

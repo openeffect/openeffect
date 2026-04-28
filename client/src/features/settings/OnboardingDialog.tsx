@@ -1,18 +1,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Cloud, ExternalLink, Loader2, Sparkles } from 'lucide-react'
-import { useStore } from '@/store'
-import { selectKeyringAvailable } from '@/store/selectors/configSelectors'
 import { saveApiKey, dismissOnboarding } from '@/store/actions/configActions'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { KeyringFallbackNotice } from '@/components/KeyringFallbackNotice'
 
 export function OnboardingDialog() {
   const [apiKey, setApiKey] = useState('')
   const [savingKey, setSavingKey] = useState(false)
-  const keyringAvailable = useStore(selectKeyringAvailable)
 
   const handleSaveKey = async () => {
     if (!apiKey.trim()) return
@@ -57,23 +53,12 @@ export function OnboardingDialog() {
               <p className="mb-3 mt-1 text-xs text-muted-foreground">
                 Fast &middot; ~$0.10-0.50 per video
               </p>
-              {keyringAvailable ? (
-                <ApiKeyInput
-                  apiKey={apiKey}
-                  setApiKey={setApiKey}
-                  savingKey={savingKey}
-                  onSave={handleSaveKey}
-                />
-              ) : (
-                <KeyringFallbackNotice>
-                  <ApiKeyInput
-                    apiKey={apiKey}
-                    setApiKey={setApiKey}
-                    savingKey={savingKey}
-                    onSave={handleSaveKey}
-                  />
-                </KeyringFallbackNotice>
-              )}
+              <ApiKeyInput
+                apiKey={apiKey}
+                setApiKey={setApiKey}
+                savingKey={savingKey}
+                onSave={handleSaveKey}
+              />
               <a
                 href="https://fal.ai/dashboard/keys"
                 target="_blank"

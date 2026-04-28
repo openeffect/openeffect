@@ -89,8 +89,10 @@ export function EffectCard({ effect }: EffectCardProps) {
             height push the gradient's anti-aliased bottom edge below the
             container so the parent's overflow-hidden clips it — without this,
             the hover scale(1.03) makes the fading edge visible as a thin
-            bright strip at the bottom of the video. */}
-        <div className="absolute inset-x-0 -bottom-px h-[calc(33.333%+1px)] bg-gradient-to-t from-black/60 to-transparent" />
+            bright strip at the bottom of the video. 4px (vs. 1px) absorbs
+            the wider anti-aliased band browsers produce at the intermediate
+            scales during the hover transition. */}
+        <div className="absolute inset-x-0 -bottom-1 h-[calc(33.333%+0.25rem)] bg-gradient-to-t from-black/60 to-transparent" />
         {/* Category badge */}
         <Badge variant="overlay" className="absolute left-2 top-2 uppercase tracking-wide">
           {formatEffectCategory(effect.category)}

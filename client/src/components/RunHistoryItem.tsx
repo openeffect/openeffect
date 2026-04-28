@@ -187,7 +187,7 @@ function parseRunBadges(inputs: unknown): [string, string][] {
   const badges: [string, string][] = []
   for (const [key, value] of Object.entries(allEntries)) {
     if (value == null || value === '') continue
-    const strVal = String(value)
+    const strVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
     // Skip image-input UUIDs — those are now rendered as thumbs from
     // `record.input_files`. Anything that isn't a UUID and is short
     // enough to fit on a badge (e.g. prompt, seed, intensity) shows up.

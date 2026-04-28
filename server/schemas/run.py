@@ -6,8 +6,10 @@ class RunRequest(BaseModel):
     model_id: str
     provider_id: str  # "fal" or "local"
     inputs: dict[str, str]
-    output: dict[str, str | int]
-    user_params: dict[str, float | int | str] | None = None
+    # `bool` listed first so Pydantic's smart-union picks it for true/false
+    # rather than coercing to int (bool is an int subclass in Python).
+    output: dict[str, bool | str | int]
+    user_params: dict[str, bool | float | int | str] | None = None
 
 
 class PlaygroundRunRequest(BaseModel):
@@ -16,5 +18,5 @@ class PlaygroundRunRequest(BaseModel):
     prompt: str
     negative_prompt: str = ""
     image_inputs: dict[str, str] = {}  # role -> file hash
-    output: dict[str, str | int] = {}
-    user_params: dict[str, float | int | str | bool] = {}
+    output: dict[str, bool | str | int] = {}
+    user_params: dict[str, bool | float | int | str] = {}

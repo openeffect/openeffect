@@ -177,9 +177,9 @@ class TestStartRun:
         from datetime import datetime, timezone
         async with database.transaction() as conn:
             await conn.execute(
-                "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+                "INSERT INTO files (id, hash, kind, mime, ext, size, "
                 "                   ref_count, created_at) "
-                "VALUES (?, ?, 'image', 'image/png', 'png', 0, '[]', 0, ?)",
+                "VALUES (?, ?, 'image', 'image/png', 'png', 0, 0, ?)",
                 ("abc123hash", "h-abc", datetime.now(timezone.utc).isoformat()),
             )
 
@@ -539,13 +539,22 @@ class TestExecuteProvider:
         # Plant a live file row so the bump succeeds.
         async with database.transaction() as conn:
             await conn.execute(
-                "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+                "INSERT INTO files (id, hash, kind, mime, ext, size, "
                 "                   ref_count, created_at) "
-                "VALUES (?, ?, 'video', 'video/mp4', 'mp4', 0, '[]', 0, ?)",
+                "VALUES (?, ?, 'video', 'video/mp4', 'mp4', 0, 0, ?)",
                 ("file-output-1", "h-output", datetime.now(timezone.utc).isoformat()),
             )
         run_service._broadcast = lambda ev: None
         run_service._ingest_result = AsyncMock(return_value="file-output-1")
+        # The completed-event handler now also fetches the output file
+        # to build a FileRef for the SSE payload. The test's MagicMock
+        # FileService doesn't query the DB, so plant a matching `File`
+        # for `get_file` to return.
+        from services.file_service import File
+        run_service._files.get_file = AsyncMock(return_value=File(
+            id="file-output-1", hash="h-output", kind="video",
+            mime="video/mp4", ext="mp4", size=0,
+        ))
 
         await _seed_and_execute(
             run_service, history, database,

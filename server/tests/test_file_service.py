@@ -1,7 +1,6 @@
 """Tests for FileService — content-addressed file store with thumbnails and ref counting."""
 import asyncio
 import io
-import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -86,7 +85,6 @@ class TestAddFile:
         assert (folder / "512.webp").exists()
         # 1500 has headroom past 512 → 1024.webp gets emitted
         assert (folder / "1024.webp").exists()
-        assert sorted(f.variants) == ["1024.webp", "512.webp", "original.png"]
 
     async def test_both_thumbnail_tiers_always_emitted(self, files):
         """Even when the source is smaller than the tier dimensions,
@@ -99,7 +97,6 @@ class TestAddFile:
         folder = files.files_dir / f.id
         assert (folder / "512.webp").exists()
         assert (folder / "1024.webp").exists()
-        assert sorted(f.variants) == ["1024.webp", "512.webp", "original.png"]
 
     async def test_dedup_returns_existing_row(self, files):
         png = _png_bytes()
@@ -149,15 +146,6 @@ class TestAddFile:
         assert (folder / "original.bin").exists()
         assert not (folder / "512.webp").exists()
         assert not (folder / "1024.webp").exists()
-        assert f.variants == ["original.bin"]
-
-    async def test_variants_recorded_in_db(self, files):
-        png = _png_bytes((900, 600))
-        f = await _add_image(files, png, "v.png")
-        row = await files._db.fetchone(
-            "SELECT variants FROM files WHERE id = ?", (f.id,),
-        )
-        assert sorted(json.loads(row["variants"])) == ["1024.webp", "512.webp", "original.png"]
 
 
 class TestRefCounting:

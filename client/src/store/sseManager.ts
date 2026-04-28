@@ -1,7 +1,7 @@
 import { api } from '@/utils/api'
 import { setState } from './index'
 import { completeJob, failJob, updateJobProgress } from './actions/runActions'
-import type { RunRecord } from '@/types/api'
+import type { FileRef, RunRecord } from '@/types/api'
 
 /**
  * Single multiplexed SSE connection for all in-flight runs.
@@ -43,8 +43,8 @@ function ensureOpen(): void {
 
   es.addEventListener('completed', (e: MessageEvent) => {
     try {
-      const data = JSON.parse(e.data) as { job_id: string; video_url: string }
-      if (tracked.has(data.job_id)) completeJob(data.job_id, data.video_url)
+      const data = JSON.parse(e.data) as { job_id: string; output: FileRef | null }
+      if (tracked.has(data.job_id)) completeJob(data.job_id, data.output?.url ?? null)
       untrackJob(data.job_id)
     } catch {
       // Malformed payload — skip.

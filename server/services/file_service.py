@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import shutil
@@ -46,15 +45,16 @@ class File:
     addressable identifier exposed in URLs and on disk. `hash` is the
     sha256 of the original bytes, kept server-internal as the dedup key
     (a public hash would let anyone probe the server for known content).
-    `variants` lists exactly which files exist on disk under
-    `<files_dir>/<id>/` so callers can compose URLs without stat-ing."""
+    Variant filenames on disk are deterministic from `kind`: image and
+    video both get `original.{ext}` plus `512.webp`/`1024.webp`; `other`
+    gets only the original. Callers compose URLs from `kind` directly —
+    no per-file variants list to read."""
     id: str
     hash: str
     kind: FileKind
     mime: str
     ext: str
     size: int
-    variants: list[str]
 
 
 class FileService:
@@ -121,10 +121,12 @@ class FileService:
                 original_path = stage_dir / f"original.{chosen_ext}"
                 tmp_path.rename(original_path)
 
-                thumbs = await asyncio.to_thread(
+                # Thumbnails are written for image/video kinds. The exact
+                # filenames are a closed function of `kind` (see
+                # `_generate_thumbnails`), so we don't persist the list.
+                await asyncio.to_thread(
                     _generate_thumbnails, original_path, stage_dir, kind,
                 )
-                variants = [f"original.{chosen_ext}", *thumbs]
 
                 file_id = str(uuid_utils.uuid7())
                 now = datetime.now(timezone.utc).isoformat()
@@ -136,13 +138,12 @@ class FileService:
                     # bypasses a row mid-cleanup.
                     cursor = await conn.execute(
                         """INSERT INTO files (
-                               id, hash, kind, mime, ext, size, variants,
+                               id, hash, kind, mime, ext, size,
                                ref_count, created_at
-                           ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                           ) VALUES (?, ?, ?, ?, ?, ?, 0, ?)
                            ON CONFLICT(hash) WHERE ref_count IS NOT NULL DO NOTHING
                            RETURNING id""",
-                        (file_id, file_hash, kind, chosen_mime, chosen_ext, size,
-                         json.dumps(variants), now),
+                        (file_id, file_hash, kind, chosen_mime, chosen_ext, size, now),
                     )
                     claim = await cursor.fetchone()
 
@@ -169,7 +170,7 @@ class FileService:
 
                 return File(
                     id=file_id, hash=file_hash, kind=kind, mime=chosen_mime,
-                    ext=chosen_ext, size=size, variants=variants,
+                    ext=chosen_ext, size=size,
                 )
             except Exception:
                 # Roll back the DB claim if we made one — next retry shouldn't
@@ -242,7 +243,7 @@ class FileService:
     def _row_to_file(self, row) -> File:
         return File(
             id=row["id"], hash=row["hash"], kind=row["kind"], mime=row["mime"],
-            ext=row["ext"], size=row["size"], variants=json.loads(row["variants"]),
+            ext=row["ext"], size=row["size"],
         )
 
     async def _fetch_by_hash(self, file_hash: str) -> File | None:
@@ -252,7 +253,7 @@ class FileService:
         # same hash can briefly coexist; this filter ensures callers only
         # ever see the live one.
         row = await self._db.fetchone(
-            "SELECT id, hash, kind, mime, ext, size, variants FROM files "
+            "SELECT id, hash, kind, mime, ext, size FROM files "
             "WHERE hash = ? AND ref_count IS NOT NULL",
             (file_hash,),
         )
@@ -260,7 +261,7 @@ class FileService:
 
     async def get_file(self, file_id: str) -> File | None:
         row = await self._db.fetchone(
-            "SELECT id, hash, kind, mime, ext, size, variants FROM files WHERE id = ?",
+            "SELECT id, hash, kind, mime, ext, size FROM files WHERE id = ?",
             (file_id,),
         )
         return self._row_to_file(row) if row else None

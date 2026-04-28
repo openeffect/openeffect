@@ -1,7 +1,7 @@
 import type {
   EffectManifest,
   AppConfig,
-  FileResponse,
+  FileRef,
   RunResponse,
   RunRequest,
   PlaygroundRunRequest,
@@ -102,7 +102,7 @@ export const api = {
     }),
 
   // Files (content-addressed blob store)
-  uploadFile: async (file: File): Promise<FileResponse> => {
+  uploadFile: async (file: File): Promise<FileRef> => {
     const form = new FormData()
     form.append('file', file)
     const res = await fetch('/api/files', { method: 'POST', body: form })
@@ -110,7 +110,7 @@ export const api = {
       const body = await res.json().catch(() => ({ error: res.statusText }))
       throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? res.statusText)
     }
-    return res.json() as Promise<FileResponse>
+    return res.json() as Promise<FileRef>
   },
 
   // Run
@@ -178,7 +178,7 @@ export const api = {
   getEffectEditorData: (namespace: string, slug: string) =>
     request<{
       yaml: string
-      files: { filename: string; size: number; url: string; id: string }[]
+      files: { filename: string; file: FileRef }[]
     }>(`/api/effects/${namespace}/${slug}/editor`),
 
   exportEffect: (namespace: string, slug: string) =>
@@ -204,16 +204,11 @@ export const api = {
       const detail = body.detail ?? body
       throw new ApiError(res.status, detail.code ?? 'UNKNOWN', detail.error ?? res.statusText)
     }
-    return res.json() as Promise<{
-      filename: string
-      size: number
-      url: string
-      id: string
-    }>
+    return res.json() as Promise<{ filename: string; file: FileRef }>
   },
 
   renameEffectAsset: (namespace: string, slug: string, oldName: string, newName: string) =>
-    request<{ filename: string; size: number; url: string; id: string }>(
+    request<{ filename: string; file: FileRef }>(
       `/api/effects/${namespace}/${slug}/assets/${encodeURIComponent(oldName)}`,
       { method: 'PATCH', body: JSON.stringify({ new_name: newName }) },
     ),

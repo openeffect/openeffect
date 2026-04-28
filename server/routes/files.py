@@ -14,6 +14,7 @@ from routes._errors import (
     payload_too_large,
     unsupported_type,
 )
+from schemas.file_ref import FileRef, file_to_ref
 from services.file_service import FileTooLargeError, UnreadableMediaError
 
 router = APIRouter()
@@ -21,13 +22,13 @@ router = APIRouter()
 ALLOWED_TYPES = IMAGE_CONTENT_TYPES | VIDEO_CONTENT_TYPES
 
 
-@router.post("/files")
-async def upload_file(request: Request, file: UploadFile = File(...)):
+@router.post("/files", response_model=FileRef)
+async def upload_file(request: Request, file: UploadFile = File(...)) -> FileRef:
     """Multipart upload → content-addressed file row. Streams to disk
     with hashing as it goes, dedupes against existing rows by hash, and
-    returns a UUID7 `id` that the client uses for URL composition.
-    The hash is intentionally not exposed — exposing it would let an
-    attacker probe the server for known content."""
+    returns a canonical `FileRef`. The hash is intentionally not exposed
+    — exposing it would let an attacker probe the server for known
+    content."""
     # Reject empty / unsupported content-type outright. Empty bypassed the
     # old `if file.content_type and ...` guard and let any bytes through.
     if not file.content_type or file.content_type not in ALLOWED_TYPES:
@@ -55,13 +56,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
         # Pillow / ffmpeg refused — corrupt bytes, unsupported codec, etc.
         raise bad_request(f"Could not process file: {e}", ErrorCode.INVALID_REQUEST)
 
-    return {
-        "id": result.id,
-        "kind": result.kind,
-        "mime": result.mime,
-        "ext": result.ext,
-        "size": result.size,
-    }
+    return file_to_ref(result)
 
 
 @router.get("/files/{file_id}/{filename}")

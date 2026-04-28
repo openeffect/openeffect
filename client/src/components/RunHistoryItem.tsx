@@ -25,7 +25,9 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
   const availableModels = useStore(selectAvailableModels)
   const jobs = useStore(selectJobs)
   const modelName = availableModels.find((m) => m.id === item.model_id)?.name ?? item.model_id
-  const { badges, imageRefs } = parseRunParams(item.inputs)
+  const badges = parseRunBadges(item.inputs)
+  // Server-resolved input file refs — keyed by role (start_frame, etc.).
+  const inputFiles = Object.entries(item.input_files ?? {})
 
   // Prefer the live SSE-backed job state over the record's DB snapshot so
   // the history row shows the same numbers as the run view (otherwise the
@@ -58,12 +60,12 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
             status === 'processing' && 'bg-primary',
           )}
         />
-        {/* Video thumbnail — the file store's contract guarantees a
-            `512.webp` poster frame on every result. */}
-        {status === 'completed' && item.output_id && (
+        {/* Video thumbnail — the file store guarantees a 512.webp
+            poster frame on every video result. */}
+        {status === 'completed' && item.output && (
           <div className="shrink-0 w-20 self-stretch overflow-hidden rounded-md border bg-muted">
             <img
-              src={`/api/files/${item.output_id}/512.webp`}
+              src={item.output.thumbnails['512']}
               alt=""
               className="h-full w-full object-cover"
             />
@@ -106,10 +108,10 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
           {/* Images + actions */}
           <div className="mt-1.5 flex items-end justify-between">
             <div className="flex gap-1.5">
-              {imageRefs.map(([key, refId]) => (
+              {inputFiles.map(([key, ref]) => (
                 <div key={key} className="h-10 w-10 overflow-hidden rounded border bg-muted">
                   <img
-                    src={`/api/files/${refId}/512.webp`}
+                    src={ref.thumbnails['512']}
                     alt={key}
                     className="h-full w-full object-cover"
                     onError={(e) => { e.currentTarget.style.display = 'none' }}
@@ -119,9 +121,9 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
             </div>
             {status !== 'processing' && (
               <div className="flex items-center gap-1">
-                {status === 'completed' && item.video_url && (
+                {status === 'completed' && item.output && (
                   <a
-                    href={item.video_url}
+                    href={item.output.url}
                     download
                     onClick={(e) => e.stopPropagation()}
                     title="Download"
@@ -174,8 +176,8 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function parseRunParams(inputs: unknown): { badges: [string, string][]; imageRefs: [string, string][] } {
-  if (!inputs || typeof inputs !== 'object') return { badges: [], imageRefs: [] }
+function parseRunBadges(inputs: unknown): [string, string][] {
+  if (!inputs || typeof inputs !== 'object') return []
   const raw = inputs as Record<string, unknown>
   const allEntries = {
     ...(('inputs' in raw && typeof raw.inputs === 'object') ? raw.inputs as Record<string, unknown> : raw),
@@ -183,17 +185,16 @@ function parseRunParams(inputs: unknown): { badges: [string, string][]; imageRef
     ...(('user_params' in raw && typeof raw.user_params === 'object') ? raw.user_params as Record<string, unknown> : {}),
   }
   const badges: [string, string][] = []
-  const imageRefs: [string, string][] = []
   for (const [key, value] of Object.entries(allEntries)) {
     if (value == null || value === '') continue
     const strVal = String(value)
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(strVal)) {
-      imageRefs.push([key, strVal])
-    } else if (strVal.length <= 30) {
-      badges.push([key, strVal])
-    }
+    // Skip image-input UUIDs — those are now rendered as thumbs from
+    // `record.input_files`. Anything that isn't a UUID and is short
+    // enough to fit on a badge (e.g. prompt, seed, intensity) shows up.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(strVal)) continue
+    if (strVal.length <= 30) badges.push([key, strVal])
   }
-  return { badges, imageRefs }
+  return badges
 }
 
 function formatParamKey(key: string): string {

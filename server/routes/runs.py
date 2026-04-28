@@ -18,10 +18,11 @@ async def get_runs(
     items = await history.get_all(
         limit=limit, offset=offset, effect_id=effect_id, kind=kind, status=status,
     )
+    serialized = await history.serialize_many(items)
     total = await history.count(effect_id=effect_id, kind=kind)
     active_count = await history.active_count()
     return {
-        "items": [item.to_dict() for item in items],
+        "items": serialized,
         "total": total,
         "active_count": active_count,
     }
@@ -33,7 +34,7 @@ async def get_run(item_id: str, request: Request):
     record = await history.get_by_id(item_id)
     if not record:
         raise not_found("Record not found")
-    return record.to_dict()
+    return await history.serialize(record)
 
 
 @router.delete("/runs/{item_id}")

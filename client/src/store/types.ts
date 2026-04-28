@@ -1,4 +1,4 @@
-import type { EffectManifest, RunRecord, ModelInfo } from '@/types/api'
+import type { EffectManifest, FileRef, RunRecord, ModelInfo } from '@/types/api'
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -27,13 +27,13 @@ export interface RestoredParams {
 }
 
 export interface AssetFile {
+  /** Logical name on the effect — what the manifest YAML references.
+   *  Stable per effect even if the underlying file is replaced. */
   filename: string
-  size: number
-  /** Original-bytes URL — used for downloads and full-size previews.
-   *  Composed thumbnails: `/api/files/<id>/512.webp` or `/1024.webp`. */
-  url: string
-  /** UUID7 of the underlying file row. */
-  id: string
+  /** Underlying file in the content-addressed store. The `id` is shared
+   *  across effects that bind the same bytes; the `url` and
+   *  `thumbnails` are pre-composed by the server (no string concat). */
+  file: FileRef
 }
 
 // ─── Slice interfaces ────────────────────────────────────────────────────────

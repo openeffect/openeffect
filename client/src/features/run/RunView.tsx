@@ -68,7 +68,7 @@ function HistoricalRunView({ record, activeJob }: {
   // view shows a progress indicator mid-run and swaps to the final video /
   // error once SSE delivers the terminal event.
   const effectiveStatus = activeJob?.status ?? record.status
-  const effectiveVideoUrl = activeJob?.videoUrl ?? record.video_url
+  const effectiveVideoUrl = activeJob?.videoUrl ?? record.output?.url ?? null
   const effectiveError = activeJob?.error ?? record.error
   const isProcessing = effectiveStatus === 'processing'
   const isCompleted = effectiveStatus === 'completed' && !!effectiveVideoUrl
@@ -76,24 +76,27 @@ function HistoricalRunView({ record, activeJob }: {
 
   const { inputs, output, userParams } = parseRunInputs(record)
 
-  // Flatten all params into categorized lists for the params display
+  // Flatten non-image params into categorized display lists.
+  // Image inputs are surfaced via `record.input_files` (server-resolved
+  // FileRefs), not by UUID-pattern-matching the params blob.
   const allEntries = { ...inputs, ...output, ...userParams }
-  const images: [string, string][] = []
   const longText: [string, string][] = []
   const badges: [string, string][] = []
 
   for (const [key, value] of Object.entries(allEntries)) {
     if (value == null || value === '') continue
     const strVal = String(value)
-    const isImageRef = typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(value)
-    if (isImageRef) {
-      images.push([key, strVal])
-    } else if (strVal.length > 50) {
+    if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(value)) {
+      // Image-input UUID — rendered separately from `record.input_files`.
+      continue
+    }
+    if (strVal.length > 50) {
       longText.push([key, strVal])
     } else {
       badges.push([key, strVal])
     }
   }
+  const images = Object.entries(record.input_files ?? {})
 
   const modelName = availableModels.find((m) => m.id === record.model_id)?.name ?? record.model_id
   if (modelName) badges.unshift(['model', modelName])
@@ -259,11 +262,11 @@ function HistoricalRunView({ record, activeJob }: {
             {/* Images — inline thumbnails */}
             {images.length > 0 && (
               <div className="flex gap-2">
-                {images.map(([key, refId]) => (
+                {images.map(([key, ref]) => (
                   <div key={key} className="flex flex-col items-center gap-1">
                     <div className="h-12 w-12 overflow-hidden rounded-md border bg-muted">
                       <img
-                        src={`/api/files/${refId}/512.webp`}
+                        src={ref.thumbnails['512']}
                         alt={key}
                         className="h-full w-full object-cover"
                         onError={(e) => { e.currentTarget.style.display = 'none' }}

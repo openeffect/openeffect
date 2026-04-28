@@ -68,15 +68,15 @@ describe('sseManager.bootstrap', () => {
         {
           id: 'run-A', model_id: 'wan-2.7', status: 'processing',
           kind: 'effect', effect_id: 'e1', effect_name: 'Foo',
-          progress: 30, progress_msg: 'Generating', video_url: null,
-          output_id: null, inputs: null, error: null,
+          progress: 30, progress_msg: 'Generating',
+          output: null, input_files: {}, inputs: null, error: null,
           created_at: '', updated_at: '', duration_ms: null,
         },
         {
           id: 'run-B', model_id: 'kling-3.0', status: 'processing',
           kind: 'playground', effect_id: null, effect_name: null,
-          progress: 50, progress_msg: null, video_url: null,
-          output_id: null, inputs: null, error: null,
+          progress: 50, progress_msg: null,
+          output: null, input_files: {}, inputs: null, error: null,
           created_at: '', updated_at: '', duration_ms: null,
         },
       ],
@@ -123,8 +123,8 @@ describe('sseManager.bootstrap', () => {
       items: [{
         id: 'run-A', model_id: 'wan-2.7', status: 'processing',
         kind: 'effect', effect_id: 'e1', effect_name: 'StaleName',
-        progress: 10, progress_msg: 'Old message', video_url: null,
-        output_id: null, inputs: null, error: null,
+        progress: 10, progress_msg: 'Old message',
+        output: null, input_files: {}, inputs: null, error: null,
         created_at: '', updated_at: '', duration_ms: null,
       }],
     })

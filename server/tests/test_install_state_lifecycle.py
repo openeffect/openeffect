@@ -589,7 +589,11 @@ class TestPerAssetCRUD:
             kind="image", mime="image/png", max_size=10_000_000,
         )
         assert result["filename"] == "shot.png"
-        assert result["url"].startswith("/api/files/")
+        # New shape: `file` carries the canonical FileRef.
+        assert result["file"]["kind"] == "image"
+        assert result["file"]["mime"] == "image/png"
+        assert result["file"]["url"].startswith("/api/files/")
+        assert result["file"]["thumbnails"]["512"].endswith("/512.webp")
 
         existing = await _row(install_service, "tester", "demo")
         ef = await _effect_files(install_service, existing["id"])

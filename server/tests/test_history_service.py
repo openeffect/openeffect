@@ -39,9 +39,9 @@ async def _plant_file(service, file_id: str, *, ref_count: int = 0) -> None:
     can bump its ref_count without `add_file` actually running."""
     async with service._db.transaction() as conn:
         await conn.execute(
-            "INSERT INTO files (id, hash, kind, mime, ext, size, variants, "
+            "INSERT INTO files (id, hash, kind, mime, ext, size, "
             "                   ref_count, created_at) "
-            "VALUES (?, ?, 'image', 'image/png', 'png', 0, '[]', ?, ?)",
+            "VALUES (?, ?, 'image', 'image/png', 'png', 0, ?, ?)",
             (file_id, f"h-{file_id}", ref_count,
              datetime.now(timezone.utc).isoformat()),
         )
@@ -461,8 +461,8 @@ class TestRunRecordToDict:
         d = record.to_dict()
         expected_keys = {
             "id", "kind", "effect_id", "effect_name", "model_id", "status",
-            "progress", "progress_msg", "video_url",
-            "output_id", "inputs",
+            "progress", "progress_msg",
+            "output", "input_files", "inputs",
             "error", "created_at", "updated_at", "duration_ms",
         }
         assert set(d.keys()) == expected_keys
@@ -491,3 +491,96 @@ class TestRunRecordToDict:
         assert record is not None
         d = record.to_dict()
         assert d["inputs"] == "not valid json {{{"
+
+
+class TestInputFiles:
+    """Pin the role-vs-form-key dedup behavior. Effect runs persist BOTH
+    `model_inputs` (role-keyed) AND `inputs` (manifest-form-keyed) maps
+    that alias the same file UUIDs — emitting both would surface the
+    same image twice (once as `start_frame`, once as the manifest's
+    field name like `image`)."""
+
+    async def test_effect_run_emits_role_keyed_only(self, service):
+        """Effect run: prefer `model_inputs` (canonical role keys).
+        The form-keyed `inputs` map aliases the same uuid and would
+        produce a duplicate thumbnail in the UI if also emitted."""
+        await _plant_file(service, "file-A")
+        job = _make_job("job-effect-1")
+        # Same shape `run_service.start` writes: `inputs` carries the
+        # manifest's input field name (`image`); `model_inputs` carries
+        # the canonical role (`start_frame`); both point at the same
+        # file_id.
+        inputs_json = json.dumps({
+            "inputs": {"image": "file-A", "prompt": "hello"},
+            "model_inputs": {
+                "prompt": "hello",
+                "negative_prompt": "",
+                "start_frame": "file-A",
+            },
+            "output": {},
+            "user_params": {},
+        })
+        await service.create_processing(
+            job, inputs_json=inputs_json, input_ids=["file-A"],
+        )
+        record = await service.get_by_id("job-effect-1")
+        assert record is not None
+        d = await service.serialize(record)
+
+        # Exactly one entry, keyed by the role (not the manifest's field name).
+        assert set(d["input_files"].keys()) == {"start_frame"}
+        assert d["input_files"]["start_frame"]["id"] == "file-A"
+
+    async def test_playground_run_uses_inputs_section(self, service):
+        """Playground runs persist only `inputs` (no `model_inputs`),
+        already role-keyed. Verify that path resolves correctly."""
+        await _plant_file(service, "file-B")
+        job = _make_job("job-pg-1", effect_id=None, effect_name=None)
+        inputs_json = json.dumps({
+            "inputs": {
+                "prompt": "hello",
+                "negative_prompt": "",
+                "start_frame": "file-B",
+            },
+            "output": {},
+            "user_params": {},
+        })
+        await service.create_processing(
+            job, inputs_json=inputs_json, input_ids=["file-B"],
+            kind="playground",
+        )
+        record = await service.get_by_id("job-pg-1")
+        assert record is not None
+        d = await service.serialize(record)
+
+        assert set(d["input_files"].keys()) == {"start_frame"}
+        assert d["input_files"]["start_frame"]["id"] == "file-B"
+
+    async def test_two_distinct_image_inputs_both_appear(self, service):
+        """Effect with both start_frame and end_frame: both surface,
+        keyed by their respective roles."""
+        await _plant_file(service, "file-start")
+        await _plant_file(service, "file-end")
+        job = _make_job("job-effect-2")
+        inputs_json = json.dumps({
+            "inputs": {"start": "file-start", "end": "file-end", "prompt": "x"},
+            "model_inputs": {
+                "prompt": "x",
+                "negative_prompt": "",
+                "start_frame": "file-start",
+                "end_frame": "file-end",
+            },
+            "output": {},
+            "user_params": {},
+        })
+        await service.create_processing(
+            job, inputs_json=inputs_json,
+            input_ids=["file-start", "file-end"],
+        )
+        record = await service.get_by_id("job-effect-2")
+        assert record is not None
+        d = await service.serialize(record)
+
+        assert set(d["input_files"].keys()) == {"start_frame", "end_frame"}
+        assert d["input_files"]["start_frame"]["id"] == "file-start"
+        assert d["input_files"]["end_frame"]["id"] == "file-end"

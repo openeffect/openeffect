@@ -109,7 +109,7 @@ export function updateJobProgress(jobId: string, progress: number, message: stri
   }, 'run/progress')
 }
 
-export function completeJob(jobId: string, videoUrl: string): void {
+export function completeJob(jobId: string, videoUrl: string | null): void {
   setState((s) => {
     const job = s.run.jobs.get(jobId)
     if (job) {

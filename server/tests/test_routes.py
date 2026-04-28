@@ -190,14 +190,22 @@ class TestFilesRoute:
         )
         assert resp.status_code == 200
         data = resp.json()
+        # FileRef shape: {id, kind, mime, size, url, thumbnails}
         assert "id" in data
         # uuid7-shaped: dashes in the canonical layout
         assert "-" in data["id"]
         # hash is server-internal — never returned to clients
         assert "hash" not in data
+        # ext is encoded in `url`, no longer a top-level field
+        assert "ext" not in data
+        assert data["kind"] == "image"
         assert data["mime"] == "image/png"
-        assert data["ext"] == "png"
         assert data["size"] == len(png)
+        assert data["url"] == f"/api/files/{data['id']}/original.png"
+        assert data["thumbnails"] == {
+            "512":  f"/api/files/{data['id']}/512.webp",
+            "1024": f"/api/files/{data['id']}/1024.webp",
+        }
 
     def test_upload_deduplication(self, client):
         """Uploading the same content twice should return the same id —

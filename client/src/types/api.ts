@@ -64,9 +64,23 @@ export type InputFieldSchema =
       advanced?: boolean
     }
 
+/**
+ * Showcase entry as it appears in serialized effect responses.
+ *
+ * The server resolves manifest filename references (image inputs +
+ * preview) into canonical `FileRef` dicts before returning. So a value
+ * may be:
+ *   - `FileRef` for image inputs and preview that resolved against an
+ *     ingested asset
+ *   - `null` when the manifest references a logical name that hasn't
+ *     been ingested yet (a freshly-saved local effect can name a file
+ *     that wasn't uploaded)
+ *   - `string` for non-image showcase inputs (text values surfaced for
+ *     the form; the server returns these as-is)
+ */
 export interface Showcase {
-  preview?: string
-  inputs?: Record<string, string>
+  preview?: FileRef | null
+  inputs?: Record<string, FileRef | string | null>
 }
 
 export type ModelParamEntry =
@@ -122,11 +136,15 @@ export interface RunRecord {
   status: 'processing' | 'completed' | 'failed'
   progress: number
   progress_msg: string | null
-  /** Composed by the server from `output_id + ext`. Null while the run
-   *  is in flight or if it failed before producing a result. */
-  video_url: string | null
-  /** UUID7 of the result file. Composed thumbnails: `/api/files/<id>/512.webp`. */
-  output_id: string | null
+  /** Result file as a canonical FileRef (or null while in flight / on
+   *  failure). Read `output.url` for the video bytes,
+   *  `output.thumbnails['512']` for the poster frame. */
+  output: FileRef | null
+  /** Resolved file refs for every image input on this run, keyed by
+   *  the input role / key (e.g. `start_frame`, `end_frame`). The server
+   *  walks the stored input list and resolves each id to a FileRef so
+   *  the client doesn't have to UUID-pattern-match `inputs` itself. */
+  input_files: Record<string, FileRef>
   inputs: unknown
   error: string | null
   created_at: string
@@ -201,17 +219,23 @@ export interface AppConfig {
   keyring_available: boolean
 }
 
-export interface FileResponse {
-  /** UUID7 — the addressable identifier for the file. Compose URLs as
-   *  `/api/files/<id>/<filename>`. Every image and video the server
-   *  accepts has `original.<ext>`, `512.webp`, and `1024.webp` available
-   *  on disk — no need to check ahead of time. */
+/**
+ * Canonical reference to a file in the content-addressed store.
+ * Returned by every endpoint that exposes a file. Read `url` for the
+ * original bytes or `thumbnails["512"]` / `thumbnails["1024"]` for
+ * image/video thumbnail tiers — never compose `/api/files/...` URLs
+ * by string concat.
+ *
+ * `thumbnails` is empty for `kind === 'other'`; image and video both
+ * carry both webp tiers (videos store poster frames at each tier).
+ */
+export interface FileRef {
   id: string
   kind: 'image' | 'video' | 'other'
   mime: string
-  /** Canonical original extension, no leading dot (e.g. "jpg", "mp4"). */
-  ext: string
   size: number
+  url: string
+  thumbnails: Record<string, string>
 }
 
 export interface RunRequest {

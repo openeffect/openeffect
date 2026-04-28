@@ -5,6 +5,7 @@ from typing import Any
 
 from core.states import RunKind, RunStatus
 from db.database import Database
+from schemas.file_ref import FileRef, build_file_ref
 from services.file_service import FileService
 
 
@@ -27,25 +28,46 @@ class RunRecord:
     duration_ms: int | None = None
     provider_request_id: str | None = None
     provider_endpoint: str | None = None
-    # Result-file metadata (joined from `files` on output_id) — populated
-    # by query helpers so the serializer can compose URLs without a second
-    # round trip.
-    output_ext: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        parsed_inputs = None
+    def to_dict(self, file_refs: dict[str, FileRef] | None = None) -> dict[str, Any]:
+        """Serialize for the API. `file_refs` maps file_id → FileRef and
+        is the result of a batched JOIN done by HistoryService. Pass None
+        for paths that don't need file resolution (e.g., the recovery
+        path that only reads `provider_request_id` / `provider_endpoint`)
+        — output and input_files come back empty in that case."""
+        refs = file_refs or {}
+
+        parsed_inputs: Any = None
         if self.inputs:
             try:
                 parsed_inputs = json.loads(self.inputs)
             except (json.JSONDecodeError, TypeError):
                 parsed_inputs = self.inputs
 
-        # The 512.webp poster is guaranteed to exist whenever an
-        # `output_id` is present — every video the file store accepts
-        # produces both 512.webp and 1024.webp during ingest.
-        video_url: str | None = None
-        if self.output_id and self.output_ext:
-            video_url = f"/api/files/{self.output_id}/original.{self.output_ext}"
+        # input_files: keys are the input role (start_frame, end_frame,
+        # etc.); values are FileRefs. Effect runs persist BOTH a
+        # role-keyed `model_inputs` map (canonical) AND a form-keyed
+        # `inputs` map (the manifest's input field names) — these alias
+        # the same file ids, so emitting from both would surface the
+        # same image twice (once as `start_frame`, once as `image`).
+        # Playground runs only persist `inputs`, already role-keyed.
+        # Pick whichever is present, in that order.
+        input_files: dict[str, dict[str, Any]] = {}
+        if isinstance(parsed_inputs, dict):
+            section: dict[str, Any] | None = None
+            mi = parsed_inputs.get("model_inputs")
+            if isinstance(mi, dict):
+                section = mi
+            elif isinstance(parsed_inputs.get("inputs"), dict):
+                section = parsed_inputs["inputs"]
+            if section is not None:
+                for k, v in section.items():
+                    if isinstance(v, str) and v in refs:
+                        input_files[k] = refs[v].model_dump()
+
+        output: dict[str, Any] | None = None
+        if self.output_id and self.output_id in refs:
+            output = refs[self.output_id].model_dump()
 
         return {
             "id": self.id,
@@ -56,8 +78,8 @@ class RunRecord:
             "status": self.status,
             "progress": self.progress,
             "progress_msg": self.progress_msg,
-            "video_url": video_url,
-            "output_id": self.output_id,
+            "output": output,
+            "input_files": input_files,
             "inputs": parsed_inputs,
             "error": self.error,
             "created_at": self.created_at,
@@ -66,18 +88,12 @@ class RunRecord:
         }
 
 
-# Columns used everywhere we read a run row that needs to be serialized.
-# Keeps the JOIN shape consistent across `get_by_id`, `get_all`, etc.
-_RUN_SELECT = (
-    "SELECT r.*, f.ext AS output_ext "
-    "FROM runs r "
-    "LEFT JOIN files f ON f.id = r.output_id "
-)
+# `r.*` is enough — file metadata comes via the batched lookup in
+# `_resolve_files`, not a per-row LEFT JOIN.
+_RUN_SELECT = "SELECT r.* FROM runs r "
 
 
 def _row_to_record(row: Any) -> RunRecord:
-    """Build a RunRecord from a row that includes the LEFT JOIN column
-    `output_ext` (the result file's canonical extension)."""
     data = dict(row)
     return RunRecord(
         id=data["id"],
@@ -97,7 +113,6 @@ def _row_to_record(row: Any) -> RunRecord:
         duration_ms=data.get("duration_ms"),
         provider_request_id=data.get("provider_request_id"),
         provider_endpoint=data.get("provider_endpoint"),
-        output_ext=data.get("output_ext"),
     )
 
 
@@ -108,6 +123,56 @@ class HistoryService:
     async def close(self) -> None:
         """Kept for API compatibility; the Database lifecycle is owned by the caller."""
         pass
+
+    async def _resolve_files(
+        self, records: list[RunRecord],
+    ) -> dict[str, FileRef]:
+        """Single SELECT to fetch every file row referenced by any record
+        in the page (output_id + each row's input_ids[]). Returns a
+        `file_id → FileRef` lookup the records can hand to `to_dict`.
+
+        Replaces the per-row LEFT JOIN we used to do in `_RUN_SELECT` —
+        we now need full file metadata (kind, mime, ext, size) for both
+        the output AND each input, so doing it in one batched query
+        keeps the list endpoint at O(2) DB calls regardless of page
+        size or input fan-out."""
+        all_ids: set[str] = set()
+        for record in records:
+            if record.output_id:
+                all_ids.add(record.output_id)
+            if record.input_ids:
+                try:
+                    arr = json.loads(record.input_ids)
+                    if isinstance(arr, list):
+                        all_ids.update(s for s in arr if isinstance(s, str))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        if not all_ids:
+            return {}
+
+        placeholders = ",".join("?" * len(all_ids))
+        rows = await self._db.fetchall(
+            f"SELECT id, kind, mime, ext, size FROM files WHERE id IN ({placeholders})",
+            tuple(all_ids),
+        )
+        return {
+            row["id"]: build_file_ref(
+                id=row["id"], kind=row["kind"], mime=row["mime"],
+                ext=row["ext"], size=row["size"],
+            )
+            for row in rows
+        }
+
+    async def serialize(self, record: RunRecord) -> dict[str, Any]:
+        """Convenience for single-record callers: resolve files then `to_dict`."""
+        refs = await self._resolve_files([record])
+        return record.to_dict(refs)
+
+    async def serialize_many(self, records: list[RunRecord]) -> list[dict[str, Any]]:
+        """Convenience for paginated callers: one batched lookup, all records."""
+        refs = await self._resolve_files(records)
+        return [r.to_dict(refs) for r in records]
 
     async def create_processing(
         self,

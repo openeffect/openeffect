@@ -146,7 +146,6 @@ async def init_db(db_path: Path) -> None:
                 mime       TEXT NOT NULL,
                 ext        TEXT NOT NULL,           -- canonical original extension (no dot)
                 size       INTEGER NOT NULL,
-                variants   TEXT NOT NULL,           -- JSON array, e.g. ["original.jpg","512.webp","1024.webp"]
                 ref_count  INTEGER DEFAULT 0,       -- NULL marks a row tombstoned for GC
                 created_at TEXT NOT NULL
             )

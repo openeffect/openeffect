@@ -20,7 +20,8 @@ from routes._errors import (
     payload_too_large,
     unsupported_type,
 )
-from services.effect_loader import FileRef, LoadedEffect
+from schemas.file_ref import file_to_ref
+from services.effect_loader import LoadedEffect
 from services.errors import (
     AssetNotFoundError,
     EffectNotFoundError,
@@ -47,42 +48,35 @@ class RenameAssetRequest(BaseModel):
     new_name: str
 
 
-def _file_url(ref: FileRef, variant: str | None = None) -> str:
-    """Compose a /api/files URL for a given variant of an effect asset.
-    `variant=None` returns the original file; otherwise pass an exact
-    variant filename like `'512.webp'`."""
-    if variant is None:
-        return f"/api/files/{ref.id}/original.{ref.ext}"
-    return f"/api/files/{ref.id}/{variant}"
-
-
-def _showcase_asset_url(loaded: LoadedEffect, logical_name: str) -> str:
-    """Resolve a manifest's logical filename to the served URL.
-    Falls back to the literal value if the asset isn't (yet) in the
-    file map — handy in tests and for local effects whose manifest
-    can reference assets that haven't been fully ingested."""
-    ref = loaded.files.get(logical_name)
-    if ref is None:
-        return logical_name
-    return _file_url(ref)
+def _showcase_asset_ref(loaded: LoadedEffect, logical_name: str) -> dict | None:
+    """Resolve a manifest's logical filename to a `FileRef` dict.
+    Returns None when the asset hasn't been ingested yet (a freshly
+    saved local effect can reference filenames the user has typed
+    but not uploaded — the editor renders those as missing rather
+    than as broken links)."""
+    file = loaded.files.get(logical_name)
+    if file is None:
+        return None
+    return file_to_ref(file).model_dump()
 
 
 def _serialize_effect(loaded: LoadedEffect) -> dict:
-    """Serialize a LoadedEffect with pre-resolved asset URLs. Showcase
-    image fields and previews come back as ready-to-render
-    `/api/files/<hash>/...` URLs — the client never composes them itself
-    and never hits a per-effect asset route."""
+    """Serialize a LoadedEffect with pre-resolved asset references.
+    Showcase preview and image-typed showcase inputs come back as
+    canonical `FileRef` dicts (or null when the asset isn't ingested
+    yet) — the client reads `ref.url` / `ref.thumbnails['1024']`
+    directly and never composes a `/api/files/...` URL."""
     data = loaded.manifest.model_dump()
 
     for sc in data.get("showcases", []):
         if sc.get("preview"):
-            sc["preview"] = _showcase_asset_url(loaded, sc["preview"])
+            sc["preview"] = _showcase_asset_ref(loaded, sc["preview"])
         if sc.get("inputs"):
-            resolved: dict[str, str] = {}
+            resolved: dict[str, dict | str | None] = {}
             for key, value in sc["inputs"].items():
                 schema = loaded.manifest.inputs.get(key)
                 if schema and schema.type == "image":
-                    resolved[key] = _showcase_asset_url(loaded, value)
+                    resolved[key] = _showcase_asset_ref(loaded, value)
                 else:
                     resolved[key] = value
             sc["inputs"] = resolved
@@ -269,12 +263,10 @@ async def get_effect_editor_data(namespace: str, slug: str, request: Request):
 
     files: list[dict] = []
     if loaded:
-        for logical_name, ref in loaded.files.items():
+        for logical_name, file in loaded.files.items():
             files.append({
                 "filename": logical_name,
-                "size": 0,  # not tracked per-asset; client uses for sort/display only
-                "url": _file_url(ref),
-                "id": ref.id,
+                "file": file_to_ref(file).model_dump(),
             })
         files.sort(key=lambda f: f["filename"])
 

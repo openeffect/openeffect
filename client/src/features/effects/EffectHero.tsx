@@ -1,8 +1,7 @@
 import { Fragment, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, Plus, Type, Sparkles } from 'lucide-react'
-import type { EffectManifest, Showcase } from '@/types/api'
-import { isVideoUrl } from '@/utils/formatters'
+import type { EffectManifest, FileRef, Showcase } from '@/types/api'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/cn'
 
@@ -10,21 +9,34 @@ interface EffectHeroProps {
   effect: EffectManifest
 }
 
+function isFileRef(v: unknown): v is FileRef {
+  return typeof v === 'object' && v !== null && 'kind' in v && 'url' in v
+}
+
+/** Hero is large (~340px). 1024.webp gives a sharp render at modest
+ *  bandwidth; for video previews we still need the actual mp4 bytes. */
+function heroSourceUrl(ref: FileRef): string {
+  if (ref.kind === 'video') return ref.url
+  return ref.thumbnails['1024'] ?? ref.url
+}
+
 export function EffectHero({ effect }: EffectHeroProps) {
   const [activeIdx, setActiveIdx] = useState(0)
   const showcases = effect.showcases
   const showcase: Showcase | null = showcases[activeIdx] ?? showcases[0] ?? null
 
-  const previewUrl = showcase?.preview ?? null
+  const previewRef = showcase?.preview ?? null
+  const previewUrl = previewRef ? heroSourceUrl(previewRef) : null
+  const previewIsVideo = previewRef?.kind === 'video'
 
   // Build input assets — match showcase.inputs keys to manifest.inputs
-  const inputBlocks: { key: string; type: string; assetUrl: string | null; assetText: string | null }[] = []
+  const inputBlocks: { key: string; type: 'image' | 'text'; assetUrl: string | null; assetText: string | null }[] = []
   for (const [key, schema] of Object.entries(effect.inputs)) {
     const assetValue = showcase?.inputs?.[key]
-    if (!assetValue) continue
-    if (schema.type === 'image') {
-      inputBlocks.push({ key, type: 'image', assetUrl: assetValue, assetText: null })
-    } else if (schema.type === 'text') {
+    if (assetValue == null) continue
+    if (schema.type === 'image' && isFileRef(assetValue)) {
+      inputBlocks.push({ key, type: 'image', assetUrl: heroSourceUrl(assetValue), assetText: null })
+    } else if (schema.type === 'text' && typeof assetValue === 'string') {
       inputBlocks.push({ key, type: 'text', assetUrl: null, assetText: assetValue })
     }
   }
@@ -59,7 +71,7 @@ export function EffectHero({ effect }: EffectHeroProps) {
               {inputBlocks.length > 0 && previewUrl && <PipelineGlyph delay={0.1 + inputBlocks.length * 0.08} icon="arrow" />}
               {previewUrl && (
                 <MediaBlock delay={0.1 + inputBlocks.length * 0.08 + 0.05}>
-                  {isVideoUrl(previewUrl) ? (
+                  {previewIsVideo ? (
                     <video src={previewUrl} autoPlay muted loop playsInline preload="auto" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
                   ) : (
                     <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
@@ -131,6 +143,11 @@ function ShowcaseThumb({
   onClick: () => void
 }) {
   const preview = showcase.preview ?? null
+  // 12×12 button → 512.webp is overkill but the smallest tier we have.
+  const thumbUrl = preview
+    ? (preview.kind === 'video' ? preview.thumbnails['512'] : preview.thumbnails['512'] ?? preview.url)
+    : null
+  const isVideo = preview?.kind === 'video'
   return (
     <button
       onClick={onClick}
@@ -144,18 +161,19 @@ function ShowcaseThumb({
       <div className="absolute inset-0 flex items-center justify-center">
         <Sparkles size={14} className="text-muted-foreground opacity-40" />
       </div>
-      {preview && (isVideoUrl(preview) ? (
-        <video
-          src={preview}
-          muted
-          playsInline
-          preload="metadata"
+      {thumbUrl && (isVideo ? (
+        // Even for video previews the thumb is a poster frame (.webp),
+        // so render it as an img — no need to spin up a <video> element
+        // for a 48px tile.
+        <img
+          src={thumbUrl}
+          alt=""
           className="absolute inset-0 h-full w-full object-cover"
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       ) : (
         <img
-          src={preview}
+          src={thumbUrl}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
           onError={(e) => { e.currentTarget.style.display = 'none' }}
@@ -166,7 +184,7 @@ function ShowcaseThumb({
 }
 
 /* --- Input block: renders image or text --- */
-function InputBlock({ block, delay }: { block: { type: string; assetUrl: string | null; assetText: string | null }; delay: number }) {
+function InputBlock({ block, delay }: { block: { type: 'image' | 'text'; assetUrl: string | null; assetText: string | null }; delay: number }) {
   if (block.type === 'image' && block.assetUrl) {
     return (
       <MediaBlock delay={delay}>

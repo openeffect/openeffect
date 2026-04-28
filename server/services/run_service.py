@@ -20,6 +20,7 @@ from effects.validator import EffectManifest, validate_run_inputs
 from providers.base import ImageRef, ProviderInput
 from providers.factory import ModelProviderFactory
 from providers.fal_provider import FalProvider
+from schemas.file_ref import file_to_ref
 from schemas.run import PlaygroundRunRequest, RunRequest
 from services.effect_loader import EffectLoaderService
 from services.file_service import FileService
@@ -496,17 +497,20 @@ class RunService:
                     )
                     await self._history.complete(job.job_id, output_id or "", duration_ms)
 
-                    video_url = (
-                        f"/api/files/{output_id}/original.mp4"
-                        if output_id else None
-                    )
-                    job.video_url = video_url
+                    # Resolve the output as a canonical FileRef so the
+                    # client can read `output.url` / `output.thumbnails`
+                    # without composing URLs.
+                    output_ref = None
+                    if output_id:
+                        file = await self._files.get_file(output_id)
+                        if file is not None:
+                            output_ref = file_to_ref(file).model_dump()
+                    job.video_url = output_ref.get("url") if output_ref else None
                     self._broadcast({
                         "event": "completed",
                         "data": {
                             "job_id": job.job_id,
-                            "video_url": video_url,
-                            "output_id": output_id,
+                            "output": output_ref,
                             "duration_ms": duration_ms,
                         },
                     })

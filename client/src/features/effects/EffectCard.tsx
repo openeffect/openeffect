@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
 import { Sparkles, Star } from 'lucide-react'
-import type { EffectManifest } from '@/types/api'
+import type { EffectManifest, FileRef } from '@/types/api'
 import { useStore } from '@/store'
 import { selectSelectedId } from '@/store/selectors/effectsSelectors'
 import { selectEffect, toggleFavorite } from '@/store/actions/effectsActions'
-import { formatEffectCategory, isVideoUrl } from '@/utils/formatters'
+import { formatEffectCategory } from '@/utils/formatters'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/cn'
 
@@ -12,18 +12,31 @@ interface EffectCardProps {
   effect: EffectManifest
 }
 
+function isFileRef(v: unknown): v is FileRef {
+  return typeof v === 'object' && v !== null && 'kind' in v && 'url' in v
+}
+
 export function EffectCard({ effect }: EffectCardProps) {
   const selectedId = useStore(selectSelectedId)
 
   const isSelected = selectedId === effect.id
-  // Showcase URLs are pre-resolved by the server. Card always shows the
-  // first showcase; the detail page has a picker for the rest.
+  // Showcase entries are pre-resolved FileRefs (or null when the asset
+  // isn't ingested yet). The card shows the first showcase; the detail
+  // page has a picker for the rest.
   const first = effect.showcases[0]
-  const firstInputUrl = first?.inputs
-    ? Object.values(first.inputs).find((v) => /\.(jpg|jpeg|png|webp|gif)$/i.test(v))
+  // Static poster: the first image-typed input ref, used as a fallback
+  // behind the preview video while it loads (or when the preview is
+  // itself just an image).
+  const posterRef = first?.inputs
+    ? Object.values(first.inputs).find(isFileRef) ?? null
     : null
-  const posterUrl = firstInputUrl ?? null
-  const previewUrl = first?.preview ?? null
+  const previewRef = first?.preview ?? null
+  // Cards are small (~200-400px). The 512.webp tier is plenty.
+  const posterUrl = posterRef?.thumbnails['512'] ?? posterRef?.url ?? null
+  const isVideoPreview = previewRef?.kind === 'video'
+  const previewUrl = isVideoPreview
+    ? previewRef.url
+    : (previewRef?.thumbnails['512'] ?? previewRef?.url ?? null)
 
   return (
     <motion.div
@@ -52,7 +65,7 @@ export function EffectCard({ effect }: EffectCardProps) {
           />
         )}
         {/* Preview (video or image) plays on top */}
-        {previewUrl && (isVideoUrl(previewUrl) ? (
+        {previewUrl && (isVideoPreview ? (
           <video
             src={previewUrl}
             autoPlay

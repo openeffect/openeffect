@@ -20,6 +20,7 @@ from core.limits import MAX_IMAGE_SIZE, MAX_TOTAL_SIZE, MAX_VIDEO_SIZE
 from core.states import EffectSource, EffectState
 from db.database import Database
 from effects.validator import EffectManifest
+from schemas.file_ref import build_file_ref
 from services.errors import (
     AssetNotFoundError,
     EffectNotFoundError,
@@ -168,16 +169,20 @@ def _asset_response(
     size: int,
     *,
     filename: str | None = None,
+    kind: FileKind,
+    mime: str,
 ) -> dict[str, Any]:
-    """Shape an `AssetFile` payload for the editor. The original-bytes
-    URL is what we send; the client composes thumbnail URLs by
-    appending `/512.webp` or `/1024.webp` as needed — both tiers are
-    guaranteed to exist for any image or video the file store accepts."""
+    """Shape an asset payload for the editor: `{filename, file: FileRef}`.
+    `filename` is the **logical name on this effect** (stable per effect);
+    the embedded `FileRef` is the underlying file in the content-addressed
+    store (its `id` is shared across effects that reference the same
+    bytes). The client never composes thumbnail URLs — it reads
+    `file.thumbnails["512"]` directly."""
     return {
         "filename": filename if filename is not None else f"original.{ext}",
-        "size": size,
-        "url": f"/api/files/{file_id}/original.{ext}",
-        "id": file_id,
+        "file": build_file_ref(
+            id=file_id, kind=kind, mime=mime, ext=ext, size=size,
+        ).model_dump(),
     }
 
 
@@ -783,6 +788,7 @@ class InstallService:
         await self._notify_changed(existing["id"])
         return _asset_response(
             file.id, file.ext, file.size, filename=chosen_name,
+            kind=file.kind, mime=file.mime,
         )
 
     async def rename_effect_asset(
@@ -802,7 +808,7 @@ class InstallService:
 
         if old_name == new_name:
             row = await self._db.fetchone(
-                "SELECT f.id, f.ext, f.size FROM effect_files ef "
+                "SELECT f.id, f.kind, f.mime, f.ext, f.size FROM effect_files ef "
                 "JOIN files f ON f.id = ef.file_id "
                 "WHERE ef.effect_id = ? AND ef.logical_name = ?",
                 (existing["id"], old_name),
@@ -811,6 +817,7 @@ class InstallService:
                 raise AssetNotFoundError(f"Asset '{old_name}' not found on this effect")
             return _asset_response(
                 row["id"], row["ext"], row["size"], filename=old_name,
+                kind=row["kind"], mime=row["mime"],
             )
 
         async with self._db.transaction() as conn:
@@ -830,7 +837,7 @@ class InstallService:
                 raise AssetNotFoundError(f"Asset '{old_name}' not found on this effect")
 
         row = await self._db.fetchone(
-            "SELECT f.id, f.ext, f.size FROM effect_files ef "
+            "SELECT f.id, f.kind, f.mime, f.ext, f.size FROM effect_files ef "
             "JOIN files f ON f.id = ef.file_id "
             "WHERE ef.effect_id = ? AND ef.logical_name = ?",
             (existing["id"], new_name),
@@ -841,6 +848,7 @@ class InstallService:
         await self._notify_changed(existing["id"])
         return _asset_response(
             row["id"], row["ext"], row["size"], filename=new_name,
+            kind=row["kind"], mime=row["mime"],
         )
 
     async def remove_effect_asset(

@@ -1,4 +1,3 @@
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -7,33 +6,25 @@ import yaml
 
 from db.database import Database
 from effects.validator import EffectManifest
+from services.file_service import File, FileKind
 from services.install_service import InstallService
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class FileRef:
-    """An effect's view of a file in the file store. The serializer
-    composes URLs from these without ever hitting the DB or filesystem.
-    Note `hash` is intentionally absent — it's a server-internal dedup
-    key and exposing it via the API would let an attacker probe for
-    known content."""
-    id: str
-    mime: str
-    ext: str
-    variants: list[str]
-
-
 @dataclass
 class LoadedEffect:
-    """Wraps a validated manifest with loader-specific metadata."""
+    """Wraps a validated manifest with loader-specific metadata. The
+    `files` map's `File` values come straight from the JOIN against the
+    `files` table — the same dataclass `FileService` returns — so
+    callers feed them directly into `build_file_ref` to produce the API
+    shape."""
     manifest: EffectManifest
     id: str                                 # UUID primary key from the effects table
     full_id: str                            # namespace/slug
     source: str                             # "official" | "installed" | "local"
     is_favorite: bool = False
-    files: dict[str, FileRef] = field(default_factory=dict)  # logical_name → FileRef
+    files: dict[str, File] = field(default_factory=dict)  # logical_name → File
 
 
 class EffectLoaderService:
@@ -83,23 +74,27 @@ class EffectLoaderService:
             return
 
         # Single JOIN to pull every (effect_id, logical_name) → file mapping.
-        # Cheaper than per-effect lookups even for tiny libraries.
+        # Cheaper than per-effect lookups even for tiny libraries. We pull
+        # the full `File`-shaped column set so each cache entry can flow
+        # straight into `build_file_ref` without a re-fetch.
         effect_ids = [row["id"] for row in rows]
         placeholders = ",".join("?" * len(effect_ids))
         files_query = (
-            "SELECT ef.effect_id, ef.logical_name, f.id, f.mime, f.ext, f.variants "
+            "SELECT ef.effect_id, ef.logical_name, "
+            "       f.id, f.hash, f.kind, f.mime, f.ext, f.size "
             "FROM effect_files ef "
             "JOIN files f ON f.id = ef.file_id "
             f"WHERE ef.effect_id IN ({placeholders})"
         )
         file_rows = await self._db.fetchall(files_query, tuple(effect_ids))
-        files_by_effect: dict[str, dict[str, FileRef]] = {}
+        files_by_effect: dict[str, dict[str, File]] = {}
         for fr in file_rows:
-            ref = FileRef(
-                id=fr["id"], mime=fr["mime"], ext=fr["ext"],
-                variants=json.loads(fr["variants"]),
+            kind: FileKind = fr["kind"]
+            file = File(
+                id=fr["id"], hash=fr["hash"], kind=kind,
+                mime=fr["mime"], ext=fr["ext"], size=fr["size"],
             )
-            files_by_effect.setdefault(fr["effect_id"], {})[fr["logical_name"]] = ref
+            files_by_effect.setdefault(fr["effect_id"], {})[fr["logical_name"]] = file
 
         for row in rows:
             try:
@@ -148,16 +143,17 @@ class EffectLoaderService:
         # `reload()` uses, so the resulting `LoadedEffect` is byte-for-byte
         # identical to what a full reload would produce.
         file_rows = await self._db.fetchall(
-            "SELECT ef.logical_name, f.id, f.mime, f.ext, f.variants "
+            "SELECT ef.logical_name, "
+            "       f.id, f.hash, f.kind, f.mime, f.ext, f.size "
             "FROM effect_files ef "
             "JOIN files f ON f.id = ef.file_id "
             "WHERE ef.effect_id = ?",
             (effect_id,),
         )
-        files: dict[str, FileRef] = {
-            fr["logical_name"]: FileRef(
-                id=fr["id"], mime=fr["mime"], ext=fr["ext"],
-                variants=json.loads(fr["variants"]),
+        files: dict[str, File] = {
+            fr["logical_name"]: File(
+                id=fr["id"], hash=fr["hash"], kind=fr["kind"],
+                mime=fr["mime"], ext=fr["ext"], size=fr["size"],
             )
             for fr in file_rows
         }

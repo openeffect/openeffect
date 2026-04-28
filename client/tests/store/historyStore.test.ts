@@ -1,26 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../src/utils/api', () => ({
-  api: {
-    getRuns: vi.fn().mockResolvedValue({
-      items: [
-        { id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'completed', progress: 100, video_url: '/v.mp4', inputs: null, error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null },
-        { id: 'run-2', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'failed', progress: 0, video_url: null, inputs: null, error: 'timeout', created_at: '2025-01-02', updated_at: '2025-01-02', duration_ms: null, progress_msg: null },
-      ],
-      total: 2,
-      active_count: 0,
-    }),
-    getRun: vi.fn().mockResolvedValue({
-      id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', model_id: 'wan-2.7',
-      status: 'completed', progress: 100, video_url: '/v.mp4', inputs: '{"inputs":{"prompt":"test"}}',
-      error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null,
-    }),
-    deleteRun: vi.fn().mockResolvedValue({ ok: true }),
-    uninstallEffect: vi.fn().mockResolvedValue({ ok: true }),
-    getEffects: vi.fn().mockResolvedValue([]),
-    toggleFavorite: vi.fn().mockResolvedValue({ ok: true }),
-  },
-}))
+// Inlined inside the factory below — `vi.mock` is hoisted to file top,
+// so any const at module scope isn't yet initialized when the factory
+// runs.
+
+vi.mock('../../src/utils/api', () => {
+  const videoRef = {
+    id: 'out-1', kind: 'video' as const, mime: 'video/mp4', size: 1024,
+    url: '/api/files/out-1/original.mp4',
+    thumbnails: { '512': '/api/files/out-1/512.webp', '1024': '/api/files/out-1/1024.webp' },
+  }
+  return {
+    api: {
+      getRuns: vi.fn().mockResolvedValue({
+        items: [
+          { id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'completed', progress: 100, output: videoRef, input_files: {}, inputs: null, error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null },
+          { id: 'run-2', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'failed', progress: 0, output: null, input_files: {}, inputs: null, error: 'timeout', created_at: '2025-01-02', updated_at: '2025-01-02', duration_ms: null, progress_msg: null },
+        ],
+        total: 2,
+        active_count: 0,
+      }),
+      getRun: vi.fn().mockResolvedValue({
+        id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', model_id: 'wan-2.7',
+        status: 'completed', progress: 100, output: videoRef, input_files: {},
+        inputs: '{"inputs":{"prompt":"test"}}',
+        error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null,
+      }),
+      deleteRun: vi.fn().mockResolvedValue({ ok: true }),
+      uninstallEffect: vi.fn().mockResolvedValue({ ok: true }),
+      getEffects: vi.fn().mockResolvedValue([]),
+      toggleFavorite: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  }
+})
 
 vi.mock('../../src/utils/router', () => ({
   navigate: vi.fn(),

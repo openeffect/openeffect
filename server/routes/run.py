@@ -16,7 +16,8 @@ async def start_run(req: RunRequest, request: Request):
     try:
         job_id = await run_service.start(req)
         record = await history.get_by_id(job_id)
-        return {"job_id": job_id, "record": record.to_dict() if record else None}
+        serialized = await history.serialize(record) if record else None
+        return {"job_id": job_id, "record": serialized}
     except ValueError as e:
         raise unprocessable(str(e), ErrorCode.INVALID_REQUEST)
     except PermissionError as e:
@@ -30,7 +31,8 @@ async def start_playground_run(req: PlaygroundRunRequest, request: Request):
     try:
         job_id = await run_service.start_playground(req)
         record = await history.get_by_id(job_id)
-        return {"job_id": job_id, "record": record.to_dict() if record else None}
+        serialized = await history.serialize(record) if record else None
+        return {"job_id": job_id, "record": serialized}
     except ValueError as e:
         raise unprocessable(str(e), ErrorCode.INVALID_REQUEST)
     except PermissionError as e:

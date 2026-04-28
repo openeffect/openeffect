@@ -42,12 +42,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
     setUploading(true)
     try {
       const result = await api.uploadEffectAsset(ns, slug, file)
-      addEditorAsset({
-        filename: result.filename,
-        size: result.size,
-        url: result.url,
-        id: result.id,
-      })
+      addEditorAsset(result)
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
@@ -148,10 +143,10 @@ function FileRow({
   const [busy, setBusy] = useState<'rename' | 'delete' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Every image and video has a `512.webp` on disk (Pillow thumbnail for
-  // images, ffmpeg poster frame for videos) — the file-store's contract.
-  // No need to check.
-  const thumbnailUrl = `/api/files/${file.id}/512.webp`
+  // The server pre-composes both webp tiers; the 512 always exists for
+  // image and video kinds. (kind=other has no thumbnails — but the editor
+  // never uploads non-media so we never hit that branch here.)
+  const thumbnailUrl = file.file.thumbnails['512']
 
   const startRename = () => {
     setIsRenaming(true)
@@ -202,7 +197,7 @@ function FileRow({
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 p-2">
         {/* Thumbnail — clicks open the original. */}
-        <a href={file.url} target="_blank" rel="noreferrer" className="shrink-0">
+        <a href={file.file.url} target="_blank" rel="noreferrer" className="shrink-0">
           <img
             src={thumbnailUrl}
             alt={file.filename}

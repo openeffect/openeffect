@@ -24,7 +24,7 @@ build:
 # same way uvicorn does, so the routes registered match what the
 # running server exposes.
 openapi:
-	cd server && uv run python -c "import json, sys; from main import app; sys.stdout.write(json.dumps(app.openapi(), indent=2))" > openapi.json
+	cd server && ../.venv/bin/python -c "import json, sys; from main import app; sys.stdout.write(json.dumps(app.openapi(), indent=2))" > ../openapi.json
 	@echo "Wrote openapi.json"
 
 # Regenerate client/src/types/api.gen.ts from the live OpenAPI schema.

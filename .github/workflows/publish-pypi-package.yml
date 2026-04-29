@@ -1,0 +1,68 @@
+name: Publish PyPI Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required for PyPI Trusted Publishing (OIDC) - no API token in secrets
+      id-token: write
+      # Required to attach the wheel + sdist to the GitHub release page
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      - name: Install client deps
+        working-directory: client
+        run: pnpm install --frozen-lockfile
+
+      - name: Build client
+        # The wheel bundles `client/dist/` via the hatch artifacts directive
+        # in pyproject.toml - without this step the published wheel ships
+        # with no UI.
+        working-directory: client
+        run: pnpm build
+
+      - name: Build distributions (sdist + wheel)
+        run: uv build
+
+      - name: Verify metadata
+        run: uv tool run twine check dist/*
+
+      - name: Publish to PyPI
+        # Trusted Publishing - requires one-time setup at
+        # https://pypi.org/manage/account/publishing/
+        # (project name `openeffect`, workflow file `publish-pypi-package.yml`).
+        # No API token in repo secrets needed once configured.
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Attach distributions to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.whl dist/*.tar.gz

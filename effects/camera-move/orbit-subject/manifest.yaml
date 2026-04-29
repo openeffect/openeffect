@@ -29,21 +29,12 @@ inputs:
     label: "Your photo"
     hint: "Works best with a clearly separated subject and visible background depth"
 
-  scene_prompt:
-    type: text
-    required: false
-    label: "Describe the scene"
-    placeholder: "A stylish woman sitting on city steps at dusk"
-    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
-    max_length: 500
-    multiline: false
-
 generation:
   models:
     - kling-3.0
-    - wan-2.7
+    - pixverse-v6
 
-  default_model: kling-3.0
+  default_model: pixverse-v6
 
   prompt: >
     A single continuous orbital camera move around the same subject from the input image.
@@ -53,7 +44,6 @@ generation:
     Only subtle natural micro-motion is allowed.
     Background depth and parallax shift naturally during the orbit.
     No cut, no scene replacement, no duplicate subject, no walking motion.
-    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -69,20 +59,19 @@ generation:
         No walking, no body translation, only slight blink, breathing,
         or subtle hair movement.
         Strong natural parallax, realistic depth, clean continuity, no cut.
-        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4
         generate_audio: false
         guidance_scale: 0.56
 
-    wan-2.7:
+    pixverse-v6:
       prompt: >
-        Continue from the input image in a single continuous shot.
-        The camera smoothly circles around the subject with natural orbital motion.
-        Keep the same identity, face, outfit, pose, and scene.
-        The subject stays planted; no walking or body translation.
-        Allow only subtle natural micro-motion while the background shifts with clear parallax.
-        Cinematic depth, realistic motion, no scene replacement, no cut.
-        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
+        Cinematic orbital camera move: the camera smoothly circles around the subject
+        in a continuous arc, revealing depth and parallax in the background as it travels.
+        The subject stays planted in place — same identity, same face, same expression,
+        same outfit, same scene — only subtle natural micro-motion (blink, breathing, slight hair movement).
+        Professional camera work, smooth continuous motion, single continuous take, no cuts, no scene change.
       params:
         duration: 4
+        generate_audio: false
+        generate_multi_clip: false

@@ -223,6 +223,12 @@ MODELS: list[dict[str, Any]] = [
             {"name": "generate_audio", "type": "boolean", "ui": "main",
              "label": "Generate audio", "default": False,
              "price_affecting": True},
+            # Off by default — multi-clip stitches several short clips into a
+            # longer compound output. effect_hidden so the effect-page form
+            # doesn't show it; manifests can lock it on/off via model_overrides.
+            {"name": "generate_multi_clip", "type": "boolean", "ui": "main",
+             "label": "Generate multi-clip", "default": True,
+             "effect_hidden": True},
 
             # ─── Advanced (collapsed) ───
             {"name": "seed", "type": "number", "ui": "advanced",
@@ -247,13 +253,14 @@ MODELS: list[dict[str, Any]] = [
                 },
                 "params": {
                     # Main
-                    "duration":       {"wire": "duration"},
-                    "resolution":     {"wire": "resolution"},
+                    "duration":           {"wire": "duration"},
+                    "resolution":         {"wire": "resolution"},
                     # aspect_ratio omitted — fal's i2v doesn't accept it
-                    "style":          {"wire": "style"},
-                    "generate_audio": {"wire": "generate_audio_switch"},
+                    "style":              {"wire": "style"},
+                    "generate_audio":     {"wire": "generate_audio_switch"},
+                    "generate_multi_clip": {"wire": "generate_multi_clip_switch"},
                     # Advanced
-                    "seed":           {"wire": "seed"},
+                    "seed":               {"wire": "seed"},
                 },
             },
         },

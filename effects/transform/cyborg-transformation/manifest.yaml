@@ -30,19 +30,9 @@ inputs:
     label: "Your photo"
     hint: "Works best with medium-to-full body shots where the visible body can transform quickly"
 
-  scene_prompt:
-    type: text
-    required: false
-    label: "Describe the scene"
-    placeholder: "A serious woman standing in a futuristic neon city at night"
-    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
-    max_length: 500
-    multiline: false
-
 generation:
   models:
     - kling-3.0
-    - wan-2.7
 
   default_model: kling-3.0
 
@@ -59,7 +49,6 @@ generation:
     The transformation should feel elegant, futuristic, and controlled,
     not grotesque or destructive.
     No cut, no scene replacement, no duplicate subject.
-    {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
 
   negative_prompt: >
     cut, scene replacement, duplicate subject, extra people, warped face,
@@ -83,23 +72,7 @@ generation:
         not grotesque, not bulky, and not like the human face disappears.
         Only slight blink, breathing, or micro-expression is allowed.
         Clean continuity, no cut, no scene replacement.
-        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
       params:
         duration: 4
         generate_audio: false
         guidance_scale: 0.62
-
-    wan-2.7:
-      prompt: >
-        Continue from the input image in a single continuous shot.
-        The same subject gradually gains sleek cyborg features:
-        metallic facial panels, subtle robotic seams, and soft glowing tech accents
-        on the face, neck, and clothing.
-        Keep the same identity, face, outfit silhouette, pose, and scene.
-        The subject stays planted with only subtle natural micro-motion.
-        The effect should feel futuristic and stylish,
-        not like body horror and not like a full robot replacement.
-        No cut, no scene replacement, no duplicate subject.
-        {% if scene_prompt %}Scene description: {{ scene_prompt }}{% endif %}
-      params:
-        duration: 4

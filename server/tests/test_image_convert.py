@@ -1,4 +1,4 @@
-"""Tests for `core.image_convert.ensure_mime` — the per-provider format
+"""Tests for `core.image_convert.ensure_mime` - the per-provider format
 conversion shim used by providers before they upload each role's
 image."""
 from io import BytesIO
@@ -58,7 +58,7 @@ class TestEnsureMime:
             out_path.unlink(missing_ok=True)
 
     def test_cmyk_source_lands_as_rgb_png(self, tmp_path):
-        """Pillow's PNG encoder rejects CMYK directly — the helper has
+        """Pillow's PNG encoder rejects CMYK directly - the helper has
         to convert to RGB first. Without that, this would raise."""
         src = _cmyk_path(tmp_path)
         out_path, is_temp = ensure_mime(src, "image/tiff", ("image/png",))
@@ -81,7 +81,7 @@ class TestEnsureMime:
             out_path.unlink(missing_ok=True)
 
     def test_caller_owns_temp_cleanup(self, tmp_path):
-        """The helper doesn't keep the temp file alive — once the
+        """The helper doesn't keep the temp file alive - once the
         caller unlinks it, it's gone. Sanity-check that the contract
         is "give caller a path, caller cleans up." """
         src = _bmp_path(tmp_path)
@@ -94,7 +94,7 @@ class TestEnsureMime:
 
 class TestEnsureMimeIntegration:
     def test_real_jpeg_passes_through_fal_whitelist(self, tmp_path):
-        """Smoke test against the actual FAL_IMAGE_MIMES tuple — the
+        """Smoke test against the actual FAL_IMAGE_MIMES tuple - the
         ergonomic case the FalProvider exercises on every run."""
         from services.model_service import FAL_IMAGE_MIMES
 
@@ -136,7 +136,7 @@ def test_fal_whitelist_membership(mime, expected_pass_through, tmp_path):
     registry."""
     from services.model_service import FAL_IMAGE_MIMES
 
-    # Use a PNG fixture — the helper only opens it on the convert path,
+    # Use a PNG fixture - the helper only opens it on the convert path,
     # so a pass-through case never hits Pillow regardless of mime.
     src = _png_path(tmp_path)
     out_path, is_temp = ensure_mime(src, mime, FAL_IMAGE_MIMES)

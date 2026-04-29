@@ -27,7 +27,7 @@ export function RunView() {
 
   const activeJob = viewingJobId ? activeJobs.get(viewingJobId) : null
 
-  // Prefer the unified record view whenever we have the record — it has
+  // Prefer the unified record view whenever we have the record - it has
   // the model, date, inputs, and parameters. activeJob (if present) feeds
   // live progress/video-url into it.
   if (viewingRunRecord) {
@@ -87,7 +87,7 @@ function HistoricalRunView({ record, activeJob }: {
     if (value == null || value === '') continue
     const strVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
     if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(value)) {
-      // Image-input UUID — rendered separately from `record.input_files`.
+      // Image-input UUID - rendered separately from `record.input_files`.
       continue
     }
     if (strVal.length > 50) {
@@ -126,7 +126,7 @@ function HistoricalRunView({ record, activeJob }: {
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Header — show model name + date instead of effect name (already on right panel) */}
+      {/* Header - show model name + date instead of effect name (already on right panel) */}
       <div className="flex shrink-0 items-center gap-3 px-6 py-4">
         {isProcessing && <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />}
         {isCompleted && <div className="h-2 w-2 rounded-full bg-success" />}
@@ -215,7 +215,7 @@ function HistoricalRunView({ record, activeJob }: {
         </div>
       )}
 
-      {/* Parameters — compact layout */}
+      {/* Parameters - compact layout */}
       {hasAnyParams && (
         <div className="shrink-0 border-t px-6 py-4">
           <div className="mb-3 flex items-center justify-between">
@@ -244,7 +244,7 @@ function HistoricalRunView({ record, activeJob }: {
           </div>
 
           <div className="space-y-3">
-            {/* Badges — short params in a compact wrapping row */}
+            {/* Badges - short params in a compact wrapping row */}
             {badges.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {badges.map(([key, value]) => (
@@ -259,7 +259,7 @@ function HistoricalRunView({ record, activeJob }: {
               </div>
             )}
 
-            {/* Images — inline thumbnails */}
+            {/* Images - inline thumbnails */}
             {images.length > 0 && (
               <div className="flex gap-2">
                 {images.map(([key, ref]) => (
@@ -278,7 +278,7 @@ function HistoricalRunView({ record, activeJob }: {
               </div>
             )}
 
-            {/* Long text — truncated with expand */}
+            {/* Long text - truncated with expand */}
             {longText.map(([key, value]) => (
               <ExpandableText key={key} label={formatParamKey(key)} text={value} />
             ))}
@@ -372,7 +372,7 @@ function ResultView({
   job: { effectName: string; videoUrl: string | null }
 }) {
   // For playground runs, viewingRunRecord was set by the post-Generate
-  // restoreFromUrl call — it has the full inputs we need to build an effect.
+  // restoreFromUrl call - it has the full inputs we need to build an effect.
   const viewingRunRecord = useStore(selectViewingRunRecord)
   const canSaveAsEffect = viewingRunRecord?.kind === 'playground'
 

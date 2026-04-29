@@ -3,7 +3,7 @@ import type { AppState } from '../types'
 
 // All three collections are stored as Map<id, RunRecord> with insertion order
 // preserved (matches the server's created_at DESC sort). Selectors expose
-// memoized array views to components so `.map()` in render stays cheap — the
+// memoized array views to components so `.map()` in render stays cheap - the
 // array is recomputed only when the underlying Map reference changes (immer
 // replaces the Map on every mutation).
 

@@ -45,6 +45,6 @@ def make_manifest_dict(**overrides: Any) -> dict[str, Any]:
 
 
 def make_manifest(**overrides: Any) -> EffectManifest:
-    """Validated `EffectManifest` instance — for tests that need the typed
+    """Validated `EffectManifest` instance - for tests that need the typed
     pydantic object instead of a raw dict."""
     return EffectManifest.model_validate(make_manifest_dict(**overrides))

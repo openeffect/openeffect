@@ -43,7 +43,7 @@ class TestBuildFileRef:
         assert ref.thumbnails == {}
 
     def test_url_uses_literal_extension(self):
-        """Extension flows through unchanged — no canonicalization to
+        """Extension flows through unchanged - no canonicalization to
         a generic `.bin`. The downstream `GET /api/files/{id}/{name}`
         looks up the literal filename on disk."""
         for ext in ("jpg", "jpeg", "png", "webp", "gif", "mp4", "webm"):

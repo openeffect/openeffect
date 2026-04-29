@@ -84,7 +84,7 @@ def client(tmp_path):
     effect_loader.get_by_id.side_effect = _by_id
     effect_loader.get_loaded.side_effect = _by_full
 
-    # config_service is used via `await config.get_api_key()` now — AsyncMock
+    # config_service is used via `await config.get_api_key()` now - AsyncMock
     # so the coroutine form works.
     config_service = MagicMock()
     config_service.get_api_key = AsyncMock(return_value="test-key")
@@ -119,8 +119,8 @@ def client(tmp_path):
     app = FastAPI(lifespan=_lifespan)
     register_routes(app)
 
-    # Any ModelProviderFactory.create call — on either the effect or
-    # playground path — returns a FakeProvider.
+    # Any ModelProviderFactory.create call - on either the effect or
+    # playground path - returns a FakeProvider.
     with patch(
         "services.run_service.ModelProviderFactory.create",
         side_effect=lambda *a, **kw: FakeProvider(),
@@ -181,7 +181,7 @@ class TestStartRun:
         assert "Effect not found" in body["detail"]["error"]
 
     def test_incompatible_model_returns_422(self, client):
-        # Inputs satisfy the manifest — we want the model check to fire, not
+        # Inputs satisfy the manifest - we want the model check to fire, not
         # our required-field check (which would shadow it if inputs were empty).
         resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
@@ -338,13 +338,13 @@ class TestProviderFailureAndDelete:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
 
-        # Subsequent GET should 404 — row is gone.
+        # Subsequent GET should 404 - row is gone.
         assert client.get(f"/api/runs/{job_id}").status_code == 404
 
     def test_delete_processing_run_returns_409(self, client):
         """A FakeProvider with no events leaves _execute_provider's
         async-for loop empty; the row stays at processing. DELETE on
-        such a row must 409 — wiping a still-live job would leak its
+        such a row must 409 - wiping a still-live job would leak its
         bumped input refs."""
         FakeProvider.next_events = []
         resp = client.post("/api/runs", json={
@@ -356,7 +356,7 @@ class TestProviderFailureAndDelete:
         })
         job_id = resp.json()["run_id"]
 
-        # No need to wait — the row was inserted at processing inside `start()`
+        # No need to wait - the row was inserted at processing inside `start()`
         # before the background task ran. Even if the task has begun, it
         # won't transition status without a completed/failed event.
         resp = client.delete(f"/api/runs/{job_id}")

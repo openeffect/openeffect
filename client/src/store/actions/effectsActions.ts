@@ -42,7 +42,7 @@ export async function loadEffects(): Promise<void> {
         selectedId = route.effectId
       }
       if (route.runId) {
-        // Initial page load — right panel was never open before, so auto-apply
+        // Initial page load - right panel was never open before, so auto-apply
         // the run's params to the form (no risk of overriding user data).
         restoreFromUrl(route.runId, true).then((effectId) => {
           if (effectId) selectEffect(effectId, true)
@@ -88,7 +88,7 @@ export async function loadEffects(): Promise<void> {
           mutateCloseEditor(s)
           s.playground.isOpen = false
           // Arriving at /effects/{id} without a runId means the user isn't
-          // viewing a specific run — drop any lingering restoredParams /
+          // viewing a specific run - drop any lingering restoredParams /
           // viewingRunRecord from a prior context (e.g. back-nav from
           // playground, whose `restoredParams.inputs` carries
           // `prompt`/`negative_prompt` keys that don't match any effect
@@ -119,7 +119,7 @@ export async function loadEffects(): Promise<void> {
       (runId, filters) => {
         // If we're transitioning INTO playground from elsewhere, do a clean open
         // (clears effect/editor/run). If we're already on playground, this is just
-        // a URL update from Generate or back/forward — leave the active job alone.
+        // a URL update from Generate or back/forward - leave the active job alone.
         const before = getState()
         const wasRightOpen =
           !!before.effects.selectedId || before.editor.isOpen || before.playground.isOpen
@@ -130,7 +130,7 @@ export async function loadEffects(): Promise<void> {
         if (runId) restoreFromUrl(runId, !wasRightOpen)
       },
       () => {
-        // /effects/new — open the blank editor without re-pushing to history
+        // /effects/new - open the blank editor without re-pushing to history
         if (!getState().editor.isOpen) {
           openBlankEditor(true)
         }
@@ -156,7 +156,7 @@ export function selectEffect(effectId: string | null, skipNav?: boolean): void {
   }, 'effects/select')
 }
 
-/** Debounced URL sync for the search input — `replaceState` (not `pushState`)
+/** Debounced URL sync for the search input - `replaceState` (not `pushState`)
  *  so typing doesn't fill the Back button with one history entry per
  *  keystroke, but a reload or share still preserves the query. */
 let searchDebounce: ReturnType<typeof setTimeout> | null = null
@@ -176,7 +176,7 @@ export function setSearchQuery(query: string): void {
 
 /** URL is the source of truth for gallery filters. Clicking a filter pill
  *  or the "View all" tile updates the query param on the CURRENT path
- *  (gallery or deep route) — so clearing a filter from an effect page
+ *  (gallery or deep route) - so clearing a filter from an effect page
  *  doesn't close the effect, and the popstate listener above writes the
  *  new values into the store via mutateSetFilters. */
 export function setActiveSource(source: EffectSource): void {
@@ -251,7 +251,7 @@ export async function deleteEffect(namespace: string, slug: string): Promise<voi
       mutateCloseEditor(s)
       mutateSelectEffect(s, null)
 
-      // History may still reference runs of the now-deleted effect — drop
+      // History may still reference runs of the now-deleted effect - drop
       // the global cache so the next open refetches. If the per-effect
       // history slice was loaded for this effect, drop it too.
       s.history.status = 'idle'
@@ -267,6 +267,6 @@ export async function deleteEffect(namespace: string, slug: string): Promise<voi
     // the address bar pointing at a now-deleted effect.
     navigate('/')
   } catch {
-    // API failed — don't mutate state
+    // API failed - don't mutate state
   }
 }

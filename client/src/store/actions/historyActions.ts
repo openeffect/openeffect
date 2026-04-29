@@ -15,7 +15,7 @@ function effectUuid(fullId: string): string {
   return fullId
 }
 
-// Timer lives outside state — it's an implementation detail, not reactive state
+// Timer lives outside state - it's an implementation detail, not reactive state
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // ─── Global history (header popup) ──────────────────────────────────────────
@@ -38,7 +38,7 @@ export async function loadHistory(offset = 0, force = false): Promise<void> {
       if (offset === 0) {
         s.history.items = new Map(data.runs.map((r) => [r.id, r]))
       } else {
-        // Map preserves insertion order — appending pages keeps newest-first
+        // Map preserves insertion order - appending pages keeps newest-first
         for (const r of data.runs) s.history.items.set(r.id, r)
       }
       s.history.total = data.total
@@ -76,7 +76,7 @@ export async function deleteHistoryItem(id: string): Promise<void> {
       navigate('/')
     }
   } catch {
-    // API failed — don't remove from local state
+    // API failed - don't remove from local state
   }
 }
 
@@ -110,7 +110,7 @@ export function startPolling(): void {
   pollTimer = setInterval(() => {
     const s = getState()
     if (s.history.isOpen && s.history.activeCount > 0 && s.history.status !== 'loading') {
-      // Polling's whole job is surfacing server-side changes to active runs —
+      // Polling's whole job is surfacing server-side changes to active runs -
       // always bypass the cache.
       loadHistory(0, true)
     } else {
@@ -132,7 +132,7 @@ export function stopPolling(): void {
  * Fetch runs for a specific effect.
  *
  * Cache hit requires both `effectStatus === 'succeeded'` AND the cached
- * effect id to match — switching to a different effect always refetches.
+ * effect id to match - switching to a different effect always refetches.
  * Pass `force: true` to bypass (used after a run completes/fails for this effect).
  */
 export async function loadEffectHistory(effectId: string, offset = 0, force = false): Promise<void> {
@@ -147,7 +147,7 @@ export async function loadEffectHistory(effectId: string, offset = 0, force = fa
     // the loader instead of a brief flash of the previous effect's runs
     // (the EffectHistoryTab's loader gate is `loading && items.length === 0`,
     // so it needs the items cleared to fire). Same-effect refreshes
-    // (force=true after a run completes) keep the existing list visible —
+    // (force=true after a run completes) keep the existing list visible -
     // no blank-then-rehydrate flicker for runs that were already there.
     if (isEffectSwitch) {
       s.history.effectItems = new Map()
@@ -176,7 +176,7 @@ export async function loadEffectHistory(effectId: string, offset = 0, force = fa
 /** Force-refresh every history cache that's already been loaded. Called on
  *  run start/complete/fail so any open history view (header popup, per-effect
  *  tab, playground tab) reflects the latest server state without a page
- *  reload. Untouched caches stay untouched — no point warming a cache the
+ *  reload. Untouched caches stay untouched - no point warming a cache the
  *  user hasn't opened yet. */
 export function refreshLoadedHistories(): void {
   const { status, effectId, playgroundLoaded } = getState().history
@@ -262,7 +262,7 @@ export async function deleteRunFromHistory(runId: string, effectFullId: string):
       }
     }, 'history/deleteRun')
     navigate(`/effects/${effectUuid(effectFullId)}`)
-    // Local `.delete()` above is authoritative — no refetch needed
+    // Local `.delete()` above is authoritative - no refetch needed
   } catch {
     // API failed
   }

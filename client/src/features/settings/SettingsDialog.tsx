@@ -32,7 +32,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
       await updateConfig({ fal_api_key: apiKey.trim() })
       setApiKey('')
     } catch {
-      // API failed — key field stays populated so user can retry
+      // API failed - key field stays populated so user can retry
     }
   }
 

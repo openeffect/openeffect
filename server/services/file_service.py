@@ -35,19 +35,19 @@ class FileTooLargeError(ValueError):
 
 class UnreadableMediaError(ValueError):
     """Raised when Pillow / ffmpeg can't make sense of the bytes. The
-    route layer maps this to 400 — the file was too small/garbled to
+    route layer maps this to 400 - the file was too small/garbled to
     thumbnail, not too large."""
 
 
 @dataclass(frozen=True)
 class File:
-    """A row in the content-addressed file store. `id` is a UUID7 — the
+    """A row in the content-addressed file store. `id` is a UUID7 - the
     addressable identifier exposed in URLs and on disk. `hash` is the
     sha256 of the original bytes, kept server-internal as the dedup key
     (a public hash would let anyone probe the server for known content).
     Variant filenames on disk are deterministic from `kind`: image and
     video both get `original.{ext}` plus `512.webp`/`1024.webp`; `other`
-    gets only the original. Callers compose URLs from `kind` directly —
+    gets only the original. Callers compose URLs from `kind` directly -
     no per-file variants list to read."""
     id: str
     hash: str
@@ -59,8 +59,8 @@ class File:
 
 class FileService:
     """Hash-deduped, ref-counted blob store. UUID7-named folder per
-    unique blob. Every ingest path — user upload, effect-asset install,
-    run-result download — funnels through `add_file`, so dedup,
+    unique blob. Every ingest path - user upload, effect-asset install,
+    run-result download - funnels through `add_file`, so dedup,
     thumbnails, and ref-count safety are uniform.
 
     Concurrency contract: two callers ingesting identical bytes settle
@@ -90,7 +90,7 @@ class FileService:
 
         `source` may be a Path, raw bytes, or an UploadFile (streamed in
         chunks; honors `max_size`). `ext` is the canonical original
-        extension without a leading dot — caller-supplied takes precedence
+        extension without a leading dot - caller-supplied takes precedence
         over what we'd derive from the source itself. `mime` defaults to
         a guess from the extension and kind."""
         tmp_fd, tmp_path_str = tempfile.mkstemp(dir=str(self._files_dir), suffix=".tmp")
@@ -134,7 +134,7 @@ class FileService:
                     # The conflict target uses the partial unique index
                     # `idx_files_hash_live` (hash, WHERE ref_count IS NOT NULL).
                     # A tombstoned row with the same hash doesn't trigger
-                    # the conflict — exactly what we want so a fresh upload
+                    # the conflict - exactly what we want so a fresh upload
                     # bypasses a row mid-cleanup.
                     cursor = await conn.execute(
                         """INSERT INTO files (
@@ -148,7 +148,7 @@ class FileService:
                     claim = await cursor.fetchone()
 
                 if claim is None:
-                    # Lost the race — discard our staging, return the winner.
+                    # Lost the race - discard our staging, return the winner.
                     shutil.rmtree(str(stage_dir), ignore_errors=True)
                     file_id = None  # nothing to roll back
                     winner = await self._fetch_by_hash(file_hash)
@@ -173,7 +173,7 @@ class FileService:
                     ext=chosen_ext, size=size,
                 )
             except Exception:
-                # Roll back the DB claim if we made one — next retry shouldn't
+                # Roll back the DB claim if we made one - next retry shouldn't
                 # be stuck pointing at an id with no folder behind it. The
                 # `ref_count = 0` guard skips rows that another writer has
                 # already adopted.
@@ -199,7 +199,7 @@ class FileService:
         """Stream source bytes to tmp_path, returning (sha256, size, derived_ext).
 
         Dispatch is duck-typed (rather than an `isinstance(UploadFile)`
-        check) so tests can pass mock objects with the same shape — and
+        check) so tests can pass mock objects with the same shape - and
         FastAPI sometimes wraps the upload differently anyway."""
         hasher = hashlib.sha256()
         total = 0
@@ -279,7 +279,7 @@ class FileService:
 
     async def increment_ref(self, file_id: str) -> None:
         """Bump a file's ref count. Raises `ValueError` if the file has
-        been tombstoned (`ref_count IS NULL`) or doesn't exist — silent
+        been tombstoned (`ref_count IS NULL`) or doesn't exist - silent
         no-ops here would leak refs (`NULL + 1 = NULL`) and leave the
         caller thinking they hold a reference."""
         async with self._db.transaction() as conn:
@@ -287,7 +287,7 @@ class FileService:
 
     async def decrement_refs(self, ids: list[str]) -> None:
         """Drop one ref off each given id. Cleanup of `ref_count = 0`
-        rows happens in `prune_orphan_files` — keeping decrement and
+        rows happens in `prune_orphan_files` - keeping decrement and
         rmtree apart is what makes the multi-instance TTL safety work."""
         if not ids:
             return
@@ -299,12 +299,12 @@ class FileService:
     async def bump_ref_in_tx(conn: aiosqlite.Connection, file_id: str) -> None:
         """Increment ref_count atomically inside the caller's transaction,
         with the `ref_count IS NOT NULL` guard so a tombstoned (mid-GC)
-        row can't be resurrected. Raises `ValueError` on rowcount=0 —
+        row can't be resurrected. Raises `ValueError` on rowcount=0 -
         callers wrap that into a domain-specific message (input file
         unavailable, output file unavailable, etc.) so the error surfaces
         the user-facing context. Pair the bump with the entity write in
         the same `async with self._db.transaction()` block to keep the
-        ref count and the binding row atomic — see `_link_effect_file`
+        ref count and the binding row atomic - see `_link_effect_file`
         and `history.create_processing` for the canonical patterns."""
         cursor = await conn.execute(
             "UPDATE files SET ref_count = ref_count + 1 "
@@ -330,14 +330,14 @@ class FileService:
     async def prune_orphan_files(self, max_age_hours: int) -> int:
         """Two-phase orphan sweep.
 
-        **Phase 1 — tombstone.** Atomically move every fresh
+        **Phase 1 - tombstone.** Atomically move every fresh
         `ref_count = 0` row past the TTL into the tombstoned state
         (`ref_count = NULL`). The partial unique index on `hash` no
         longer covers tombstoned rows, so a concurrent upload of the
         same content can claim a fresh `id` even before Phase 2 has
         rmtree'd the doomed folder.
 
-        **Phase 2 — drain.** For each tombstoned row, rmtree the
+        **Phase 2 - drain.** For each tombstoned row, rmtree the
         folder then DELETE the row. The selection here is `ref_count
         IS NULL` (no age filter): a tombstoned row from a previous
         cycle whose rmtree failed gets retried until it succeeds.
@@ -347,7 +347,7 @@ class FileService:
         bump the ref."""
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
 
-        # Phase 1 — atomically tombstone aged orphans.
+        # Phase 1 - atomically tombstone aged orphans.
         async with self._db.transaction() as conn:
             await conn.execute(
                 "UPDATE files SET ref_count = NULL "
@@ -355,7 +355,7 @@ class FileService:
                 (cutoff,),
             )
 
-        # Phase 2 — drain every tombstoned row (this cycle's plus any
+        # Phase 2 - drain every tombstoned row (this cycle's plus any
         # leftovers from a crashed previous cycle).
         rows = await self._db.fetchall(
             "SELECT id FROM files WHERE ref_count IS NULL"
@@ -401,14 +401,14 @@ def _generate_thumbnails(
     dest_dir: Path,
     kind: FileKind,
 ) -> list[str]:
-    """Synchronous thumbnail generation — call via `asyncio.to_thread`.
+    """Synchronous thumbnail generation - call via `asyncio.to_thread`.
 
     For `kind` in `('image', 'video')` always returns
-    `["512.webp", "1024.webp"]` — both tiers are always written so the
+    `["512.webp", "1024.webp"]` - both tiers are always written so the
     client never has to check whether a variant exists. For sources
     smaller than the tier dimensions the resulting webp file is just
     the source size (Pillow's `thumbnail()` never upscales), so two of
-    the three on-disk files may be byte-similar — the disk waste is
+    the three on-disk files may be byte-similar - the disk waste is
     bounded by the original size and pays for a much simpler API.
 
     Raises on any failure: a corrupt source that we can't open is
@@ -478,7 +478,7 @@ def _video_poster(source_path: Path, dest_dir: Path) -> list[str]:
 def _emit_thumbnails(img: Image.Image, dest_dir: Path) -> list[str]:
     """Write 512.webp and 1024.webp, both always. Pillow's `thumbnail()`
     never upscales, so a 256px source still produces 256px webp files
-    under both filenames — small disk overhead in exchange for a
+    under both filenames - small disk overhead in exchange for a
     predictable client contract."""
     if img.mode in ("P", "LA"):
         img = img.convert("RGBA")

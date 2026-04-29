@@ -104,14 +104,14 @@ export interface GenerationConfig {
 
 export interface EffectManifest {
   /** Manifest schema version. Currently the only supported value is 1.
-   *  Required on every manifest — the server rejects manifests without
+   *  Required on every manifest - the server rejects manifests without
    *  it. Future schema changes ship as 2, 3, …; the server will then
    *  carry a migration step for older versions. */
   manifest_version: number
   id: string                    // UUID primary key
   namespace: string
   slug: string                  // short identifier within the namespace
-  full_id: string               // "namespace/slug" — convenience mirror of the YAML id
+  full_id: string               // "namespace/slug" - convenience mirror of the YAML id
   name: string
   description: string
   version: string
@@ -172,10 +172,10 @@ export interface ModelParam {
   step?: number
   hint?: string
   multiline?: boolean
-  /** Hidden from the effect page form — only shown in Playground. Manifest
+  /** Hidden from the effect page form - only shown in Playground. Manifest
    *  authors tune it via YAML; effect runners never see the control. */
   effect_hidden?: boolean
-  /** Runtime user preference — never settable via manifest. Always rendered
+  /** Runtime user preference - never settable via manifest. Always rendered
    *  as a user control (both effect page and Playground). */
   user_only?: boolean
   /** This field's value changes the final bill. UI renders a `$` badge
@@ -224,7 +224,7 @@ export interface AppConfig {
  * Canonical reference to a file in the content-addressed store.
  * Returned by every endpoint that exposes a file. Read `url` for the
  * original bytes or `thumbnails["512"]` / `thumbnails["1024"]` for
- * image/video thumbnail tiers — never compose `/api/files/...` URLs
+ * image/video thumbnail tiers - never compose `/api/files/...` URLs
  * by string concat.
  *
  * `thumbnails` is empty for `kind === 'other'`; image and video both
@@ -261,7 +261,7 @@ export interface PlaygroundRunRequest {
 
 export interface RunResponse {
   run_id: string
-  /** The just-created run record — lets the client render the rich view
+  /** The just-created run record - lets the client render the rich view
    *  (model, date, inputs, params) immediately without a separate GET. */
   record: RunRecord | null
 }

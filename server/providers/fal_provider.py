@@ -20,7 +20,7 @@ class FalProvider(BaseProvider):
         model_id = input.parameters.get("_model_id", "wan-2.7")
 
         # All wire-level concerns (endpoint, canonical→wire rename, value
-        # transforms) live under the per-provider config — this is the only
+        # transforms) live under the per-provider config - this is the only
         # spot that knows about fal-specific wire details.
         model_cfg = get_model(model_id)
         provider_cfg = get_provider(model_id, "fal") if model_cfg else None
@@ -37,7 +37,7 @@ class FalProvider(BaseProvider):
         if input.negative_prompt:
             canonical["negative_prompt"] = input.negative_prompt
 
-        # Upload images — keyed by canonical role. canonical_to_wire renames
+        # Upload images - keyed by canonical role. canonical_to_wire renames
         # to the provider's wire keys at the end. Each image's mime is
         # checked against this provider's `accepted_image_mimes` and
         # transcoded to PNG via Pillow when fal can't accept it natively
@@ -60,7 +60,7 @@ class FalProvider(BaseProvider):
             canonical[role] = url
 
         # Resolve the actual endpoint URL now that canonical is fully
-        # populated — callable endpoints read canonical values to pick
+        # populated - callable endpoints read canonical values to pick
         # their tier (e.g. kling 1080p → pro).
         endpoint = resolve_endpoint(provider_cfg, canonical)
         if endpoint is None:

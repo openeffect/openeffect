@@ -91,7 +91,7 @@ describe('formCarry slice', () => {
     })
   })
 
-  it('stickiness — the slice survives across "effect switches" because nothing else touches it', () => {
+  it('stickiness - the slice survives across "effect switches" because nothing else touches it', () => {
     // Effect A uploads `start_frame`.
     useStore.setState((s) => mutateSetCarriedImage(s, 'start_frame', 'cat-uuid'))
 
@@ -148,7 +148,7 @@ describe('formCarry slice', () => {
       expect(useStore.getState().formCarry.lastModelParams).toEqual({ duration: 5 })
     })
 
-    it('inputs and params buckets are independent — same key in both, different values', () => {
+    it('inputs and params buckets are independent - same key in both, different values', () => {
       // A manifest could declare an input named `duration` while a model
       // also has a canonical `duration` param. The two buckets keep them
       // disambiguated.

@@ -33,7 +33,7 @@ async def _gc_loop(
     previous-process crash gets cleaned before the user notices) and
     then on a sleep-loop.
 
-    The TTL is the multi-instance safety knob — anything younger than
+    The TTL is the multi-instance safety knob - anything younger than
     `ttl_hours` could still belong to a live process, so we leave it
     alone."""
     while True:
@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
 
     async def _on_install_change(effect_id: str | None) -> None:
         # Per-effect reload when the mutation affects exactly one row
-        # (favorite/source/asset CRUD, uninstall) — much cheaper than
+        # (favorite/source/asset CRUD, uninstall) - much cheaper than
         # re-parsing every manifest. None means "set membership might
         # have changed, do a full reload" (install/save).
         if effect_id is None:
@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI):
 
     # Spawn the unified GC reaper. Cleans both orphan files (eager
     # client-side uploads sitting at ref_count=0) and abandoned installs
-    # (in-flight when the previous process died). Same TTL covers both —
+    # (in-flight when the previous process died). Same TTL covers both -
     # under that age, a live process might still own them.
     reaper_task = asyncio.create_task(
         _gc_loop(
@@ -172,7 +172,7 @@ def create_app() -> FastAPI:
     register_routes(app)
 
     # Serve the built frontend in prod (Docker image / installed wheel), but
-    # not in a source checkout — there Vite on :5173 handles it, and any
+    # not in a source checkout - there Vite on :5173 handles it, and any
     # stale `client/dist/` from an old `pnpm build` would otherwise be
     # served silently. Mirrors the is-dev check in run.py: `client/src/` is
     # present in source trees, absent in installed/containerized deployments.

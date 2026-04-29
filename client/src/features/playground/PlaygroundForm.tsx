@@ -32,7 +32,7 @@ import {
   providerVariant,
 } from '@/utils/modelParams'
 
-// Only one variant in the registry today — kept as a constant so re-adding
+// Only one variant in the registry today - kept as a constant so re-adding
 // v2v later is a one-line change.
 const VARIANT_KEY = 'image_to_video'
 
@@ -64,7 +64,7 @@ export function PlaygroundForm() {
   // Hydrate from carry so navigating away from the playground (to an
   // effect / settings / history) and back preserves what was typed.
   // restoredParams ("Open in Playground" / "Try in Playground") still
-  // overrides further down the render — those are explicit "load this"
+  // overrides further down the render - those are explicit "load this"
   // intents, not a session continuation.
   const [prompt, setPrompt] = useState(
     () => useStore.getState().formCarry.lastPlaygroundPrompt,
@@ -89,7 +89,7 @@ export function PlaygroundForm() {
   // and disables Generate while non-empty.
   const [uploadingRoles, setUploadingRoles] = useState<ReadonlySet<string>>(new Set())
   // Per-role upload error messages. Surfaces under the ImageUploader as
-  // small destructive text — same shape as asset/zip-install error UX.
+  // small destructive text - same shape as asset/zip-install error UX.
   const [uploadErrors, setUploadErrors] = useState<Record<string, string | undefined>>({})
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -129,7 +129,7 @@ export function PlaygroundForm() {
   // Re-seed output/advanced/image params to the provider-variant defaults
   // whenever (model, provider) changes. An empty prevSeedKey acts as a
   // "skip this cycle" sentinel that the restore handler sets explicitly
-  // when applying restoredParams — that's how it tells this block "the
+  // when applying restoredParams - that's how it tells this block "the
   // values are already populated, don't overwrite them." The lazy init
   // mirrors the current `${selectedModel}|${selectedProvider}` pair (with
   // an empty provider on first mount) so once the ModelSelector
@@ -177,12 +177,12 @@ export function PlaygroundForm() {
   }
 
   // Consume restoredParams (set by the Reuse button on a historical run, or
-  // by "Try in Playground" from an effect — which seeds the store *before*
+  // by "Try in Playground" from an effect - which seeds the store *before*
   // this component mounts). Mirrors EffectFormTab's restoredParams handling,
   // but applies the unified playground inputs shape:
   // { prompt, negative_prompt, <role>: file_id, ... }.
   // Sentinel `undefined` init (restoredParams is never undefined) so the
-  // first render's comparison fires — otherwise a pre-seeded value would
+  // first render's comparison fires - otherwise a pre-seeded value would
   // match its own `useState(restoredParams)` and the block would be skipped.
   const [prevRestored, setPrevRestored] = useState<typeof restoredParams | undefined>(undefined)
   if (prevRestored !== restoredParams) {
@@ -190,13 +190,13 @@ export function PlaygroundForm() {
     if (restoredParams) {
       // Restore the model first; both auto-pickers (provider change on model
       // switch, and the seed-defaults block) need to be told to skip this
-      // cycle — otherwise they'd overwrite the freshly-restored values.
+      // cycle - otherwise they'd overwrite the freshly-restored values.
       const restoredModel = restoredParams.modelId
         ? availableModels.find((m) => m.id === restoredParams.modelId)
         : undefined
       if (restoredModel) {
         setSelectedModel(restoredModel.id)
-        // Mirror to carry — applied = "current pick."
+        // Mirror to carry - applied = "current pick."
         setState((s) => mutateSetCarriedModel(s, restoredModel.id), 'formCarry/setModel')
       }
       setPrevSeedKey('')
@@ -226,7 +226,7 @@ export function PlaygroundForm() {
       // restored shape contains no images at all (the "Try in Playground"
       // case where only prompt + negative are populated).
       setImageInputs((prev) => ({ ...prev, ...nextImages }))
-      // Mirror restored role-keyed images into the carry slice — same intent
+      // Mirror restored role-keyed images into the carry slice - same intent
       // as a fresh upload, just sourced from a historical run.
       for (const [role, value] of Object.entries(nextImages)) {
         setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
@@ -356,7 +356,7 @@ export function PlaygroundForm() {
       })
       return
     }
-    // "Pick a model" isn't really a field — keep it as the banner
+    // "Pick a model" isn't really a field - keep it as the banner
     if (!selectedModel) {
       setSubmitError('Pick a model')
       return
@@ -366,7 +366,7 @@ export function PlaygroundForm() {
     setSubmitError(null)
     setIsGenerating(true)
     try {
-      // Only send images the selected model's variant actually accepts —
+      // Only send images the selected model's variant actually accepts -
       // e.g. an end_frame uploaded earlier shouldn't be sent if the user
       // now has PixVerse selected (its i2v variant has no end_frame slot).
       const roleWhitelist = new Set(supportedRoles)
@@ -414,7 +414,7 @@ export function PlaygroundForm() {
           onProviderChange={setSelectedProvider}
         />
 
-        {/* Image inputs — driven by the model's supported roles. Required
+        {/* Image inputs - driven by the model's supported roles. Required
             roles get a red asterisk; optional ones (e.g. end_frame) just
             show the label. */}
         {imageSlots.length > 0 && (

@@ -58,7 +58,7 @@ async def _download_capped(url: str, dest: Path, max_bytes: int) -> None:
                         f.close()
                         dest.unlink(missing_ok=True)
                         raise ResultTooLargeError(
-                            f"Result video exceeded {max_bytes} bytes — aborted"
+                            f"Result video exceeded {max_bytes} bytes - aborted"
                         )
                     f.write(chunk)
 
@@ -143,12 +143,12 @@ class RunService:
         effect_uuid = loaded.id
 
         # Reject out-of-range / too-long / unknown-option values before we
-        # spend any more work on the run. Images skipped — hashes were
+        # spend any more work on the run. Images skipped - hashes were
         # validated at /api/files when the file landed.
         validate_run_inputs(manifest, request.inputs)
 
         # Validate model compatibility based on input roles. Split by required
-        # vs optional — an optional end_frame means the effect can run on
+        # vs optional - an optional end_frame means the effect can run on
         # models whose i2v variant lacks end_frame support (e.g. PixVerse).
         required_roles: set[str] = set()
         optional_roles: set[str] = set()
@@ -183,10 +183,10 @@ class RunService:
             elif key in request.inputs:
                 saved_inputs[key] = request.inputs[key]
         # Ref bumps happen inside `history.create_processing` (same
-        # transaction as the run row INSERT) — no half-bumped state
+        # transaction as the run row INSERT) - no half-bumped state
         # if anything below this point throws.
 
-        # Resolve everything up-front so we can persist `model_inputs` — the
+        # Resolve everything up-front so we can persist `model_inputs` - the
         # normalized (role-keyed, fully-resolved) shape that's stable across
         # effect deletion. The client uses this for "Open in playground".
         prompt = PromptBuilder.build_prompt(manifest, request.model_id, request.inputs)
@@ -283,7 +283,7 @@ class RunService:
         )
 
         # Playground inputs are already in the normalized (role-keyed, resolved)
-        # shape — no separate `model_inputs` needed, it would just duplicate this.
+        # shape - no separate `model_inputs` needed, it would just duplicate this.
         saved_inputs: dict[str, str] = {
             "prompt": request.prompt,
             "negative_prompt": negative_prompt,
@@ -363,7 +363,7 @@ class RunService:
     async def _resolve_image_refs(self, refs_by_role: dict[str, str]) -> dict[str, ImageRef]:
         """Turn `{role: file_id}` into `{role: ImageRef(path, mime)}`
         for the provider. The mime comes from the file row (sniffed
-        from magic bytes at upload time) — providers compare it to
+        from magic bytes at upload time) - providers compare it to
         their `accepted_image_mimes` whitelist to decide whether to
         pass-through or transcode before sending."""
         out: dict[str, ImageRef] = {}
@@ -372,7 +372,7 @@ class RunService:
             if file_row is None:
                 continue
             # `File.ext` is the canonical extension recorded at ingest, so
-            # the path is determined directly — no need to scan the variant
+            # the path is determined directly - no need to scan the variant
             # directory looking for `original.*`.
             original = self._files.files_dir / file_id / f"original.{file_row.ext}"
             if not original.is_file():
@@ -382,7 +382,7 @@ class RunService:
 
     def _broadcast(self, event: dict[str, Any]) -> None:
         """Fan out an event to every open broadcast subscriber. Sync on purpose
-        — `put_nowait` can't stall, and a slow/dead consumer's QueueFull is
+        - `put_nowait` can't stall, and a slow/dead consumer's QueueFull is
         silently dropped for that one subscriber so the event path never
         blocks the provider. The drop is logged so a stuck progress bar in
         the UI has at least one trail to follow."""
@@ -421,7 +421,7 @@ class RunService:
         """Download the provider's result, optionally reverse it, then
         adopt it into the file store. Returns the file id, or None if
         ingestion failed (a failed download just leaves output_id null
-        and the run still marked completed — same shape as before)."""
+        and the run still marked completed - same shape as before)."""
         if not video_url:
             return None
 
@@ -454,7 +454,7 @@ class RunService:
             )
             # The output's ref_count is bumped inside `history.complete`
             # (same transaction as setting `runs.output_id`). Until then
-            # the row sits at ref_count=0 like any eager upload — the
+            # the row sits at ref_count=0 like any eager upload - the
             # orphan reaper's TTL covers the gap.
             return file.id
         finally:
@@ -557,7 +557,7 @@ class RunService:
         logger.info(f"Found {len(stuck)} stuck processing jobs, attempting recovery...")
         api_key = await self._config.get_api_key()
         if not api_key:
-            logger.warning("No API key — marking stuck fal.ai jobs as failed")
+            logger.warning("No API key - marking stuck fal.ai jobs as failed")
             for record in stuck:
                 await self._history.fail(record.id, "Server restarted, no API key to recover")
             return
@@ -577,7 +577,7 @@ class RunService:
                     output_id = await self._ingest_result(event.video_url, needs_reverse=False)
                     if output_id:
                         await self._history.complete(record.id, output_id, 0)
-                        logger.info(f"Recovered job {record.id} — completed")
+                        logger.info(f"Recovered job {record.id} - completed")
                     else:
                         await self._history.fail(record.id, "Recovery ingest failed")
                 else:

@@ -1,4 +1,4 @@
-"""Tests for FileService — content-addressed file store with thumbnails and ref counting."""
+"""Tests for FileService - content-addressed file store with thumbnails and ref counting."""
 import asyncio
 import io
 from datetime import datetime, timedelta, timezone
@@ -68,7 +68,7 @@ class TestAddFile:
     async def test_returns_uuid_id_and_internal_hash(self, files):
         png = _png_bytes()
         f = await _add_image(files, png, "photo.png")
-        # id is uuid7 — same shape as run job ids
+        # id is uuid7 - same shape as run job ids
         assert "-" in f.id
         # hash is the sha256 dedup key, not exposed via the API
         assert len(f.hash) == 64
@@ -90,7 +90,7 @@ class TestAddFile:
         """Even when the source is smaller than the tier dimensions,
         both `512.webp` and `1024.webp` are written. Pillow's
         `thumbnail()` doesn't upscale, so the smaller webp file just
-        carries the source-sized content — the predictable contract
+        carries the source-sized content - the predictable contract
         is worth the bounded disk overhead."""
         png = _png_bytes((256, 256))
         f = await _add_image(files, png, "tiny.png")
@@ -169,7 +169,7 @@ class TestRefCounting:
         assert await _ref_count(files, f.id) == 1
 
     async def test_decrement_does_not_remove_row_or_folder(self, files):
-        """`decrement_refs` is pure ref-count work — cleanup is the
+        """`decrement_refs` is pure ref-count work - cleanup is the
         reaper's job, not the consumer's."""
         f = await _add_image(files, _png_bytes(), "r.png")
         await files.increment_ref(f.id)
@@ -291,7 +291,7 @@ class TestTombstoneSemantics:
 
     async def test_dedup_skips_tombstoned_row(self, files):
         """Same content uploaded after a row gets tombstoned should
-        land at a fresh id — the partial unique index lets the
+        land at a fresh id - the partial unique index lets the
         tombstoned row coexist briefly."""
         png = _png_bytes()
         f1 = await _add_image(files, png, "a.png")
@@ -348,7 +348,7 @@ class TestTombstoneSemantics:
         between Phase 1 and Phase 2). Next reaper cycle picks it up
         regardless of age."""
         f = await _add_image(files, _png_bytes(), "stuck.png")
-        # Tombstone manually — created_at is fresh, so Phase 1 of a
+        # Tombstone manually - created_at is fresh, so Phase 1 of a
         # subsequent reaper run wouldn't pick it up. Phase 2's
         # `WHERE ref_count IS NULL` ignores age.
         await self._tombstone(files, f.id)

@@ -4,7 +4,7 @@ import type { InputFieldSchema, ModelParam } from '@/types/api'
  *  schema. Used by `EffectFormTab` to decide whether a value carried
  *  from another effect (or held in the carry slice from a prior visit)
  *  can be applied to this input. The source effect's input type does
- *  NOT factor in — only the runtime type of the value vs the target's
+ *  NOT factor in - only the runtime type of the value vs the target's
  *  constraints. Image fields are handled separately by the role-keyed
  *  image carry, so this rejects them. */
 export function isValidInputValue(value: unknown, schema: InputFieldSchema): boolean {

@@ -13,7 +13,7 @@ def _build_context(
     user_inputs: dict[str, str],
 ) -> dict[str, str]:
     """All declared inputs seeded empty, then overlaid with the user's
-    submitted values. The substituted text is whatever the form sent —
+    submitted values. The substituted text is whatever the form sent -
     for select fields that's the option's `value`, not its `label`.
     Authors who want human-readable phrasing in the prompt branch on
     the value with Jinja, e.g.
@@ -28,7 +28,7 @@ def _build_context(
 
 def _render(template_src: str, context: dict[str, str]) -> str:
     """Render through the sandboxed env and normalize whitespace. Any Jinja
-    error — SyntaxError, UndefinedError, SecurityError — surfaces as a
+    error - SyntaxError, UndefinedError, SecurityError - surfaces as a
     ValueError so the run-submission path can return a 422."""
     try:
         template = env.from_string(template_src)
@@ -78,7 +78,7 @@ class PromptBuilder:
 
         Merges the manifest's `params` with caller-supplied `raw_params`.
         Canonical keys not declared by the provider's params map are silently
-        dropped — that's how provider-specific features degrade gracefully
+        dropped - that's how provider-specific features degrade gracefully
         on providers that don't support them.
 
         Precedence (lowest → highest):
@@ -101,17 +101,17 @@ class PromptBuilder:
             if override and override.params:
                 effective.update(override.params)
 
-        # Pass 1: manifest defaults (non-locked) — low priority
+        # Pass 1: manifest defaults (non-locked) - low priority
         for key, param in effective.items():
             if key in known and not param.is_locked:
                 result[key] = param.effective_value
 
-        # Pass 2: caller-supplied request values — overrides defaults
+        # Pass 2: caller-supplied request values - overrides defaults
         for key, value in (raw_params or {}).items():
             if key in known:
                 result[key] = value
 
-        # Pass 3: manifest locks — always wins
+        # Pass 3: manifest locks - always wins
         for key, param in effective.items():
             if key in known and param.is_locked:
                 result[key] = param.effective_value

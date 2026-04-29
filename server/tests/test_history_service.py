@@ -101,7 +101,7 @@ class TestCreateProcessing:
 
     async def test_rolls_back_when_input_tombstoned(self, service):
         """If any input is tombstoned, the whole transaction
-        rolls back — no half-bumped state, no orphan run row."""
+        rolls back - no half-bumped state, no orphan run row."""
         await _plant_file(service, "in-live")
         await _plant_file(service, "in-tomb")
         async with service._db.transaction() as conn:
@@ -174,7 +174,7 @@ class TestComplete:
 
     async def test_complete_bumps_output_ref_atomically(self, service):
         """The bump on `output_id` lives inside the same transaction
-        as the run row UPDATE — no window where the run is completed
+        as the run row UPDATE - no window where the run is completed
         but the file's ref_count is still 0."""
         await _plant_file(service, "out-bump", ref_count=0)
         job = _make_job("job-bump")
@@ -186,7 +186,7 @@ class TestComplete:
 
     async def test_complete_with_empty_output_id_skips_bump(self, service):
         """Empty `output_id` (failed result download) stores NULL and
-        skips the bump — the run still flips to completed."""
+        skips the bump - the run still flips to completed."""
         job = _make_job("job-no-output")
         await service.create_processing(job)
 
@@ -213,7 +213,7 @@ class TestComplete:
         with pytest.raises(ValueError, match="no longer available"):
             await service.complete("job-doomed", "out-tomb", 100)
 
-        # Run row stayed at processing — caller's responsibility to
+        # Run row stayed at processing - caller's responsibility to
         # mark it failed if appropriate.
         record = await service.get_by_id("job-doomed")
         assert record is not None
@@ -330,7 +330,7 @@ class TestActiveCount:
     async def test_excludes_completed_records(self, service):
         await service.create_processing(_make_job("job-ac-1"))
         await service.create_processing(_make_job("job-ac-2"))
-        # Empty `output_id` skips the ref bump — these tests only care
+        # Empty `output_id` skips the ref bump - these tests only care
         # about the status flip, not the output binding.
         await service.complete("job-ac-1", "", 1000)
 
@@ -496,7 +496,7 @@ class TestRunRecordToDict:
 class TestInputFiles:
     """Pin the role-vs-form-key dedup behavior. Effect runs persist BOTH
     `model_inputs` (role-keyed) AND `inputs` (manifest-form-keyed) maps
-    that alias the same file UUIDs — emitting both would surface the
+    that alias the same file UUIDs - emitting both would surface the
     same image twice (once as `start_frame`, once as the manifest's
     field name like `image`)."""
 

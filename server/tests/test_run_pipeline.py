@@ -69,7 +69,7 @@ def effect_loader():
 
 @pytest.fixture
 def files(tmp_path):
-    """A FileService stand-in — only the methods the run pipeline calls
+    """A FileService stand-in - only the methods the run pipeline calls
     need to look real, the rest are MagicMock. `spec=` so a renamed/removed
     method on the real class fails the test instead of silently passing."""
     svc = MagicMock(spec=FileService)
@@ -160,7 +160,7 @@ class TestStartRun:
 
     async def test_rejects_incompatible_model(self, run_service):
         # Our test manifest has start_frame only, so every real model is
-        # compatible — test with a model ID that doesn't exist at all.
+        # compatible - test with a model ID that doesn't exist at all.
         with pytest.raises(ValueError, match="not compatible"):
             await run_service.start(RunRequest(
                 effect_id="test-uuid-001",
@@ -216,7 +216,7 @@ class TestBroadcast:
         assert ev_a == ev_b == {"event": "progress", "data": {"run_id": "x", "progress": 42}}
 
     async def test_subscriber_added_after_event_misses_it(self, run_service):
-        """Broadcast doesn't buffer history — late subscribers see future events only."""
+        """Broadcast doesn't buffer history - late subscribers see future events only."""
         queue_a = asyncio.Queue[dict]()
         run_service._broadcast_queues.add(queue_a)
         run_service._broadcast({"event": "progress", "data": {"run_id": "x", "progress": 10}})
@@ -280,7 +280,7 @@ async def _insert_processing_run(
     provider_request_id: str | None = None,
     provider_endpoint: str | None = None,
 ) -> None:
-    """Plant a `processing` run row directly via SQL — what the DB looks
+    """Plant a `processing` run row directly via SQL - what the DB looks
     like right after a server crash mid-run."""
     now = datetime.now(timezone.utc).isoformat()
     async with db.transaction() as conn:
@@ -338,12 +338,12 @@ class TestRecoverStuckJobs:
         self, run_service, history, database,
     ):
         """A processing row that never recorded a provider_request_id
-        was lost before the provider acknowledged it — there's nothing
+        was lost before the provider acknowledged it - there's nothing
         to recover. Mark it failed instead of leaving it stuck forever."""
         # Note: get_stuck_processing's WHERE filters on
         # provider_request_id IS NOT NULL, so the only way to exercise
         # this branch is to plant a row that DOES have a request_id but
-        # lacks the endpoint — `recover_stuck_jobs` checks both. We put
+        # lacks the endpoint - `recover_stuck_jobs` checks both. We put
         # the request_id in but leave the endpoint as NULL.
         await _insert_processing_run(
             database,
@@ -385,7 +385,7 @@ class TestRecoverStuckJobs:
     async def test_no_op_when_no_stuck_jobs(self, run_service, history, database):
         """Common case at startup: no in-flight runs from a prior
         process. Recovery should be a silent no-op."""
-        # Plant a completed run — should not be touched.
+        # Plant a completed run - should not be touched.
         now = datetime.now(timezone.utc).isoformat()
         async with database.transaction() as conn:
             await conn.execute(
@@ -417,7 +417,7 @@ def _scripted_provider(events: list[ProviderEvent]):
 
 
 def _raising_provider(exc: Exception):
-    """Provider that yields one progress event then raises — exercises
+    """Provider that yields one progress event then raises - exercises
     the outer `except Exception` arm in `_execute_provider`."""
     class _Raise:
         async def generate(self, _input):
@@ -456,7 +456,7 @@ async def _seed_and_execute(
 class TestExecuteProvider:
     """Integration tests for the provider event loop, result ingest, and
     failure paths in `_execute_provider`. Patches `_ingest_result` so the
-    tests don't depend on real download/ffmpeg/FileService plumbing —
+    tests don't depend on real download/ffmpeg/FileService plumbing -
     the result-ingest internals have their own coverage in
     `test_video_reverse.py` and `test_file_service.py`. The interesting
     contract here is the event→DB→broadcast translation."""
@@ -503,7 +503,7 @@ class TestExecuteProvider:
         assert record.status == "failed"
         assert record.error and "provider blew up" in record.error
 
-        # _fail_job emits its own broadcast frame — tagged with the
+        # _fail_job emits its own broadcast frame - tagged with the
         # INTERNAL_ERROR code so the client can distinguish it.
         failed_events = [e for e in events_seen if e["event"] == "failed"]
         assert any(e["data"].get("code") == "INTERNAL_ERROR" for e in failed_events)
@@ -512,8 +512,8 @@ class TestExecuteProvider:
         self, run_service, history, database,
     ):
         """Result download/ingest can fail (oversized, network) and
-        return None. The run is still marked completed — current
-        semantics — but with no output_id and no broadcast video_url."""
+        return None. The run is still marked completed - current
+        semantics - but with no output_id and no broadcast video_url."""
         run_service._broadcast = lambda ev: None
         run_service._ingest_result = AsyncMock(return_value=None)
 
@@ -578,7 +578,7 @@ class TestExecuteProvider:
     async def test_submitted_event_records_provider_request_id(
         self, run_service, history, database,
     ):
-        """The first `submitted` event from FAL carries the request_id —
+        """The first `submitted` event from FAL carries the request_id -
         critical for boot-time recovery (see `recover_stuck_jobs`)."""
         run_service._broadcast = lambda ev: None
         run_service._ingest_result = AsyncMock(return_value=None)

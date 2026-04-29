@@ -51,7 +51,7 @@ def _validate_asset_filename(filename: str) -> None:
 
     The export ZIP writes entries as `<effect>/assets/<logical_name>`,
     so a traversal here would slip out of the extraction directory on
-    whoever unzips the export — that's the load-bearing reason this
+    whoever unzips the export - that's the load-bearing reason this
     validator runs on both paths."""
     if not filename or not filename.strip():
         raise ValueError("Asset name cannot be empty")
@@ -61,16 +61,16 @@ def _validate_asset_filename(filename: str) -> None:
         )
     if "\x00" in filename:
         raise ValueError("Asset name cannot contain null bytes")
-    # Control characters (tabs, newlines, etc.) — anything below 0x20.
+    # Control characters (tabs, newlines, etc.) - anything below 0x20.
     if any(ord(c) < 32 for c in filename):
         raise ValueError("Asset name cannot contain control characters")
-    # Single filename only — no path components, no platform slashes.
+    # Single filename only - no path components, no platform slashes.
     if "/" in filename or "\\" in filename:
         raise ValueError(f"Asset name cannot contain slashes: {filename!r}")
     p = Path(filename)
     if ".." in p.parts or p.is_absolute():
         raise ValueError(f"Invalid asset path: {filename}")
-    # The "stem" must have actual content — `.png` or `   .png` is
+    # The "stem" must have actual content - `.png` or `   .png` is
     # rejected, since both round-trip badly through filesystems and
     # archive tools.
     if not p.stem.strip():
@@ -98,7 +98,7 @@ def _validate_install_url(url: str) -> None:
 
     Guards against SSRF from user-pasted URLs:
     - Only http / https schemes (blocks file:// data: gopher:// etc.)
-    - Host must resolve — and every resolved address must be a public IP
+    - Host must resolve - and every resolved address must be a public IP
       (no loopback 127.*, no RFC1918 10/172.16/192.168, no link-local
       169.254.* that includes AWS metadata, no reserved/multicast)
 
@@ -128,7 +128,7 @@ def _validate_install_url(url: str) -> None:
             or ip.is_unspecified
         ):
             raise ValueError(
-                f"Refusing to fetch from {addr} — only public addresses allowed"
+                f"Refusing to fetch from {addr} - only public addresses allowed"
             )
 
 
@@ -176,7 +176,7 @@ def _asset_response(
     `filename` is the **logical name on this effect** (stable per effect);
     the embedded `FileRef` is the underlying file in the content-addressed
     store (its `id` is shared across effects that reference the same
-    bytes). The client never composes thumbnail URLs — it reads
+    bytes). The client never composes thumbnail URLs - it reads
     `file.thumbnails["512"]` directly."""
     return {
         "filename": filename if filename is not None else f"original.{ext}",
@@ -190,7 +190,7 @@ class InstallConflictError(Exception):
     """Raised when one or more incoming manifests already exist in the DB at a
     different version. `conflicts` is a list of dicts with keys
     `namespace`, `id`, `name`, `existing_version`, `incoming_version`,
-    `existing_source` — the route layer forwards this to the client as 409."""
+    `existing_source` - the route layer forwards this to the client as 409."""
     def __init__(self, conflicts: list[dict]):
         super().__init__(f"{len(conflicts)} effect(s) already installed")
         self.conflicts = conflicts
@@ -202,13 +202,13 @@ class InstallService:
         self._files = file_service
         # Notified after every public mutation so the loader cache stays
         # fresh without each route having to remember to call reload().
-        # The callback receives an optional effect UUID — None means a
+        # The callback receives an optional effect UUID - None means a
         # full reload is required (install/uninstall/save can change the
         # set of effects), a UUID asks the loader to refresh just that
         # one entry (favorite/source/asset-CRUD path, the gallery-hot
         # mutations). `EffectLoaderService` registers itself in `main.py`
         # after both services are constructed (the dep direction would
-        # otherwise be circular — the loader holds an InstallService too).
+        # otherwise be circular - the loader holds an InstallService too).
         self._on_change: Callable[[str | None], Awaitable[None]] | None = None
 
     def set_on_change(
@@ -324,7 +324,7 @@ class InstallService:
 
         When `overwrite` is False and an incoming manifest already exists at a
         different version, raise `InstallConflictError` without touching disk
-        or DB — the route layer surfaces that to the client for confirmation.
+        or DB - the route layer surfaces that to the client for confirmation.
         Boot-time bundled sync passes `allow_official=True` which skips the
         conflict prompt (silent update)."""
         manifest_paths = self._find_manifests(folder)
@@ -337,13 +337,13 @@ class InstallService:
                 _, manifest = _parse_manifest_yaml(manifest_path.read_text())
             except ValueError as e:
                 # Surface which manifest in the archive is bad so the user
-                # knows where to look — the bare error wouldn't say.
+                # knows where to look - the bare error wouldn't say.
                 rel = manifest_path.relative_to(folder) if folder in manifest_path.parents else manifest_path.name
                 raise ValueError(f"{rel}: {e}")
             pending.append((manifest_path, manifest))
 
         # Validate every namespace upfront so a single bad manifest can't
-        # leave the archive half-installed — the per-effect install loop
+        # leave the archive half-installed - the per-effect install loop
         # below assumes everything in `pending` is already cleared.
         if not allow_official:
             for _, m in pending:
@@ -366,7 +366,7 @@ class InstallService:
     async def sync_bundled_folder(self, folder: Path) -> list[str]:
         """Install the current bundled effect set and demote any previously-
         bundled effect that's no longer in `folder` from `source='official'`
-        to `source='installed'` — so effects dropped from a future release
+        to `source='installed'` - so effects dropped from a future release
         become user-deletable instead of stuck. Files stay in the shared
         store so any historical runs that reference them keep working."""
         manifest_paths = self._find_manifests(folder) if folder.exists() else []
@@ -412,7 +412,7 @@ class InstallService:
         source: EffectSource = "official" if manifest.namespace == "openeffect" else "installed"
         # Only adopt manifest-declared assets, mirroring the URL install
         # path. Anything else in the zip's assets/ folder is silently
-        # ignored — the manifest is the contract, not the archive layout.
+        # ignored - the manifest is the contract, not the archive layout.
         source_assets = manifest_path.parent / "assets"
 
         async def _fetch(filename: str) -> tuple[Path, int]:
@@ -519,13 +519,13 @@ class InstallService:
         fork_from: str | None = None,
     ) -> str:
         """Save or update a locally created/forked effect. Save touches
-        only the YAML and effect metadata — assets are managed through
+        only the YAML and effect metadata - assets are managed through
         the per-asset endpoints (`add_effect_asset`, `rename_effect_asset`,
         `remove_effect_asset`) which run as the user uploads / renames /
         deletes them in the editor's asset panel.
 
         - Update path: UPDATE the row to `state='ready'` with the new YAML
-          content. No installing lifecycle — this is a small in-place
+          content. No installing lifecycle - this is a small in-place
           edit, the row's existing content is the user's last known good
           state and DELETE-on-fail would lose the data they're trying to
           save.
@@ -578,7 +578,7 @@ class InstallService:
                 if len(parts) == 2:
                     source_effect = await self.get_effect(parts[0], parts[1])
                     if source_effect:
-                        # Copy effect_files mapping from the source effect —
+                        # Copy effect_files mapping from the source effect -
                         # bumping ref_count on each shared file.
                         await self._copy_effect_files(source_effect["id"], uuid)
 
@@ -615,7 +615,7 @@ class InstallService:
         immediately), drop its `effect_files` rows (decrementing each
         referenced file's `ref_count`), then DELETE the row.
 
-        Files themselves are not directly touched — orphans drop to
+        Files themselves are not directly touched - orphans drop to
         `ref_count=0` and the file reaper picks them up on its next
         cycle.
 
@@ -645,7 +645,7 @@ class InstallService:
             )
 
         # Per-effect reload: reload_one sees the row is gone and evicts
-        # the entry from both cache views — cheaper than a full reload.
+        # the entry from both cache views - cheaper than a full reload.
         await self._notify_changed(row["id"])
 
     # ─── Source / favorite toggles ───
@@ -657,7 +657,7 @@ class InstallService:
         the two allowed strings."""
         if new_source not in ("installed", "local"):
             raise ValueError(
-                f"Invalid source '{new_source}' — must be 'installed' or 'local'"
+                f"Invalid source '{new_source}' - must be 'installed' or 'local'"
             )
         existing = await self.get_effect(namespace, slug)
         if not existing:
@@ -705,9 +705,9 @@ class InstallService:
             try:
                 remote = yaml.safe_load(resp.text)
             except yaml.YAMLError as e:
-                raise ValueError(f"Update check failed — remote YAML is invalid: {e}")
+                raise ValueError(f"Update check failed - remote YAML is invalid: {e}")
             if not isinstance(remote, dict):
-                raise ValueError("Update check failed — remote did not return a manifest")
+                raise ValueError("Update check failed - remote did not return a manifest")
             remote_version = remote.get("version", "0.0.0")
 
         return {
@@ -732,7 +732,7 @@ class InstallService:
     async def _ingest_asset_path(
         self, logical_name: str, src: Path, kind: FileKind,
     ) -> str:
-        """Like `_ingest_asset_bytes` but for an on-disk source — used
+        """Like `_ingest_asset_bytes` but for an on-disk source - used
         from the archive-extract install path."""
         ext = src.suffix.lstrip(".").lower() or None
         file = await self._files.add_file(src, kind=kind, ext=ext)
@@ -744,7 +744,7 @@ class InstallService:
         self,
         namespace: str,
         slug: str,
-        upload: Any,  # fastapi.UploadFile — duck-typed for tests
+        upload: Any,  # fastapi.UploadFile - duck-typed for tests
         *,
         logical_name: str | None = None,
         kind: FileKind,
@@ -753,7 +753,7 @@ class InstallService:
     ) -> dict[str, Any]:
         """Upload a file and link it to an existing effect in one
         atomic-feeling step. Returns an `AssetFile`-shaped dict the
-        editor can drop straight into its in-memory list — same shape
+        editor can drop straight into its in-memory list - same shape
         the editor-data endpoint uses on initial open.
 
         The effect must already exist (i.e. been saved at least once).
@@ -795,7 +795,7 @@ class InstallService:
         self, namespace: str, slug: str, old_name: str, new_name: str,
     ) -> dict[str, Any]:
         """Change the logical name an effect uses to refer to an
-        already-bound file. The file row itself isn't touched — only
+        already-bound file. The file row itself isn't touched - only
         the (effect_id, logical_name) → file_id mapping is.
 
         Returns the resulting `AssetFile`-shaped dict."""
@@ -843,7 +843,7 @@ class InstallService:
             (existing["id"], new_name),
         )
         if row is None:
-            # Should be unreachable — we just renamed to this name.
+            # Should be unreachable - we just renamed to this name.
             raise ValueError(f"Asset '{new_name}' not found after rename")
         await self._notify_changed(existing["id"])
         return _asset_response(
@@ -855,7 +855,7 @@ class InstallService:
         self, namespace: str, slug: str, logical_name: str,
     ) -> None:
         """Drop an effect's binding to a file. The file row itself
-        sticks around with its ref_count decremented — the orphan
+        sticks around with its ref_count decremented - the orphan
         reaper will sweep it on its next cycle if nothing else
         references it."""
         existing = await self.get_effect(namespace, slug)
@@ -887,7 +887,7 @@ class InstallService:
         if the file has been tombstoned by the GC reaper between when
         the caller looked it up and now, the bump's `ref_count IS NOT
         NULL` guard fails, we raise, and the binding INSERT never
-        happens — the FK can't end up pointing at a doomed row."""
+        happens - the FK can't end up pointing at a doomed row."""
         async with self._db.transaction() as conn:
             try:
                 await FileService.bump_ref_in_tx(conn, file_id)
@@ -906,11 +906,11 @@ class InstallService:
     ) -> None:
         """Atomic version of `_link_effect_file` for many bindings at
         once. Bumps each file's `ref_count` and INSERTs each
-        `effect_files` row inside a single transaction — if any bump
+        `effect_files` row inside a single transaction - if any bump
         fails (tombstoned mid-install), the whole transaction rolls
         back and previous bumps in this batch are reverted.
 
-        `pairs` is a list of `(logical_name, file_id)` tuples — same
+        `pairs` is a list of `(logical_name, file_id)` tuples - same
         shape as `_link_effect_file`'s arguments, just batched."""
         if not pairs:
             return
@@ -954,7 +954,7 @@ class InstallService:
         Bump-first per row, same shape as `_link_effect_file`: if any
         referenced file has been tombstoned between the SELECT and the
         INSERT, the transaction rolls back and the fork fails cleanly
-        — partial copies would leave the new effect with a half-bound
+        - partial copies would leave the new effect with a half-bound
         manifest."""
         async with self._db.transaction() as conn:
             cursor = await conn.execute(
@@ -1016,7 +1016,7 @@ class InstallService:
 
     def _collect_asset_filenames(self, manifest: EffectManifest) -> list[str]:
         """Deduped list of every asset filename a manifest references.
-        Showcases can repeat names — the same `preview.mp4` could be
+        Showcases can repeat names - the same `preview.mp4` could be
         the preview of one showcase and the input of another. The
         install loop binds each name once: `effect_files` has a
         composite PRIMARY KEY on (effect_id, logical_name), and a
@@ -1040,7 +1040,7 @@ class InstallService:
         *,
         state: EffectState = "installing",
     ) -> None:
-        """Insert an effect row. Defaults to `state='installing'` — call
+        """Insert an effect row. Defaults to `state='installing'` - call
         `_update_effect` after asset ingestion completes to flip to
         `ready`. Pass `state='ready'` to skip the lifecycle for special
         paths (none today; the parameter is kept for forward compat /
@@ -1077,7 +1077,7 @@ class InstallService:
         *,
         state: EffectState = "ready",
     ) -> None:
-        """Full-row update. Defaults to `state='ready'` — used by every
+        """Full-row update. Defaults to `state='ready'` - used by every
         install path's commit step, and by save-local-effect's update
         branch which doesn't go through the installing→ready lifecycle.
 
@@ -1111,7 +1111,7 @@ class InstallService:
     async def _mark_installing(self, uuid: str) -> None:
         """Flag an existing row as being replaced. Bumps `updated_at` so
         the GC reaper's "abandoned > 1h" rule can detect a stuck install,
-        but leaves manifest content untouched — until the new install
+        but leaves manifest content untouched - until the new install
         commits via `_update_effect`, the old `manifest_yaml`/`version`
         in the row are still what we'd revert to. The row is invisible
         to the loader during this window because of the state filter.
@@ -1136,7 +1136,7 @@ class InstallService:
         process crashes after the flip, and the loader's `state='ready'`
         filter immediately hides the effect from the gallery.
 
-        Raises `ValueError` on rowcount=0 — same defensive guard as
+        Raises `ValueError` on rowcount=0 - same defensive guard as
         `_mark_installing` against concurrent deletes (the reaper might
         have caught the row as abandoned and finished the work first)."""
         now = datetime.now(timezone.utc).isoformat()
@@ -1150,11 +1150,11 @@ class InstallService:
 
     async def _cleanup_failed(self, uuid: str) -> None:
         """Last step of every install path's `except` arm: drop the row
-        and any `effect_files` rows it owns (via the FK cascade —
+        and any `effect_files` rows it owns (via the FK cascade -
         `_clear_effect_files` runs first to make sure ref_counts are
         decremented properly). The `AND state='installing'` guard makes
         the DELETE a no-op if some other coroutine already flipped the
-        row to `ready` between our failure and this cleanup — we'd
+        row to `ready` between our failure and this cleanup - we'd
         rather leak `effect_files` than wipe a row a different writer
         just committed."""
         await self._clear_effect_files(uuid)

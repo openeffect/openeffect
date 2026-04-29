@@ -1,4 +1,4 @@
-"""OpenEffect — starts the server and opens the browser."""
+"""OpenEffect - starts the server and opens the browser."""
 
 import os
 import signal
@@ -39,7 +39,7 @@ def find_port(start: int = DEFAULT_PORT) -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # Matches the option uvicorn itself sets on its listening socket,
             # so a quick restart right after Ctrl-C can reclaim the preferred
-            # port instead of bumping off it — TIME_WAIT lingers ~60s on
+            # port instead of bumping off it - TIME_WAIT lingers ~60s on
             # macOS after the previous process initiated the close, and a
             # probe without SO_REUSEADDR would falsely see that as "taken."
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -162,7 +162,7 @@ def main() -> None:
     if is_dev:
         client_dir = root_dir / "client"
         if not (client_dir / "node_modules").exists():
-            print(red("  ✗ client/node_modules missing — run `cd client && pnpm install`"))
+            print(red("  ✗ client/node_modules missing - run `cd client && pnpm install`"))
             _terminate_group(proc, signal.SIGTERM)
             sys.exit(1)
         try:
@@ -181,7 +181,7 @@ def main() -> None:
                 start_new_session=True,
             )
         except FileNotFoundError:
-            print(red("  ✗ pnpm not found in PATH — install pnpm to run dev mode"))
+            print(red("  ✗ pnpm not found in PATH - install pnpm to run dev mode"))
             _terminate_group(proc, signal.SIGTERM)
             sys.exit(1)
 

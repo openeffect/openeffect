@@ -15,7 +15,7 @@ import { FileDropzone } from '@/components/FileDropzone'
 import type { AssetFile } from '@/store/types'
 
 // Rail width matches the expanded-header height so the two chrome strips
-// read as the same-thickness bar — one rotated 90° relative to the other.
+// read as the same-thickness bar - one rotated 90° relative to the other.
 const RAIL_WIDTH = 32
 const PANEL_WIDTH = 320
 // Same easing as Layout.tsx so panel / right-drawer animations feel unified.
@@ -26,7 +26,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
   // the effect. Add/rename/delete each call the per-asset endpoint
   // before mutating local state, so save is purely a YAML update.
   const files = useStore(selectAssetFiles)
-  // effectId is a UUID — resolve to namespace/slug for API calls.
+  // effectId is a UUID - resolve to namespace/slug for API calls.
   const effect = useStore((s) => s.effects.items.get(effectId))
   const ns = effect?.namespace
   const slug = effect?.slug
@@ -65,7 +65,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
     >
       {isOpen ? (
         <div className="flex h-full flex-col" style={{ width: PANEL_WIDTH }}>
-          {/* Header — click to collapse */}
+          {/* Header - click to collapse */}
           <button
             onClick={() => setIsOpen(false)}
             className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-xs font-semibold text-secondary-foreground hover:text-foreground"
@@ -75,7 +75,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
             {count > 0 && <Badge className="ml-1">{count}</Badge>}
           </button>
 
-          {/* Upload — pinned to top. Disabled until the effect has been
+          {/* Upload - pinned to top. Disabled until the effect has been
               saved at least once, since asset bindings need an effect_id
               to attach to. */}
           <div className="shrink-0 space-y-2 border-b p-3">
@@ -94,7 +94,7 @@ export function AssetSidePanel({ effectId }: { effectId: string }) {
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
           </div>
 
-          {/* File list — only this scrolls */}
+          {/* File list - only this scrolls */}
           <div className="flex-1 space-y-1 overflow-y-auto p-3">
             {sortedFiles.map((f) => (
               <FileRow
@@ -144,7 +144,7 @@ function FileRow({
   const [error, setError] = useState<string | null>(null)
 
   // The server pre-composes both webp tiers; the 512 always exists for
-  // image and video kinds. (kind=other has no thumbnails — but the editor
+  // image and video kinds. (kind=other has no thumbnails - but the editor
   // never uploads non-media so we never hit that branch here.)
   const thumbnailUrl = file.file.thumbnails['512']
 
@@ -184,7 +184,7 @@ function FileRow({
     try {
       await api.deleteEffectAsset(ns, slug, file.filename)
       removeEditorAsset(file.filename)
-      // No need to clear local state — the row unmounts as the parent
+      // No need to clear local state - the row unmounts as the parent
       // list drops this entry from the store.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed')
@@ -196,7 +196,7 @@ function FileRow({
   return (
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 p-2">
-        {/* Thumbnail — clicks open the original. */}
+        {/* Thumbnail - clicks open the original. */}
         <a href={file.file.url} target="_blank" rel="noreferrer" className="shrink-0">
           <img
             src={thumbnailUrl}
@@ -205,7 +205,7 @@ function FileRow({
           />
         </a>
 
-        {/* Middle — rename input or filename */}
+        {/* Middle - rename input or filename */}
         {isRenaming ? (
           <Input
             value={renameValue}
@@ -222,7 +222,7 @@ function FileRow({
           <span className="flex-1 truncate text-xs text-foreground">{file.filename}</span>
         )}
 
-        {/* Actions — swap to confirm/cancel while renaming or confirming delete */}
+        {/* Actions - swap to confirm/cancel while renaming or confirming delete */}
         <div className="flex shrink-0 items-center gap-0.5">
           {isRenaming ? (
             <>
@@ -291,7 +291,7 @@ function FileRow({
         </div>
       </div>
 
-      {/* Inline error — sits inside the row's border, anchored under
+      {/* Inline error - sits inside the row's border, anchored under
           the file it concerns. Same `text-xs` as the filename. */}
       {error && <p className="px-2 pb-2 text-xs text-destructive">{error}</p>}
     </div>

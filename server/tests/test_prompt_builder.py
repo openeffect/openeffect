@@ -1,4 +1,4 @@
-"""Tests for PromptBuilder — build_prompt() and build_provider_io()."""
+"""Tests for PromptBuilder - build_prompt() and build_provider_io()."""
 from typing import Any
 
 import pytest
@@ -133,7 +133,7 @@ class TestBuildPrompt:
 
     def test_select_value_drives_jinja_conditional(self):
         """Authors who want human-readable phrasing branch on the raw
-        value via Jinja — both arms of the conditional should resolve
+        value via Jinja - both arms of the conditional should resolve
         cleanly when the matching option is picked."""
         manifest = make_manifest(
             inputs={
@@ -294,7 +294,7 @@ class TestBuildNegativePrompt:
 
 
 # -----------------------------------------
-# build_provider_io() — merge precedence and filtering
+# build_provider_io() - merge precedence and filtering
 # -----------------------------------------
 # We test with kling-3.0 for most scenarios because kling-3.0 has no
 # transform_params (params pass through unchanged, easy to assert on).
@@ -434,7 +434,7 @@ class TestBuildProviderIO:
 # -----------------------------------------
 # Direct-wire models (no transform layer)
 # -----------------------------------------
-# All three current models accept their canonical params natively — duration
+# All three current models accept their canonical params natively - duration
 # flows straight through to the wire without a derivation step.
 
 class TestDirectWire:
@@ -491,7 +491,7 @@ class TestDirectWire:
 
 
 # -----------------------------------------
-# Locked params (value:) — merge precedence
+# Locked params (value:) - merge precedence
 # -----------------------------------------
 
 class TestLockedModelParams:

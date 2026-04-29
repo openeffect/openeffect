@@ -88,7 +88,7 @@ class TestEffectValidator:
         assert manifest.inputs["text_field"].role is None
 
     def test_role_on_non_image_field_rejected(self):
-        """Role wires an image input to a model slot — it has no meaning on
+        """Role wires an image input to a model slot - it has no meaning on
         text / select / numeric fields, so setting one there is a bug."""
         data = make_valid_manifest(
             inputs={
@@ -243,7 +243,7 @@ class TestEffectValidator:
         assert "too long" in str(e.value).lower()
 
     def test_id_single_char_parts_allowed(self):
-        """Minimal valid form — a single alphanumeric char on each side."""
+        """Minimal valid form - a single alphanumeric char on each side."""
         data = make_valid_manifest(id="a/b")
         manifest = EffectManifest(**data)
         assert manifest.namespace == "a"
@@ -264,7 +264,7 @@ class TestEffectValidator:
         assert manifest.inputs["audio"].type == "boolean"
 
     def test_invalid_jinja_in_prompt_rejected(self):
-        """Parse-time Jinja syntax check — unclosed tag fails manifest load."""
+        """Parse-time Jinja syntax check - unclosed tag fails manifest load."""
         data = make_valid_manifest()
         data["generation"]["prompt"] = "A shot. {% if scene %}unclosed"
         with pytest.raises(ValidationError) as exc_info:
@@ -289,13 +289,13 @@ class TestEffectValidator:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# `validate_run_inputs` — runtime gate that rejects values that violate the
+# `validate_run_inputs` - runtime gate that rejects values that violate the
 # manifest's per-field constraints before we hand them to the provider.
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def _run_input_manifest(**extra_inputs: InputFieldSchema) -> EffectManifest:
-    """Build a minimal valid manifest — start_frame image is mandated by
+    """Build a minimal valid manifest - start_frame image is mandated by
     the manifest-level validator, so every case carries it."""
     inputs = {
         "photo": InputFieldSchema(
@@ -498,7 +498,7 @@ class TestValidateRunInputsNumber:
         validate_run_inputs(m, {"count": "-500"})
 
     def test_float_formatting_drops_trailing_zero(self):
-        """0.5 renders as '0.5', 1.0 as '1' — the :g formatter keeps
+        """0.5 renders as '0.5', 1.0 as '1' - the :g formatter keeps
         error labels readable for mixed float/int bounds."""
         m = _run_input_manifest(weight=InputFieldSchema(
             type="number", label="Weight", min=0.5, max=1.0,
@@ -517,7 +517,7 @@ class TestManifestMigrations:
 
     def test_default_manifest_version_is_one(self):
         """Legacy manifests without an explicit `manifest_version` load
-        as v1 — the default — instead of failing validation. Critical
+        as v1 - the default - instead of failing validation. Critical
         for third-party YAMLs that predate the field."""
         data = make_valid_manifest()
         del data["manifest_version"]
@@ -548,14 +548,14 @@ class TestManifestMigrations:
         data = {"manifest_version": 1}
         out = _apply_manifest_migrations(data)
         # If no migrations are registered (current state at v1), the
-        # version stays at 1 — also CURRENT, so the assertion holds.
+        # version stays at 1 - also CURRENT, so the assertion holds.
         assert out["manifest_version"] in (1, CURRENT_MANIFEST_VERSION)
         if _MANIFEST_MIGRATIONS:
             assert out["manifest_version"] == CURRENT_MANIFEST_VERSION
 
     def test_unsupported_future_version_rejected(self):
         """A manifest declaring a version we don't know about must be
-        rejected — pretending it's compatible would give the user a
+        rejected - pretending it's compatible would give the user a
         broken effect that looked fine on install."""
         data = make_valid_manifest(manifest_version=99)
         with pytest.raises(ValidationError, match="manifest_version 99"):

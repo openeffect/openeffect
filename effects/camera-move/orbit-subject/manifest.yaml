@@ -68,8 +68,8 @@ generation:
       prompt: >
         Cinematic orbital camera move: the camera smoothly circles around the subject
         in a continuous arc, revealing depth and parallax in the background as it travels.
-        The subject stays planted in place — same identity, same face, same expression,
-        same outfit, same scene — only subtle natural micro-motion (blink, breathing, slight hair movement).
+        The subject stays planted in place - same identity, same face, same expression,
+        same outfit, same scene - only subtle natural micro-motion (blink, breathing, slight hair movement).
         Professional camera work, smooth continuous motion, single continuous take, no cuts, no scene change.
       params:
         duration: 4

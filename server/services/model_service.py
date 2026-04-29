@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 #
 # Each model has three layers:
 #
-#   1. `inputs` — canonical text/image role entries the author binds via
+#   1. `inputs` - canonical text/image role entries the author binds via
 #      `manifest.inputs` (and via `generation.prompt` /
 #      `generation.negative_prompt` for the always-present text roles).
 #      Examples: `start_frame`, `end_frame`, `reference`, `prompt`,
 #      `negative_prompt`.
 #
-#   2. `params` — canonical tunable knob entries, author-facing. These carry
+#   2. `params` - canonical tunable knob entries, author-facing. These carry
 #      the UI metadata (label, type, default, min/max, ui placement) plus
 #      two routing flags:
 #        - `user_only: True`    → never settable via manifest; runtime user
@@ -25,22 +25,22 @@ logger = logging.getLogger(__name__)
 #                                 authors tune via YAML. Playground still
 #                                 renders it.
 #
-#   3. `providers.<id>` — wire layer. Each provider owns:
-#        - `endpoint`        — wire URL / identifier.
-#        - `cost`            — pricing string from the provider's page.
-#        - `inputs`          — `{canonical_role: wire_key}`. Roles absent
+#   3. `providers.<id>` - wire layer. Each provider owns:
+#        - `endpoint`        - wire URL / identifier.
+#        - `cost`            - pricing string from the provider's page.
+#        - `inputs`          - `{canonical_role: wire_key}`. Roles absent
 #                              from this map are unsupported for this
 #                              provider (UI greys them out upstream).
-#        - `params`          — `{canonical_name: {wire: str|None, ...}}`.
+#        - `params`          - `{canonical_name: {wire: str|None, ...}}`.
 #                              Canonicals absent here are silently dropped
 #                              at send time for this provider. `wire: None`
 #                              marks a canonical that's consumed by the
 #                              transform rather than renamed directly.
 #                              Any extra keys here (e.g. `max`, `default`,
 #                              `options`) overlay the canonical UI metadata
-#                              for this provider — use it when one provider
+#                              for this provider - use it when one provider
 #                              accepts a tighter range or different default.
-#        - `transform`       — optional callable `(canonical_dict) → dict`.
+#        - `transform`       - optional callable `(canonical_dict) → dict`.
 #                              Runs after value resolution, before the
 #                              canonical→wire rename. Use it for derived
 #                              fields (split one canonical into multiple
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 #                              hook for any future provider that needs it.
 #
 # Effect manifests reference only the canonical layer (inputs + params).
-# Adding a provider is purely additive — drop in a new `providers.<id>`
+# Adding a provider is purely additive - drop in a new `providers.<id>`
 # entry; no manifest migration.
 
 
@@ -65,7 +65,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 # sniffed `mime` (set server-side from magic bytes at upload time). The
 # run-dispatch path consults this and transcodes unsupported uploads to
 # PNG via `core.image_convert.ensure_mime` before sending. Single source
-# of truth — every provider entry below references the constant rather
+# of truth - every provider entry below references the constant rather
 # than duplicating the list.
 FAL_IMAGE_MIMES: tuple[str, ...] = (
     "image/jpeg", "image/png", "image/webp", "image/gif", "image/avif",
@@ -94,13 +94,13 @@ MODELS: list[dict[str, Any]] = [
         ],
         "params": [
             # ─── Main (user-facing) ───
-            # `generate_audio` goes last in main — it's a feature toggle,
+            # `generate_audio` goes last in main - it's a feature toggle,
             # conceptually separate from the output-shaping knobs above.
             {"name": "duration", "type": "slider", "ui": "main",
              "label": "Duration (seconds)",
              "default": 5, "min": 3, "max": 15, "step": 1},
             # Resolution routes to fal's standard (720p) vs pro (1080p)
-            # endpoint — see the lambda in `providers.fal.endpoint` below.
+            # endpoint - see the lambda in `providers.fal.endpoint` below.
             # Pro pricing is materially higher, hence `price_affecting`.
             {"name": "resolution", "type": "select", "ui": "main",
              "label": "Resolution", "default": "720p",
@@ -116,7 +116,7 @@ MODELS: list[dict[str, Any]] = [
 
             # ─── Advanced (collapsed) ───
             # `guidance_scale` is kling-specific here (wan-2.7 drops it);
-            # wire key stays `cfg_scale` — that's what kling's fal endpoint
+            # wire key stays `cfg_scale` - that's what kling's fal endpoint
             # accepts.
             {"name": "guidance_scale", "type": "slider", "ui": "advanced",
              "label": "Guidance scale",
@@ -158,7 +158,7 @@ MODELS: list[dict[str, Any]] = [
                     # `wire: None` drops it from the outgoing payload.
                     "resolution":     {"wire": None},
                     "generate_audio": {"wire": "generate_audio"},
-                    # Advanced — canonical `guidance_scale`, wire `cfg_scale`.
+                    # Advanced - canonical `guidance_scale`, wire `cfg_scale`.
                     "guidance_scale": {"wire": "cfg_scale"},
                     # seed not declared on kling v3 fal → silently dropped
                 },
@@ -223,7 +223,7 @@ MODELS: list[dict[str, Any]] = [
             {"name": "generate_audio", "type": "boolean", "ui": "main",
              "label": "Generate audio", "default": False,
              "price_affecting": True},
-            # Off by default — multi-clip stitches several short clips into a
+            # Off by default - multi-clip stitches several short clips into a
             # longer compound output. effect_hidden so the effect-page form
             # doesn't show it; manifests can lock it on/off via model_overrides.
             {"name": "generate_multi_clip", "type": "boolean", "ui": "main",
@@ -247,7 +247,7 @@ MODELS: list[dict[str, Any]] = [
                 ),
                 "inputs": {
                     "start_frame":     "image_url",
-                    # end_frame omitted — fal's i2v doesn't support it
+                    # end_frame omitted - fal's i2v doesn't support it
                     "prompt":          "prompt",
                     "negative_prompt": "negative_prompt",
                 },
@@ -255,7 +255,7 @@ MODELS: list[dict[str, Any]] = [
                     # Main
                     "duration":           {"wire": "duration"},
                     "resolution":         {"wire": "resolution"},
-                    # aspect_ratio omitted — fal's i2v doesn't accept it
+                    # aspect_ratio omitted - fal's i2v doesn't accept it
                     "style":              {"wire": "style"},
                     "generate_audio":     {"wire": "generate_audio_switch"},
                     "generate_multi_clip": {"wire": "generate_multi_clip_switch"},
@@ -266,8 +266,8 @@ MODELS: list[dict[str, Any]] = [
         },
     },
     # ── Wan 2.7 ───────────────────────────────────────────────────────────
-    # fal's v2.7 accepts `duration` natively as an integer 2–15 s, so no
-    # transform is needed — the canonical flows straight to the wire.
+    # fal's v2.7 accepts `duration` natively as an integer 2-15 s, so no
+    # transform is needed - the canonical flows straight to the wire.
     {
         "id": "wan-2.7",
         "name": "Wan 2.7",
@@ -305,7 +305,7 @@ MODELS: list[dict[str, Any]] = [
             "fal": {
                 "accepted_image_mimes": FAL_IMAGE_MIMES,
                 "endpoint": "fal-ai/wan/v2.7/image-to-video",
-                # Flat rate across resolution and audio — no tier table.
+                # Flat rate across resolution and audio - no tier table.
                 "cost": "$0.10/s",
                 "inputs": {
                     "start_frame":     "image_url",
@@ -441,7 +441,7 @@ def canonical_to_wire(
             # running on fal, whose pixverse endpoint doesn't accept it).
             pass
         else:
-            # Not a canonical at all — transform-produced wire key, pass through
+            # Not a canonical at all - transform-produced wire key, pass through
             out[k] = v
     return out
 
@@ -450,7 +450,7 @@ def _any_provider_wires(model: dict[str, Any], scenario: set[str]) -> bool:
     """True iff at least one of the model's providers declares every image
     role in `scenario` in its `inputs` map. A model whose canonical claims
     to support a scenario but whose only provider(s) don't wire the roles
-    is unusable today — surfacing it in the picker would silently drop
+    is unusable today - surfacing it in the picker would silently drop
     the user's uploaded image at run time."""
     for provider in model.get("providers", {}).values():
         wired = set(provider.get("inputs", {}).keys())
@@ -474,7 +474,7 @@ def get_compatible_model_ids(
     The check spans two layers: the model's canonical inputs (author
     contract) and each provider's `inputs` map (wire layer). A model with
     a matching canonical but no provider that wires the scenario is
-    excluded — e.g. pixverse-v6's canonical declares `end_frame`, but its
+    excluded - e.g. pixverse-v6's canonical declares `end_frame`, but its
     only provider (fal) doesn't wire it, so pixverse-v6 is NOT compatible
     with effects that supply end_frame.
     """
@@ -525,7 +525,7 @@ def _client_params_for(model: dict[str, Any], provider: dict[str, Any]) -> list[
     show it in the effect form.
 
     Per-provider overrides: any key on `provider.params[name]` other than
-    `wire` overlays the canonical entry — useful when the same canonical
+    `wire` overlays the canonical entry - useful when the same canonical
     has different UI constraints per provider (tighter `max`, different
     `default`, restricted `options`, …). `wire` is wire-layer only and
     never leaks to the client.
@@ -592,7 +592,7 @@ class ModelService:
                     "id": provider_id,
                     "name": identity.get("name", provider_id),
                     "type": provider_type,
-                    # Params land under `variants.image_to_video` — the
+                    # Params land under `variants.image_to_video` - the
                     # client reads from that path. Keeping the nesting
                     # leaves room to add sibling variants (e.g. a future
                     # `video_to_video`) without reshaping this response.

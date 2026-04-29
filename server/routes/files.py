@@ -27,7 +27,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileRef
     """Multipart upload → content-addressed file row. Streams to disk
     with hashing as it goes, dedupes against existing rows by hash, and
     returns a canonical `FileRef`. The hash is intentionally not exposed
-    — exposing it would let an attacker probe the server for known
+    - exposing it would let an attacker probe the server for known
     content."""
     # Reject empty / unsupported content-type outright. Empty bypassed the
     # old `if file.content_type and ...` guard and let any bytes through.
@@ -53,7 +53,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileRef
     except FileTooLargeError:
         raise payload_too_large("File too large")
     except UnreadableMediaError as e:
-        # Pillow / ffmpeg refused — corrupt bytes, unsupported codec, etc.
+        # Pillow / ffmpeg refused - corrupt bytes, unsupported codec, etc.
         raise bad_request(f"Could not process file: {e}", ErrorCode.INVALID_REQUEST)
 
     return file_to_ref(result)
@@ -61,7 +61,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileRef
 
 @router.get("/files/{file_id}/{filename}")
 async def get_file(file_id: str, filename: str, request: Request):
-    """Serve a single variant by exact filename. URL == filename — no
+    """Serve a single variant by exact filename. URL == filename - no
     server-side fallback / "best variant" logic. The blob's `variants`
     list (returned at upload time and embedded into payloads via the
     loader cache) tells the client what's available."""
@@ -70,7 +70,7 @@ async def get_file(file_id: str, filename: str, request: Request):
     if not file_path:
         raise not_found("File not found", ErrorCode.FILE_NOT_FOUND)
 
-    # nosniff, not `Content-Disposition: attachment` — the UI renders
+    # nosniff, not `Content-Disposition: attachment` - the UI renders
     # thumbnails via inline <img src="...">, which Firefox would block
     # under `attachment`.
     return FileResponse(file_path, headers={"X-Content-Type-Options": "nosniff"})

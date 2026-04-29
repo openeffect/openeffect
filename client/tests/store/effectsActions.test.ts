@@ -73,7 +73,7 @@ beforeEach(() => {
   })
 })
 
-describe('toggleFavorite — optimistic update', () => {
+describe('toggleFavorite - optimistic update', () => {
   it('flips is_favorite immediately and persists on success', async () => {
     const m = makeManifest({ is_favorite: false })
     useStore.setState((s) => {
@@ -99,13 +99,13 @@ describe('toggleFavorite — optimistic update', () => {
 
     await toggleFavorite(m)
 
-    // Reverted to the original value — UI should show the unfavorited
+    // Reverted to the original value - UI should show the unfavorited
     // state again because the server didn't accept the change.
     expect(useStore.getState().effects.items.get(m.id)!.is_favorite).toBe(false)
   })
 })
 
-describe('setEffectSource — optimistic update', () => {
+describe('setEffectSource - optimistic update', () => {
   it('moves an effect from installed to local immediately', async () => {
     const m = makeManifest({ source: 'installed' })
     useStore.setState((s) => {
@@ -144,7 +144,7 @@ describe('deleteEffect', () => {
         [sibling.id, sibling],
       ])
       s.effects.selectedId = m.id
-      // Per-effect history slice is loaded for the doomed effect — should
+      // Per-effect history slice is loaded for the doomed effect - should
       // be wiped so a future open of the same id (after a fork) refetches.
       s.history.effectId = m.id
       s.history.effectStatus = 'succeeded'
@@ -188,7 +188,7 @@ describe('deleteEffect', () => {
     const m = makeManifest({ id: 'uuid-001' })
     useStore.setState((s) => {
       s.effects.items = new Map([[m.id, m]])
-      // Per-effect history is loaded for a DIFFERENT effect — must survive.
+      // Per-effect history is loaded for a DIFFERENT effect - must survive.
       s.history.effectId = 'uuid-other'
       s.history.effectStatus = 'succeeded'
       s.history.effectItems = new Map([['other-run', { id: 'other-run' } as never]])

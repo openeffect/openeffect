@@ -1,9 +1,22 @@
 [project]
 name = "openeffect"
 version = "0.1.0"
-description = "Open magic for your media — AI video effects tool"
+description = "Open magic for your media - an AI video-effects tool"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Video",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = [
     "fastapi[standard]>=0.136.0",
     "uvicorn[standard]>=0.45.0",

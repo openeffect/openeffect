@@ -1,4 +1,4 @@
-"""Unit tests for FalProvider — event stream, error paths, and recover()."""
+"""Unit tests for FalProvider - event stream, error paths, and recover()."""
 import os
 
 import fal_client
@@ -49,7 +49,7 @@ class TestGenerate:
     async def test_wan27_happy_path_emits_expected_events(self, monkeypatch):
         """End-to-end wire check: upload → submit → streamed events → completed,
         with the canonical→wire rename applied (`start_frame` → `image_url`).
-        wan-2.7 takes duration natively — no transform, the value passes
+        wan-2.7 takes duration natively - no transform, the value passes
         straight through."""
         uploaded: list[str] = []
 
@@ -254,7 +254,7 @@ class TestGenerate:
         monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
 
         provider = FalProvider(api_key="k")
-        # ImageRef declares the source mime as image/bmp — outside fal's
+        # ImageRef declares the source mime as image/bmp - outside fal's
         # accept list, so the provider must transcode before upload.
         inp = ProviderInput(
             prompt="x",
@@ -277,7 +277,7 @@ class TestGenerate:
 
     async def test_supported_mime_passes_through_without_transcode(self, monkeypatch, tmp_path):
         """An image/jpeg input (in fal's whitelist) should reach
-        fal_client at the original path — no Pillow re-encode."""
+        fal_client at the original path - no Pillow re-encode."""
         from PIL import Image
 
         jpg_path = tmp_path / "in.jpg"
@@ -311,7 +311,7 @@ class TestGenerate:
             pass
 
         assert uploaded == [str(jpg_path)]
-        # Source still on disk — no transcode happened.
+        # Source still on disk - no transcode happened.
         assert jpg_path.exists()
 
     async def test_generate_does_not_leak_key_into_env(self, monkeypatch):
@@ -359,7 +359,7 @@ class TestRecover:
 
     async def test_queued_fetches_result_and_completes(self, monkeypatch):
         """If the job is still Queued when we check, result() blocks until
-        it finishes — recover returns that completion rather than bailing."""
+        it finishes - recover returns that completion rather than bailing."""
         async def fake_status(self, app, request_id, *, with_logs=False):
             return fal_client.Queued(position=3)
 

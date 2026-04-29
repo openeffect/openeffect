@@ -52,7 +52,7 @@ def _showcase_asset_ref(loaded: LoadedEffect, logical_name: str) -> dict | None:
     """Resolve a manifest's logical filename to a `FileRef` dict.
     Returns None when the asset hasn't been ingested yet (a freshly
     saved local effect can reference filenames the user has typed
-    but not uploaded — the editor renders those as missing rather
+    but not uploaded - the editor renders those as missing rather
     than as broken links)."""
     file = loaded.files.get(logical_name)
     if file is None:
@@ -64,7 +64,7 @@ def _serialize_effect(loaded: LoadedEffect) -> dict:
     """Serialize a LoadedEffect with pre-resolved asset references.
     Showcase preview and image-typed showcase inputs come back as
     canonical `FileRef` dicts (or null when the asset isn't ingested
-    yet) — the client reads `ref.url` / `ref.thumbnails['1024']`
+    yet) - the client reads `ref.url` / `ref.thumbnails['1024']`
     directly and never composes a `/api/files/...` URL."""
     data = loaded.manifest.model_dump()
 
@@ -125,7 +125,7 @@ async def install_effect_from_url(
     body: InstallUrlRequest,
     overwrite: bool = False,
 ):
-    """JSON body: `{url}`. ZIP uploads use /effects/install/upload —
+    """JSON body: `{url}`. ZIP uploads use /effects/install/upload -
     mixing a Pydantic body with an UploadFile on one handler breaks
     FastAPI's content-type routing (body silently arrives as None)."""
     install_service = request.app.state.install_service
@@ -278,7 +278,7 @@ async def export_effect(namespace: str, slug: str, request: Request):
     """Export an effect as a .zip archive: manifest.yaml plus the
     original (un-thumbnailed) bytes of each asset the manifest
     actually references. Bound files that aren't mentioned in any
-    showcase (stale uploads from earlier drafts) are skipped — the
+    showcase (stale uploads from earlier drafts) are skipped - the
     export should match what a fresh install_from_archive would
     consume, nothing more."""
     install_service = request.app.state.install_service

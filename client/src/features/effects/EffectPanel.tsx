@@ -148,7 +148,7 @@ export function EffectPanel() {
         </button>
       </div>
 
-      {/* Tab content — form stays mounted across tab switches so its useState
+      {/* Tab content - form stays mounted across tab switches so its useState
           (form values, advanced params, etc.) is preserved. The key still
           forces a remount when the selected effect or saveVersion changes,
           so switching effects or saving still gives a fresh form. */}

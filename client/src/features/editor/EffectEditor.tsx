@@ -105,7 +105,7 @@ export function EffectEditor() {
     if (!editorRef.current) return
 
     // Tab / Shift-Tab indent instead of escaping focus to the next browser
-    // control (basicSetup does not bind Tab by default — deliberate, since
+    // control (basicSetup does not bind Tab by default - deliberate, since
     // an always-on Tab trap hurts a11y; we opt in here).
     const editorKeymap = keymap.of([
       indentWithTab,
@@ -184,7 +184,7 @@ export function EffectEditor() {
     }
   }
 
-  // Show the canonical `namespace/slug` — it's the stable handle
+  // Show the canonical `namespace/slug` - it's the stable handle
   // authors reference and matches how the effect is keyed in the
   // registry / URL, whereas the display `name` is free-form prose.
   // `savedManifest` is always populated when this header renders (both
@@ -224,7 +224,7 @@ export function EffectEditor() {
         </div>
       </div>
 
-      {/* Editor body — CodeMirror + right-side assets rail */}
+      {/* Editor body - CodeMirror + right-side assets rail */}
       <div className="flex min-h-0 flex-1">
         <div ref={editorRef} className="min-w-0 flex-1 overflow-hidden" />
         {editingEffectId && <AssetSidePanel effectId={editingEffectId} />}

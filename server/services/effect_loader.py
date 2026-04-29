@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class LoadedEffect:
     """Wraps a validated manifest with loader-specific metadata. The
     `files` map's `File` values come straight from the JOIN against the
-    `files` table — the same dataclass `FileService` returns — so
+    `files` table - the same dataclass `FileService` returns - so
     callers feed them directly into `build_file_ref` to produce the API
     shape."""
     manifest: EffectManifest
@@ -43,7 +43,7 @@ class EffectLoaderService:
     async def load_all(self) -> None:
         """Load all effects from DB. Sync bundled effects on every startup.
 
-        Bundled effects live as plain folders in the repo's `effects/` tree —
+        Bundled effects live as plain folders in the repo's `effects/` tree -
         no intermediate zip to rebuild on each change. Any effect that was
         bundled in a previous release but has since been removed from the
         folder is demoted to `source='installed'` so the user can uninstall
@@ -116,7 +116,7 @@ class EffectLoaderService:
             except Exception as e:
                 logger.warning(f"Failed to load effect from DB row {row['id']}: {e}")
 
-        # Atomic swap — no window where cache is empty
+        # Atomic swap - no window where cache is empty
         self._cache = new_cache
         self._uuid_cache = new_uuid_cache
 
@@ -175,7 +175,7 @@ class EffectLoaderService:
             files=files,
         )
 
-        # If the effect's full_id changed (rare — would require namespace/slug
+        # If the effect's full_id changed (rare - would require namespace/slug
         # rewrite via the YAML save path), drop the stale entry from `_cache`
         # so we don't end up with two live entries pointing to the same uuid.
         prev = self._uuid_cache.get(effect_id)

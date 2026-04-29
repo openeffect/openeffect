@@ -25,7 +25,7 @@ CONFIG_VERSION = 1
 class ConfigService:
     """Reads / writes non-sensitive settings (theme, etc.) from the SQLite
     `config` KV table. The FAL API key lives separately in a JSON file at
-    `~/.openeffect/config.json` with mode 0o600 — a single-user desktop app
+    `~/.openeffect/config.json` with mode 0o600 - a single-user desktop app
     on localhost uses filesystem perms as the security boundary, so we skip
     the OS keyring and its native dependency."""
 
@@ -67,7 +67,7 @@ class ConfigService:
                 if value is None:
                     continue
                 await self._set(key, str(value))
-            # Unknown keys are silently ignored — the route's ConfigPatch
+            # Unknown keys are silently ignored - the route's ConfigPatch
             # already rejects anything that isn't declared.
         return await self.get_public_config()
 
@@ -103,7 +103,7 @@ class ConfigService:
             elif "fal_api_key" in secrets:
                 secrets.pop("fal_api_key")
             else:
-                return  # nothing to clear — skip the write
+                return  # nothing to clear - skip the write
             await asyncio.to_thread(self._write_secrets_sync, secrets)
 
     def _read_secrets_sync(self) -> dict[str, Any]:
@@ -118,14 +118,14 @@ class ConfigService:
             data = json.loads(text)
         except json.JSONDecodeError as e:
             logger.warning(
-                "config file %s is not valid JSON (%s) — ignoring saved key. "
+                "config file %s is not valid JSON (%s) - ignoring saved key. "
                 "Re-save from Settings to repair.",
                 self._config_path, e,
             )
             return {}
         if not isinstance(data, dict):
             logger.warning(
-                "config file %s does not contain a JSON object — ignoring.",
+                "config file %s does not contain a JSON object - ignoring.",
                 self._config_path,
             )
             return {}
@@ -134,7 +134,7 @@ class ConfigService:
     def _write_secrets_sync(self, data: dict[str, Any]) -> None:
         """Atomically replace the secrets file with `data`. Any leftover tmp
         file from a crashed write is unlinked first so `O_EXCL`'s `0o600`
-        mode arg actually applies — `O_CREAT|O_TRUNC` wouldn't reset perms
+        mode arg actually applies - `O_CREAT|O_TRUNC` wouldn't reset perms
         on an already-existing file. `config_version` is always re-stamped
         as the leading key so the file's first line tells you the schema."""
         data = {

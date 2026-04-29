@@ -1,6 +1,6 @@
 """HTTP-level tests for POST /api/effects/install (URL) and
 POST /api/effects/install/upload (ZIP). install_service is mocked so
-these exercise FastAPI's body-parsing path, not the real install work —
+these exercise FastAPI's body-parsing path, not the real install work -
 regression guard against mixing a Pydantic body with UploadFile on one
 handler, which silently dropped JSON requests to `body = None`."""
 import asyncio

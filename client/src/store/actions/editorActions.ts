@@ -125,7 +125,7 @@ export async function saveEffect(): Promise<void> {
       // the id line on a fresh-effect collision (e.g. `my/foo` →
       // `my/foo-2`); other lines come back exactly as submitted. So
       // only patch the id line, and only if the user hasn't touched it
-      // since save started — that way edits to other fields made while
+      // since save started - that way edits to other fields made while
       // save was in flight stay intact, and a deliberate id rename
       // mid-save isn't clobbered.
       const submittedId = ID_LINE_RE.exec(submittedYaml)?.[1]?.trim()
@@ -137,7 +137,7 @@ export async function saveEffect(): Promise<void> {
         )
       }
       // The canonical "last saved" content is what we submitted with
-      // its id line rewritten — same transformation the server applies.
+      // its id line rewritten - same transformation the server applies.
       // Reconstructing it locally avoids round-tripping the full YAML.
       s.editor.lastSavedYaml = submittedYaml.replace(
         ID_LINE_RE,
@@ -181,7 +181,7 @@ export async function forkEffect(effect: EffectManifest): Promise<void> {
 
     setState((s) => {
       // Insert the new fork at the front so it appears at the top of the
-      // gallery — matches the server's newest-first order.
+      // gallery - matches the server's newest-first order.
       s.effects.items = new Map([[effectId, result.effect], ...s.effects.items])
       mutateClearViewingJob(s)
       s.editor.yamlContent = savedYaml
@@ -233,7 +233,7 @@ export async function forkFromManifest(manifest: EffectManifest): Promise<void> 
 
     setState((s) => {
       // Insert the new fork at the front so it appears at the top of the
-      // gallery — matches the server's newest-first order.
+      // gallery - matches the server's newest-first order.
       s.effects.items = new Map([[effectId, result.effect], ...s.effects.items])
       mutateClearViewingJob(s)
       s.editor.yamlContent = savedYaml
@@ -279,7 +279,7 @@ export function addEditorAsset(file: AssetFile): void {
   }, 'editor/asset/add')
 }
 
-/** Drop an asset by filename. The underlying file row stays — its
+/** Drop an asset by filename. The underlying file row stays - its
  *  ref_count just drops by one when the next save runs. */
 export function removeEditorAsset(filename: string): void {
   setState((s) => {
@@ -288,7 +288,7 @@ export function removeEditorAsset(filename: string): void {
 }
 
 /** Rename an asset's logical filename. The underlying file (and hash)
- *  is unchanged — only the (filename → hash) mapping that gets sent at
+ *  is unchanged - only the (filename → hash) mapping that gets sent at
  *  save time. */
 export function renameEditorAsset(oldName: string, newName: string): void {
   setState((s) => {

@@ -41,7 +41,7 @@ async def start_playground_run(req: PlaygroundRunRequest, request: Request):
 
 @router.get("/runs/stream")
 async def stream_runs(request: Request):
-    """Multiplexed SSE — one connection, all in-flight runs. Each `data`
+    """Multiplexed SSE - one connection, all in-flight runs. Each `data`
     payload carries its own `run_id` so the client can route events to
     the right store entry. The client holds this open for as long as it's
     tracking any run and closes it when its tracked set empties."""

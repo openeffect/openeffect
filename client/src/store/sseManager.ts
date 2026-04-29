@@ -25,7 +25,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 function ensureOpen(): void {
   if (es || tracked.size === 0) return
   // No EventSource in the environment (SSR / tests / older runtimes).
-  // Tracking still works — the set grows — but no wire connection opens.
+  // Tracking still works - the set grows - but no wire connection opens.
   if (typeof EventSource === 'undefined') return
 
   es = new EventSource(STREAM_URL)
@@ -37,7 +37,7 @@ function ensureOpen(): void {
       if (!tracked.has(data.run_id)) return
       updateJobProgress(data.run_id, data.progress, data.message)
     } catch {
-      // Malformed payload — skip.
+      // Malformed payload - skip.
     }
   })
 
@@ -47,7 +47,7 @@ function ensureOpen(): void {
       if (tracked.has(data.run_id)) completeJob(data.run_id, data.output?.url ?? null)
       untrackJob(data.run_id)
     } catch {
-      // Malformed payload — skip.
+      // Malformed payload - skip.
     }
   })
 
@@ -57,7 +57,7 @@ function ensureOpen(): void {
       if (tracked.has(data.run_id)) failJob(data.run_id, data.error)
       untrackJob(data.run_id)
     } catch {
-      // Malformed payload — skip.
+      // Malformed payload - skip.
     }
   })
 
@@ -107,7 +107,7 @@ export function untrackJob(jobId: string): void {
  * On app load, rediscover any jobs the server still has in flight and
  * start tracking each. Fixes the "0% progress after refresh" flash by
  * seeding the store with the server's current progress before SSE
- * delivers the next delta. Fire-and-forget — failures are non-fatal.
+ * delivers the next delta. Fire-and-forget - failures are non-fatal.
  */
 export async function bootstrap(): Promise<void> {
   try {

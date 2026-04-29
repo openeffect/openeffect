@@ -33,11 +33,11 @@ const SOURCE_ROW_OPTIONS: { id: ManagedSource; label: string }[] = [
 
 export function EffectsManagerDialog({ isOpen, onClose }: EffectsManagerDialogProps) {
   const effects = useStore(selectEffects)
-  // `null` means "no filter" — the pill shows just "Source" (muted).
+  // `null` means "no filter" - the pill shows just "Source" (muted).
   const [sourceFilter, setSourceFilter] = useState<ManagedSource | null>(null)
   const [search, setSearch] = useState('')
 
-  // Official effects are out of scope for this dialog — they're managed
+  // Official effects are out of scope for this dialog - they're managed
   // by the bundled-sync flow, not by the user.
   const managedEffects = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -279,7 +279,7 @@ function InstallConflictDialog({
               <div key={`${c.namespace}/${c.slug}`} className="rounded-md border px-3 py-2 text-xs">
                 <div className="font-medium text-foreground">{c.name}</div>
                 <div className="text-muted-foreground">
-                  {c.namespace}/{c.slug} — v{c.existing_version} → v{c.incoming_version}
+                  {c.namespace}/{c.slug} - v{c.existing_version} → v{c.incoming_version}
                   {' '}<span className="opacity-60">({c.existing_source})</span>
                 </div>
               </div>

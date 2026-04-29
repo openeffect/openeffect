@@ -29,7 +29,7 @@ export interface RestoredParams {
 }
 
 export interface AssetFile {
-  /** Logical name on the effect — what the manifest YAML references.
+  /** Logical name on the effect - what the manifest YAML references.
    *  Stable per effect even if the underlying file is replaced. */
   filename: string
   /** Underlying file in the content-addressed store. The `id` is shared
@@ -43,7 +43,7 @@ export interface AssetFile {
 export interface EffectsSlice {
   // Keyed by effect UUID. Using Map for O(1) lookup and stable insertion order
   // (same pattern as RunSlice.jobs). Selectors expose this as an array to
-  // components — internals read/write by key.
+  // components - internals read/write by key.
   items: Map<string, EffectManifest>
   status: LoadStatus
   error: string | null
@@ -70,7 +70,7 @@ export interface RunSlice {
 export interface HistorySlice {
   // All three collections are keyed by RunRecord.id and use Map for O(1)
   // lookup. Insertion order is preserved, which matters because the server
-  // returns runs pre-sorted by created_at DESC — appending a page with
+  // returns runs pre-sorted by created_at DESC - appending a page with
   // `set(id, run)` keeps the oldest-last viewport ordering that components expect.
 
   // Global history (header popup)
@@ -124,7 +124,7 @@ export interface PlaygroundSlice {
   isOpen: boolean
 }
 
-/** A carried image — either a not-yet-uploaded `File` (the user picked
+/** A carried image - either a not-yet-uploaded `File` (the user picked
  *  it but the eager-upload .then hasn't landed yet) or a `file_id` string
  *  (already on the server). Both shapes are valid for the run-submission
  *  path; for preview, only the `file_id` form renders (via the server's
@@ -133,7 +133,7 @@ export interface PlaygroundSlice {
 export type CarriedImage = File | string
 
 export interface FormCarrySlice {
-  /** Role-keyed (`start_frame`, `end_frame`, `reference`) — survives effect
+  /** Role-keyed (`start_frame`, `end_frame`, `reference`) - survives effect
    *  switches in memory only. Resets on page reload. */
   lastImagesByRole: Record<string, CarriedImage>
   /** Manifest input values keyed by input name (`scene_prompt`, `mood`, …).
@@ -147,12 +147,12 @@ export interface FormCarrySlice {
    *  this bucket because they're filtered out of the user-editable list. */
   lastModelParams: Record<string, string | number | boolean>
   /** The user's last-picked model id. Used only as a fallback for effects
-   *  whose manifest doesn't declare `default_model` — when it does, that
+   *  whose manifest doesn't declare `default_model` - when it does, that
    *  always wins. */
   lastModelId: string | null
   /** Last prompt typed in the Playground. Persists across navigation
    *  away and back so the user doesn't have to re-type when popping over
-   *  to an effect. Playground-only — never read by EffectFormTab (effect
+   *  to an effect. Playground-only - never read by EffectFormTab (effect
    *  prompts are manifest-driven). */
   lastPlaygroundPrompt: string
   /** Last negative prompt typed in the Playground. Same scope as above. */

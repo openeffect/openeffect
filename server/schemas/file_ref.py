@@ -2,7 +2,7 @@
 
 Every endpoint that exposes a file reference returns this shape. Clients
 read `url` for the original bytes or `thumbnails["512"]` /
-`thumbnails["1024"]` for image/video thumbnails — no client ever
+`thumbnails["1024"]` for image/video thumbnails - no client ever
 composes a `/api/files/...` URL by string concat.
 
 Thumbnails are derived from `kind`, not stored: image and video both

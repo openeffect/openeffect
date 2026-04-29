@@ -6,7 +6,7 @@ export const imageInputs = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.type === 'image') : []
 
 /** Params rendered in the Playground UI's main section. Playground shows
- *  every tunable canonical regardless of `effect_hidden` — there's no
+ *  every tunable canonical regardless of `effect_hidden` - there's no
  *  manifest-author scope there. */
 export const mainParams = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.ui === 'main') : []
@@ -23,7 +23,7 @@ export const effectMainParams = (v: ModelVariant | undefined): ModelParam[] =>
 export const effectAdvancedParams = (v: ModelVariant | undefined): ModelParam[] =>
   advancedParams(v).filter((p) => !p.effect_hidden)
 
-/** Canonical keys of image-input params — also the semantic roles effect
+/** Canonical keys of image-input params - also the semantic roles effect
  *  manifests bind to (e.g. 'start_frame', 'end_frame'). */
 export const supportedImageKeys = (v: ModelVariant | undefined): string[] =>
   imageInputs(v).map((p) => p.key)

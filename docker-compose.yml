@@ -9,13 +9,13 @@ services:
       - ${OPENEFFECT_DATA_DIR:-~/.openeffect}:/data
     # environment:
       # fal.ai API key. Leave commented and paste it into the Settings UI
-      # on first boot — the value lands in `/data/config.json` (mode 0o600,
+      # on first boot - the value lands in `/data/config.json` (mode 0o600,
       # owned by the container's user). That's the safer default: the key
       # stays off the compose file, out of `docker inspect`, and out of
       # every child process's environment.
       #
       # Uncomment only if the container must have the key *before* anyone
-      # opens the UI — e.g. a fully automated deploy where no one will
+      # opens the UI - e.g. a fully automated deploy where no one will
       # touch a browser. Pair with a sibling `.env` file (not in git) that
       # defines FAL_KEY, so the literal value isn't hardcoded here either.
       # - FAL_KEY=${FAL_KEY:-}

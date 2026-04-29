@@ -1,4 +1,4 @@
-"""Tests for ConfigService — SQLite-backed `theme` plus a JSON file for the
+"""Tests for ConfigService - SQLite-backed `theme` plus a JSON file for the
 FAL API key (mode 0o600 at `~/.openeffect/config.json` in production)."""
 import json
 import logging
@@ -165,7 +165,7 @@ class TestEnvPrecedence:
         self, service: ConfigService, monkeypatch
     ):
         """Client uses `api_key_from_env` to swap the settings input for a
-        read-only notice — it should be True only when FAL_KEY is set."""
+        read-only notice - it should be True only when FAL_KEY is set."""
         monkeypatch.setenv("FAL_KEY", "sk-env-only")
         assert (await service.get_public_config())["api_key_from_env"] is True
 

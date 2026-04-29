@@ -32,7 +32,7 @@ export const useStore = create<AppState>()(
   ),
 )
 
-// Used inside actions — wraps immer setState with an optional action name for DevTools
+// Used inside actions - wraps immer setState with an optional action name for DevTools
 export const setState = (
   fn: (state: AppState) => void,
   actionName?: string,

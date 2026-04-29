@@ -34,7 +34,7 @@ export function effectToPlaygroundParams(
   // Resolve effective params (top-level + per-model override) and unwrap
   // each entry to its scalar value. The form's restore step is what splits
   // these into main vs advanced sections at render time, using the variant's
-  // schema — so all params just go into one flat dict here.
+  // schema - so all params just go into one flat dict here.
   const merged = resolveModelParams(manifest, modelId)
   const params: Record<string, string | number | boolean> = {}
   for (const [k, entry] of Object.entries(merged)) {
@@ -51,7 +51,7 @@ export function effectToPlaygroundParams(
 
 /**
  * Build a RestoredParams shape for "Open in playground" from an effect run.
- * Uses the server-persisted `model_inputs` — already in the normalized,
+ * Uses the server-persisted `model_inputs` - already in the normalized,
  * role-keyed, fully-resolved playground shape. No manifest dependency, so
  * this works even for orphaned effect runs.
  *
@@ -85,7 +85,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   const negativePrompt = String(source.negative_prompt ?? '')
 
   // Build image input schema fields from any non-prompt keys. Only known
-  // image roles pass through — anything else the playground might persist
+  // image roles pass through - anything else the playground might persist
   // isn't schema-representable as an image input.
   const inputs: Record<string, InputFieldSchema> = {}
   for (const [key, value] of Object.entries(source)) {

@@ -38,7 +38,7 @@ inputs:
     required: false
     label: "Describe the scene"
     placeholder: "A cinematic shot..."
-    hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
+    hint: "Briefly describe what's in the input image - extra context like subject, setting, or time of day helps the model preserve the scene more faithfully"
     max_length: 500
     multiline: false
 
@@ -89,7 +89,7 @@ export const BLANK_MANIFEST: EffectManifest = {
       required: false,
       label: 'Describe the scene',
       placeholder: 'A cinematic shot...',
-      hint: "Briefly describe what's in the input image — extra context like subject, setting, or time of day helps the model preserve the scene more faithfully",
+      hint: "Briefly describe what's in the input image - extra context like subject, setting, or time of day helps the model preserve the scene more faithfully",
       max_length: 500,
       multiline: false,
     },

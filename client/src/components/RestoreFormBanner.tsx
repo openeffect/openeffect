@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 interface RestoreFormBannerProps {
   /**
    * Form kind. Used to filter out viewingRunRecord values that belong to the
-   * other panel — e.g. the playground form's banner shouldn't react to an
+   * other panel - e.g. the playground form's banner shouldn't react to an
    * effect run that's still lingering in viewingRunRecord after a navigation.
    */
   kind: 'effect' | 'playground'

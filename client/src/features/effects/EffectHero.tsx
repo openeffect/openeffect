@@ -29,7 +29,7 @@ export function EffectHero({ effect }: EffectHeroProps) {
   const previewUrl = previewRef ? heroSourceUrl(previewRef) : null
   const previewIsVideo = previewRef?.kind === 'video'
 
-  // Build input assets — match showcase.inputs keys to manifest.inputs
+  // Build input assets - match showcase.inputs keys to manifest.inputs
   const inputBlocks: { key: string; type: 'image' | 'text'; assetUrl: string | null; assetText: string | null }[] = []
   for (const [key, schema] of Object.entries(effect.inputs)) {
     const assetValue = showcase?.inputs?.[key]
@@ -163,7 +163,7 @@ function ShowcaseThumb({
       </div>
       {thumbUrl && (isVideo ? (
         // Even for video previews the thumb is a poster frame (.webp),
-        // so render it as an img — no need to spin up a <video> element
+        // so render it as an img - no need to spin up a <video> element
         // for a 48px tile.
         <img
           src={thumbUrl}

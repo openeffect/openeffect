@@ -8,7 +8,7 @@ interface FileDropzoneProps {
   disabled?: boolean
   /** Active-upload signal. Swaps the upload icon for a spinner and the
    *  label for `busyLabel`, and blocks further clicks while in flight.
-   *  `disabled` would also block clicks but gives no positive feedback —
+   *  `disabled` would also block clicks but gives no positive feedback -
    *  use `busy` whenever there's actual work happening behind the scenes. */
   busy?: boolean
   busyLabel?: string

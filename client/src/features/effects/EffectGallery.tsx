@@ -21,7 +21,7 @@ import type { EffectManifest } from '@/types/api'
 // Maximum effect cards shown per category on the front page
 // (activeCategory === 'all') before truncating with a "View all" tile. 9 + the
 // tile = 10 items, which is exactly 2 rows on lg (5 cols); narrower
-// breakpoints overflow slightly but that's acceptable — narrow-screen users
+// breakpoints overflow slightly but that's acceptable - narrow-screen users
 // expect to scroll anyway.
 const MAX_PER_CATEGORY_ON_HOME = 9
 
@@ -39,7 +39,7 @@ export function EffectGallery() {
     if (status === 'idle') loadEffects()
   }, [status])
 
-  // Reset scroll to top on any filter change — the user's previous scroll
+  // Reset scroll to top on any filter change - the user's previous scroll
   // position doesn't map to anything meaningful after the result set reshapes.
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0
@@ -92,7 +92,7 @@ export function EffectGallery() {
       {/* Scrollable zone: Effect grid */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="px-6 pb-8">
-          {/* Favorites section — unlimited, rendered first */}
+          {/* Favorites section - unlimited, rendered first */}
           {favorites.length > 0 && (
             <div>
               <h2 className="flex items-center gap-2 py-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">

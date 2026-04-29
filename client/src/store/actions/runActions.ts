@@ -167,7 +167,7 @@ export function closeJob(): void {
  * Fetch a run record by id and set it as the viewing record so the result
  * shows on the left. Pass `autoApply=true` when this is part of a "fresh
  * open" navigation (the right panel was closed before, e.g. URL load or
- * clicking a run from the global history popup while on the gallery) — the
+ * clicking a run from the global history popup while on the gallery) - the
  * run's params will be loaded into the form too, since there's nothing to
  * override.
  */

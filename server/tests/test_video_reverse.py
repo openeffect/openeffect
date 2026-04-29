@@ -25,7 +25,7 @@ def _create_test_video(path: Path, duration: float = 1.0) -> None:
 
 
 def _probe_duration(path: Path) -> float:
-    """Read duration from ffmpeg's stderr banner — avoids needing a separate
+    """Read duration from ffmpeg's stderr banner - avoids needing a separate
     ffprobe binary (imageio-ffmpeg bundles only ffmpeg)."""
     result = subprocess.run(
         [FFMPEG, "-i", str(path), "-f", "null", "-"],

@@ -11,7 +11,7 @@ class Database:
     """One aiosqlite connection per process, shared across services.
 
     aiosqlite runs SQLite on a dedicated background thread, so sharing a single
-    connection across concurrent async callers is safe — the thread serializes
+    connection across concurrent async callers is safe - the thread serializes
     reads and writes. WAL mode lets the single-writer constraint stop blocking
     readers. A single shared connection can only hold one open transaction,
     though, so `transaction()` serializes callers with `_tx_lock`.
@@ -28,7 +28,7 @@ class Database:
       or has been dead long enough that its refs and rows are abandoned.
       A second process inside the TTL window could legitimately be mid-write.
     - `_tx_lock` is per-process, so two writers across processes race at
-      the SQLite layer — WAL would let a second BEGIN IMMEDIATE block
+      the SQLite layer - WAL would let a second BEGIN IMMEDIATE block
       until the first commits, which is correct but pessimal.
     - `RunService._broadcast_queues` and `_jobs` are in-process state, so
       SSE streams only see events from runs initiated through their own

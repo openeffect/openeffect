@@ -26,7 +26,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
   const jobs = useStore(selectJobs)
   const modelName = availableModels.find((m) => m.id === item.model_id)?.name ?? item.model_id
   const badges = parseRunBadges(item.payload)
-  // Server-resolved input file refs — keyed by role (start_frame, etc.).
+  // Server-resolved input file refs - keyed by role (start_frame, etc.).
   const inputFiles = Object.entries(item.input_files ?? {})
 
   // Prefer the live SSE-backed job state over the record's DB snapshot so
@@ -60,7 +60,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
             status === 'processing' && 'bg-primary',
           )}
         />
-        {/* Video thumbnail — the file store guarantees a 512.webp
+        {/* Video thumbnail - the file store guarantees a 512.webp
             poster frame on every video result. */}
         {status === 'completed' && item.output && (
           <div className="shrink-0 w-20 self-stretch overflow-hidden rounded-md border bg-muted">
@@ -74,7 +74,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Header row — only shown when effectName is present (global history) */}
+          {/* Header row - only shown when effectName is present (global history) */}
           {effectName && (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -87,7 +87,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
             </div>
           )}
 
-          {/* Badges row — when no effectName, status + time are inline with badges */}
+          {/* Badges row - when no effectName, status + time are inline with badges */}
           <div className={cn('flex flex-wrap items-center gap-1', effectName && 'mt-1')}>
             {allBadges.map(([key, value]) => (
               <span
@@ -187,7 +187,7 @@ function parseRunBadges(payload: unknown): [string, string][] {
   for (const [key, value] of Object.entries(allEntries)) {
     if (value == null || value === '') continue
     const strVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
-    // Skip image-input UUIDs — those are now rendered as thumbs from
+    // Skip image-input UUIDs - those are now rendered as thumbs from
     // `record.input_files`. Anything that isn't a UUID and is short
     // enough to fit on a badge (e.g. prompt, seed, intensity) shows up.
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(strVal)) continue

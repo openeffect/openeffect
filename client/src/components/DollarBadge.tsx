@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/Tooltip
  *   (tooltip carries the full cost string, rendered with preserved
  *   newlines so multi-tier strings show as a table).
  *
- * Borderless, no pointer cursor — it's an affordance, not a button.
+ * Borderless, no pointer cursor - it's an affordance, not a button.
  */
 export function DollarBadge({ tooltip }: { tooltip: ReactNode }) {
   return (

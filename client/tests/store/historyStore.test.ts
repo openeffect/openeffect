@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Inlined inside the factory below — `vi.mock` is hoisted to file top,
+// Inlined inside the factory below - `vi.mock` is hoisted to file top,
 // so any const at module scope isn't yet initialized when the factory
 // runs.
 
@@ -234,7 +234,7 @@ describe('historyStore', () => {
       expect(getRunsMock).toHaveBeenCalledTimes(1)
 
       await deleteRunFromHistory('run-1', 'eff-1')
-      // Local delete only — no network call
+      // Local delete only - no network call
       expect(getRunsMock).toHaveBeenCalledTimes(1)
       expect(useStore.getState().history.effectItems.has('run-1')).toBe(false)
     })

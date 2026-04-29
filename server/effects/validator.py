@@ -36,7 +36,7 @@ class SelectOption(BaseModel):
 class InputFieldSchema(BaseModel):
     type: Literal["image", "text", "boolean", "select", "slider", "number"]
     # Role only applies to image inputs, wiring them to a model's image slot
-    # (start_frame, end_frame). Non-image inputs leave role unset — the Jinja
+    # (start_frame, end_frame). Non-image inputs leave role unset - the Jinja
     # prompt template decides which of them render.
     role: str | None = None
     required: bool = False
@@ -86,9 +86,9 @@ class Showcase(BaseModel):
 class ModelParam(BaseModel):
     """A single model parameter entry. Exactly one of `default` or `value` must be set.
 
-    `default` is a visible seeded value — the field renders in the UI with
+    `default` is a visible seeded value - the field renders in the UI with
     this as the starting value; the user can still change it.
-    `value` is a locked value — the UI hides the field entirely and user
+    `value` is a locked value - the UI hides the field entirely and user
     input (if any) is ignored.
 
     In YAML, the scalar shorthand `key: 4` is treated as the lock form
@@ -128,7 +128,7 @@ class ModelParam(BaseModel):
 
 
 def _coerce_params(v: Any) -> Any:
-    """Scalar shorthand: `key: 5` coerces to `key: {value: 5}` — i.e. locked.
+    """Scalar shorthand: `key: 5` coerces to `key: {value: 5}` - i.e. locked.
     The short form is what authors reach for to nail a canonical to a
     specific value (UI hides the field). For a *visible, seeded default*
     the author writes the explicit long form: `key: {default: 5}`.
@@ -178,14 +178,14 @@ CURRENT_MANIFEST_VERSION = 1
 # Migrations bring an older manifest dict up to the current schema. Keyed
 # by *source* version: `_MANIFEST_MIGRATIONS[N]` upgrades a v-N dict to
 # v-(N+1). Stored manifests live in users' SQLite for the full lifetime
-# of the install — without this registry, a schema change would silently
+# of the install - without this registry, a schema change would silently
 # break every previously-installed effect.
 #
 # To add a migration when bumping from N to N+1:
 #   1. Bump CURRENT_MANIFEST_VERSION to N+1.
 #   2. Register `_MANIFEST_MIGRATIONS[N] = lambda d: {...}` that returns
 #      the v-(N+1) shape (and remember to set `d["manifest_version"]`
-#      to N+1 in the returned dict — the runner does NOT do that for you).
+#      to N+1 in the returned dict - the runner does NOT do that for you).
 #   3. Add a test pinning a v-N dict and asserting the resulting model.
 _MANIFEST_MIGRATIONS: dict[int, Any] = {
     # 1: lambda data: {...},  # uncomment when bumping past v1
@@ -196,7 +196,7 @@ def _apply_manifest_migrations(data: dict[str, Any]) -> dict[str, Any]:
     """Walk the registry from `data["manifest_version"]` up to the current
     version, applying each step in turn. Returns the migrated dict (a
     reference to the same object after in-place mutations from migrations
-    is fine — callers only feed the result onward to Pydantic)."""
+    is fine - callers only feed the result onward to Pydantic)."""
     current = data.get("manifest_version", 1)
     if not isinstance(current, int):
         # Let Pydantic surface the type error with its richer location.
@@ -204,7 +204,7 @@ def _apply_manifest_migrations(data: dict[str, Any]) -> dict[str, Any]:
     while current < CURRENT_MANIFEST_VERSION:
         migrate = _MANIFEST_MIGRATIONS.get(current)
         if migrate is None:
-            # No migration registered for this step — leave it; the
+            # No migration registered for this step - leave it; the
             # `_check_supported_version` validator will reject the manifest
             # with a clear error.
             return data
@@ -217,7 +217,7 @@ _SUPPORTED_MANIFEST_VERSIONS = (CURRENT_MANIFEST_VERSION,)
 
 
 class EffectManifest(BaseModel):
-    # First field on purpose — model_dump's emit order puts it at the
+    # First field on purpose - model_dump's emit order puts it at the
     # top of round-tripped YAML so the visual convention matches the
     # one we ask authors to follow. Defaults to 1 so legacy manifests
     # without the field (third-party YAMLs predating the version stamp)
@@ -268,7 +268,7 @@ class EffectManifest(BaseModel):
         if raw is not None:
             if not isinstance(raw, str) or raw.count("/") != 1:
                 raise ValueError(
-                    f"'id' must be 'namespace/slug' — got '{raw!r}'"
+                    f"'id' must be 'namespace/slug' - got '{raw!r}'"
                 )
             ns, slug = raw.split("/")
             _validate_ident_part(ns, "namespace")
@@ -293,7 +293,7 @@ class EffectManifest(BaseModel):
         role_counts: dict[str, int] = {}
         for key, field in self.inputs.items():
             # Role is image-slot wiring; declaring it on anything else is a
-            # manifest bug — prompt-input fields get picked up by the Jinja
+            # manifest bug - prompt-input fields get picked up by the Jinja
             # template itself, no role needed.
             if field.role is not None and field.type != "image":
                 raise ValueError(
@@ -301,7 +301,7 @@ class EffectManifest(BaseModel):
                 )
             if field.role is not None:
                 role_counts[field.role] = role_counts.get(field.role, 0) + 1
-        # Every effect must have a start_frame — the app is image-to-video
+        # Every effect must have a start_frame - the app is image-to-video
         # only for now, so there's no usable model without one.
         if role_counts.get("start_frame", 0) == 0:
             raise ValueError("Every effect must declare an input with role 'start_frame'")
@@ -345,7 +345,7 @@ class EffectManifest(BaseModel):
         for model_id, override in self.generation.model_overrides.items():
             model = MODELS_BY_ID.get(model_id)
             if not model:
-                # Manifests may declare models not currently installed — leave
+                # Manifests may declare models not currently installed - leave
                 # that to a separate check (or tolerate it as forward-compat).
                 continue
             canonicals = {p["name"]: p for p in model.get("params", [])}
@@ -358,7 +358,7 @@ class EffectManifest(BaseModel):
                 if entry.get("user_only"):
                     raise ValueError(
                         f"Param '{key}' on model '{model_id}' is a runtime "
-                        f"user preference — cannot be set in manifest"
+                        f"user preference - cannot be set in manifest"
                     )
         return self
 

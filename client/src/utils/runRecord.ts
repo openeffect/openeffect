@@ -11,7 +11,7 @@ import type { RestoredParams } from '@/store/types'
  *   already-canonical (prompt + negative_prompt + role-keyed images) for
  *   playground runs.
  * - `model_inputs` is the canonical role-keyed view sent to the provider
- *   (effect runs only — playground's `inputs` is already that shape).
+ *   (effect runs only - playground's `inputs` is already that shape).
  * - `params` is all model variant params (main + advanced flattened), matching
  *   the shape of the model definition itself.
  */

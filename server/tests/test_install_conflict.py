@@ -76,7 +76,7 @@ class TestArchiveInstallConflict:
         assert conflicts[0]["incoming_version"] == "2.0.0"
 
     async def test_duplicate_downgrade_also_raises(self, install_service):
-        """A lower incoming version still prompts — user might be restoring."""
+        """A lower incoming version still prompts - user might be restoring."""
         await install_service.install_from_archive(_zip_one(_manifest(version="2.0.0")))
         with pytest.raises(InstallConflictError):
             await install_service.install_from_archive(_zip_one(_manifest(version="1.0.0")))
@@ -114,7 +114,7 @@ class TestArchiveInstallConflict:
             _zip_one(_manifest(id="openeffect/bundled", version="1.0.0")),
             allow_official=True,
         )
-        # Different version — should NOT raise, should update silently
+        # Different version - should NOT raise, should update silently
         installed = await install_service.install_from_archive(
             _zip_one(_manifest(id="openeffect/bundled", version="2.0.0")),
             allow_official=True,
@@ -125,7 +125,7 @@ class TestArchiveInstallConflict:
 
     async def test_reserved_namespace_in_archive_blocks_whole_install(self, install_service):
         """A multi-effect archive where one manifest claims a reserved
-        namespace must reject the whole install — not partially install
+        namespace must reject the whole install - not partially install
         the other effects before hitting the bad one."""
         archive = _zip_many([
             _manifest(id="tester/clean-a"),
@@ -155,7 +155,7 @@ class TestArchiveMalformedManifest:
         assert (await install_service.get_effect("tester", "demo")) is None
 
     async def test_schema_invalid_manifest_rejects_archive(self, install_service):
-        # Missing required `name` field — Pydantic rejects on validation.
+        # Missing required `name` field - Pydantic rejects on validation.
         bad = _manifest()
         del bad["name"]
         buf = io.BytesIO()
@@ -168,7 +168,7 @@ class TestArchiveMalformedManifest:
 
     async def test_one_bad_manifest_blocks_other_clean_effects(self, install_service):
         clean = _manifest(id="tester/clean")
-        # Bad manifest — list under `tags` would be a string, fails schema
+        # Bad manifest - list under `tags` would be a string, fails schema
         bad = _manifest(id="tester/broken")
         bad["tags"] = "not-a-list"
         buf = io.BytesIO()
@@ -177,7 +177,7 @@ class TestArchiveMalformedManifest:
             zf.writestr(f"{bad['id']}/manifest.yaml", yaml.dump(bad))
         with pytest.raises(ValueError, match="tags"):
             await install_service.install_from_archive(buf.getvalue())
-        # The clean one must NOT be installed — upfront pass should bail
+        # The clean one must NOT be installed - upfront pass should bail
         # on the broken manifest before any disk write.
         assert (await install_service.get_effect("tester", "clean")) is None
         assert (await install_service.get_effect("tester", "broken")) is None
@@ -220,7 +220,7 @@ class TestInstallUrlSSRF:
             await install_service.install_from_url("http://10.0.0.1/effect.yaml")
 
     async def test_aws_metadata_link_local_rejected(self, install_service):
-        """AWS / cloud metadata endpoint — classic SSRF target."""
+        """AWS / cloud metadata endpoint - classic SSRF target."""
         with pytest.raises(ValueError, match="only public addresses"):
             await install_service.install_from_url("http://169.254.169.254/latest/meta-data/")
 
@@ -295,7 +295,7 @@ class TestArchiveSymlinkGuard:
 
 class TestArchiveAssetWhitelist:
     """Install only copies files listed in manifest.showcases (preview +
-    inputs.*) — extras in the zip's assets/ folder are ignored. Matches
+    inputs.*) - extras in the zip's assets/ folder are ignored. Matches
     the URL install path, which fetches only declared assets."""
 
     async def test_extra_asset_in_zip_not_copied(self, install_service):
@@ -319,7 +319,7 @@ class TestArchiveAssetWhitelist:
 
         row = await install_service.get_effect("tester", "demo")
         assert row is not None
-        # Only declared assets get bound — the install path ignores
+        # Only declared assets get bound - the install path ignores
         # extras in the zip's assets/ folder.
         rows = await install_service._db.fetchall(
             "SELECT logical_name FROM effect_files WHERE effect_id = ?",

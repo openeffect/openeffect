@@ -52,7 +52,7 @@ class TestGetCompatibleModelIds:
         assert "kling-3.0" in both
 
         # PixVerse V6's canonical declares end_frame, but its only provider
-        # (fal) doesn't wire it — so pixverse-v6 is compatible with start-
+        # (fal) doesn't wire it - so pixverse-v6 is compatible with start-
         # only effects but excluded from start+end effects.
         assert "pixverse-v6" in start_only
         assert "pixverse-v6" not in both
@@ -114,7 +114,7 @@ class TestProviderMaps:
         assert provider["inputs"]["end_frame"] == "end_image_url"
 
     def test_pixverse_v6_fal_image_inputs(self):
-        """PixVerse v6 on fal's i2v doesn't support end_frame — only
+        """PixVerse v6 on fal's i2v doesn't support end_frame - only
         start_frame appears in the provider's inputs map."""
         provider = get_provider("pixverse-v6", "fal")
         assert provider["inputs"]["start_frame"] == "image_url"
@@ -200,7 +200,7 @@ class TestCanonicalToWire:
         """A canonical that IS declared on the model but NOT on this provider
         (e.g. `style` on wan-2.7) gets silently dropped."""
         # style is a pixverse-v6 canonical; not declared on wan-2.7.
-        # First verify style is not a wan canonical — so a manifest wouldn't
+        # First verify style is not a wan canonical - so a manifest wouldn't
         # even validate with it. Test the silent-drop logic via a param that
         # IS in pixverse canonicals but not fal-pixverse's params.
         # aspect_ratio is a pixverse canonical, but omitted from fal's
@@ -256,7 +256,7 @@ class TestClientParamsProviderOverrides:
         assert out[0]["max"] == 10
 
     def test_missing_ui_key_excludes_from_client_payload(self):
-        """Entries without a `ui` key are wire-only knobs — the server
+        """Entries without a `ui` key are wire-only knobs - the server
         sends them to the provider but hides them from the client UI."""
         from services.model_service import _client_params_for
 

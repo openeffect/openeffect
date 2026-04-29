@@ -184,7 +184,7 @@ export const api = {
   exportEffect: (namespace: string, slug: string) =>
     `/api/effects/${namespace}/${slug}/export`,
 
-  // Per-asset CRUD — each call lands the change on the server
+  // Per-asset CRUD - each call lands the change on the server
   // immediately so the editor's save is just YAML + metadata.
   uploadEffectAsset: async (
     namespace: string,

@@ -34,7 +34,7 @@ class RunRecord:
         is the result of a batched JOIN done by HistoryService. Pass None
         for paths that don't need file resolution (e.g., the recovery
         path that only reads `provider_request_id` / `provider_endpoint`)
-        — output and input_files come back empty in that case."""
+        - output and input_files come back empty in that case."""
         refs = file_refs or {}
 
         parsed_payload: Any = None
@@ -86,7 +86,7 @@ class RunRecord:
         }
 
 
-# `r.*` is enough — file metadata comes via the batched lookup in
+# `r.*` is enough - file metadata comes via the batched lookup in
 # `_resolve_files`, not a per-row LEFT JOIN.
 _RUN_SELECT = "SELECT r.* FROM runs r "
 
@@ -129,7 +129,7 @@ class HistoryService:
         in the page (output_id + each row's input_ids[]). Returns a
         `file_id → FileRef` lookup the records can hand to `to_dict`.
 
-        Replaces the per-row LEFT JOIN we used to do in `_RUN_SELECT` —
+        Replaces the per-row LEFT JOIN we used to do in `_RUN_SELECT` -
         we now need full file metadata (kind, mime, ext, size) for both
         the output AND each input, so doing it in one batched query
         keeps the list endpoint at O(2) DB calls regardless of page
@@ -182,7 +182,7 @@ class HistoryService:
         """Create a processing run row, bumping `ref_count` on every
         input file in the same transaction. If any input is no longer
         available (tombstoned by the GC reaper while the user was
-        composing the request), the whole transaction rolls back —
+        composing the request), the whole transaction rolls back -
         we never end up with bumped refs and no run row, or a run row
         whose inputs got reaped under it."""
         now = datetime.now(timezone.utc).isoformat()
@@ -235,12 +235,12 @@ class HistoryService:
     async def complete(self, job_id: str, output_id: str, duration_ms: int) -> None:
         """Mark a run completed and bump `ref_count` on the output
         file in the same transaction. `output_id` may be the empty
-        string when the result download failed — in that case we
+        string when the result download failed - in that case we
         store NULL and skip the bump.
 
         If the bump fails (the just-ingested output was somehow
         tombstoned in the microseconds between `add_file` and now),
-        the transaction rolls back and the run stays at processing —
+        the transaction rolls back and the run stays at processing -
         the caller can then mark it failed."""
         now = datetime.now(timezone.utc).isoformat()
         normalized_id = output_id or None
@@ -325,7 +325,7 @@ class HistoryService:
         it referenced (`input_ids` + `output_id`) in the same
         transaction. Without this atomic pairing a crash between the
         DELETE and a separate decrement would strand input/output
-        files at `ref_count > 0` forever — the orphan reaper would
+        files at `ref_count > 0` forever - the orphan reaper would
         never touch them."""
         async with self._db.transaction() as conn:
             cursor = await conn.execute(
@@ -334,7 +334,7 @@ class HistoryService:
             )
             row = await cursor.fetchone()
             if row is None:
-                return  # idempotent — nothing to delete
+                return  # idempotent - nothing to delete
 
             ids: list[str] = []
             if row["input_ids"]:

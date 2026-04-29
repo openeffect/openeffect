@@ -69,7 +69,7 @@ async def install_service(tmp_path):
 
 
 async def _row(install_service, namespace: str, slug: str) -> dict | None:
-    """Raw row fetch — bypasses get_all_effects' state filter so tests
+    """Raw row fetch - bypasses get_all_effects' state filter so tests
     can inspect both `installing` and `ready` rows."""
     row = await install_service._db.fetchone(
         "SELECT * FROM effects WHERE namespace=? AND slug=?",
@@ -158,7 +158,7 @@ class TestInstallLifecycle:
                     _zip_one(manifest, {"shot.png": png}),
                 )
 
-        # No row at all — not even an `installing` one.
+        # No row at all - not even an `installing` one.
         row = await _row(install_service, "tester", "demo")
         assert row is None
         # No effect_files anywhere.
@@ -198,7 +198,7 @@ class TestInstallLifecycle:
                     _zip_one(_manifest(version="2.0.0")), overwrite=True
                 )
 
-        # Row gone, effect_files gone — `_cleanup_failed` ran.
+        # Row gone, effect_files gone - `_cleanup_failed` ran.
         assert (await _row(install_service, "tester", "demo")) is None
         rows = await install_service._db.fetchall(
             "SELECT effect_id FROM effect_files",
@@ -241,7 +241,7 @@ class TestUninstallLifecycle:
         row = await _row(install_service, "tester", "demo")
         assert row is not None
 
-        # Flip to uninstalling without dropping effect_files — same shape
+        # Flip to uninstalling without dropping effect_files - same shape
         # as a crash mid-uninstall.
         await install_service._mark_uninstalling(row["id"])
 
@@ -295,7 +295,7 @@ class TestPartialArchiveSuccess:
         # `_find_manifests` rglob+sorts alphabetically.
         first = _manifest(id="tester/a-first")
         second = _manifest(id="tester/b-second")
-        # Asset declared but missing — copy step raises ValueError.
+        # Asset declared but missing - copy step raises ValueError.
         fail = _manifest(
             id="tester/m-fail",
             showcases=[{"preview": "missing.mp4", "inputs": {}}],
@@ -315,7 +315,7 @@ class TestPartialArchiveSuccess:
 class TestPruneAbandonedInstalls:
     """The reaper drops effect_files (decrementing refs) and DELETEs
     rows in transient lifecycle states older than `max_age_hours`.
-    Fresh ones are left alone — that's how a second instance starting
+    Fresh ones are left alone - that's how a second instance starting
     up doesn't trample a sibling's in-flight install."""
 
     async def _plant(
@@ -364,7 +364,7 @@ class TestPruneAbandonedInstalls:
 
     async def test_fresh_installing_rows_kept(self, install_service):
         """A row that's only 5 minutes into its install (well under TTL)
-        must be left alone — it could belong to a sibling instance still
+        must be left alone - it could belong to a sibling instance still
         actively writing."""
         await self._plant_installing(install_service, "fresh", age_hours=5 / 60)
         pruned = await install_service.prune_stale_lifecycle_rows(max_age_hours=1)
@@ -451,8 +451,8 @@ class TestPruneAbandonedInstalls:
 class TestAssetFilenameValidation:
     """Both install paths (manifest-author input) and the editor save
     path (user input via the asset panel) funnel through
-    `_validate_asset_filename`. Covers the editor surface — where the
-    user can type any string into the rename input — so a malicious
+    `_validate_asset_filename`. Covers the editor surface - where the
+    user can type any string into the rename input - so a malicious
     or accidental name can't land in `effect_files` and corrupt the
     export ZIP downstream."""
 
@@ -543,7 +543,7 @@ class TestAssetFilenameValidation:
 
     async def test_add_strips_browser_path_components(self, install_service):
         """A browser dragging `subdir/photo.png` gives us that string;
-        we strip to `photo.png` rather than 400-ing — same shape any
+        we strip to `photo.png` rather than 400-ing - same shape any
         upload widget uses."""
         await install_service.install_from_archive(_zip_one(_manifest()))
 
@@ -563,14 +563,14 @@ class TestAssetFilenameValidation:
 
 
 class TestPerAssetCRUD:
-    """Per-asset endpoints — `add_effect_asset`, `rename_effect_asset`,
-    `remove_effect_asset` — drive the editor's asset panel. Each call
+    """Per-asset endpoints - `add_effect_asset`, `rename_effect_asset`,
+    `remove_effect_asset` - drive the editor's asset panel. Each call
     lands its change immediately so the YAML save endpoint never has
     to reason about asset bindings."""
 
     class _Upload:
         """Duck-typed UploadFile stand-in. The service only reads
-        `filename` and calls `read(size)` — same shape as fastapi's
+        `filename` and calls `read(size)` - same shape as fastapi's
         UploadFile."""
         def __init__(self, content: bytes, filename: str):
             self._buf = io.BytesIO(content)
@@ -702,7 +702,7 @@ class TestLinkRejectsTombstoned:
     """`_link_effect_file` runs the bump as the first statement of
     its transaction with a `ref_count IS NOT NULL` guard. If the
     referenced file has been tombstoned by the GC reaper, the bump
-    rowcount=0 and the whole link transaction rolls back — no
+    rowcount=0 and the whole link transaction rolls back - no
     `effect_files` row ever lands pointing at a doomed file."""
 
     async def test_link_effect_file_rejects_tombstoned_file(self, install_service):

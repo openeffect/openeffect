@@ -1,5 +1,5 @@
 /**
- * Path-based routing — uses pushState/popstate for real URL paths.
+ * Path-based routing - uses pushState/popstate for real URL paths.
  *
  * URL patterns:
  *   /                            → gallery

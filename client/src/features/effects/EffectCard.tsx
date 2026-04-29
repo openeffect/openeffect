@@ -50,7 +50,7 @@ export function EffectCard({ effect }: EffectCardProps) {
       whileHover={{ scale: 1.03, transition: { duration: 0.15 } }}
     >
       <div className="relative aspect-square overflow-hidden bg-muted">
-        {/* Placeholder — always rendered behind, visible when no assets or assets fail to load */}
+        {/* Placeholder - always rendered behind, visible when no assets or assets fail to load */}
         <div className="absolute inset-0 flex items-center justify-center">
           <Sparkles size={28} className="text-muted-foreground opacity-30" />
         </div>
@@ -87,7 +87,7 @@ export function EffectCard({ effect }: EffectCardProps) {
         ))}
         {/* Gradient overlay at bottom. The negative `bottom` + matching extra
             height push the gradient's anti-aliased bottom edge below the
-            container so the parent's overflow-hidden clips it — without this,
+            container so the parent's overflow-hidden clips it - without this,
             the hover scale(1.03) makes the fading edge visible as a thin
             bright strip at the bottom of the video. 4px (vs. 1px) absorbs
             the wider anti-aliased band browsers produce at the intermediate
@@ -99,7 +99,7 @@ export function EffectCard({ effect }: EffectCardProps) {
         </Badge>
         {/* Source badge: namespace for installed third-party effects,
             a plain "LOCAL" tag for user-owned ones. Official effects
-            are unbadged — they're the expected default. */}
+            are unbadged - they're the expected default. */}
         {effect.source === 'installed' && (
           <span className="absolute right-2 top-2 inline-flex items-center rounded-full bg-primary/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white backdrop-blur-sm">
             {effect.namespace}

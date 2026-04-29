@@ -32,7 +32,7 @@ def _png_bytes(size: tuple[int, int] = (32, 32)) -> bytes:
 def _padded_png(target_size: int) -> bytes:
     """Real PNG padded to the requested byte length using a tEXt chunk
     of arbitrary bytes. Pillow ignores unknown chunks but counts them
-    in the total file size — useful for exercising the size cap with a
+    in the total file size - useful for exercising the size cap with a
     file that's still a valid image."""
     base = _png_bytes((4, 4))
     if target_size <= len(base):
@@ -183,7 +183,7 @@ class TestMaliciousFilenames:
 
 class TestContentTypeValidation:
     def test_wrong_content_type_header_rejected(self, client):
-        """File claims image/jpeg but ships plain text — rejected by the
+        """File claims image/jpeg but ships plain text - rejected by the
         magic-byte sniff."""
         text_content = b"This is definitely not a JPEG image at all."
         resp = client.post(
@@ -223,7 +223,7 @@ class TestFileSizeLimits:
         before thumbnail generation, so a fake-bytes payload at
         (MAX_IMAGE_SIZE + 1) is rejected only if the route used the
         image cap. We can verify the right cap kicked in by sending
-        bytes that exceed the image cap as a video — they'll fail
+        bytes that exceed the image cap as a video - they'll fail
         thumbnailing (not real video bytes) but the size check
         should have passed first, surfacing as 400, not 413."""
         content = b"\x00\x00\x00\x20ftypisom" + b"\x00" * (MAX_IMAGE_SIZE + 1024)
@@ -232,14 +232,14 @@ class TestFileSizeLimits:
             files={"file": ("clip.mp4", io.BytesIO(content), "video/mp4")},
         )
         # 400 = thumbnail generation failed (size check passed → video cap).
-        # 413 would mean the size check used the image cap — that's the bug.
+        # 413 would mean the size check used the image cap - that's the bug.
         assert resp.status_code != 413, (
             "video cap should be higher than image cap; "
             f"got 413 with body {resp.json()}"
         )
 
     def test_empty_file_rejected(self, client):
-        """A zero-byte file can't carry a magic signature — rejected by the
+        """A zero-byte file can't carry a magic signature - rejected by the
         sniffer rather than accepted-at-zero-size."""
         resp = client.post(
             "/api/files",

@@ -56,7 +56,7 @@ function makeManifest(overrides: Partial<EffectManifest> = {}): EffectManifest {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Plant a representative editor state — tests override yamlContent as needed.
+  // Plant a representative editor state - tests override yamlContent as needed.
   useStore.setState((s) => {
     s.editor.isOpen = true
     s.editor.yamlContent = 'id: my/foo\nname: Foo\n'
@@ -70,7 +70,7 @@ beforeEach(() => {
   })
 })
 
-describe('saveEffect — id-collision sync', () => {
+describe('saveEffect - id-collision sync', () => {
   it('rewrites yamlContent id line when server auto-suffixes the slug', async () => {
     _api.saveEffect.mockResolvedValueOnce({
       full_id: 'my/foo-2',
@@ -101,10 +101,10 @@ describe('saveEffect — id-collision sync', () => {
     await saveEffect()
 
     const s = useStore.getState().editor
-    // The user's deliberate rename mid-save survives — the id-sync only
+    // The user's deliberate rename mid-save survives - the id-sync only
     // patches when the current id still matches what was submitted.
     expect(s.yamlContent).toBe('id: my/totally-different\nname: Foo\n')
-    // lastSavedYaml is built from the submitted YAML with the saved id —
+    // lastSavedYaml is built from the submitted YAML with the saved id -
     // so it reflects what the server actually persisted, not the user's
     // in-progress edit.
     expect(s.lastSavedYaml).toBe('id: my/foo-2\nname: Foo\n')
@@ -135,7 +135,7 @@ describe('saveEffect — id-collision sync', () => {
     await saveEffect()
 
     const items = Array.from(useStore.getState().effects.items.values())
-    // Newest first — `saveEffect` documents this contract.
+    // Newest first - `saveEffect` documents this contract.
     expect(items[0].id).toBe('uuid-new')
     expect(items[1].id).toBe('uuid-other')
   })
@@ -164,7 +164,7 @@ describe('saveEffect — id-collision sync', () => {
   })
 })
 
-describe('saveEffect — error handling', () => {
+describe('saveEffect - error handling', () => {
   it('captures the error message and clears the saving flag', async () => {
     _api.saveEffect.mockRejectedValueOnce(new Error('Validation failed'))
 
@@ -173,7 +173,7 @@ describe('saveEffect — error handling', () => {
     const s = useStore.getState().editor
     expect(s.isSaving).toBe(false)
     expect(s.saveError).toBe('Validation failed')
-    // yamlContent is left as-is — no partial write.
+    // yamlContent is left as-is - no partial write.
     expect(s.yamlContent).toBe('id: my/foo\nname: Foo\n')
   })
 

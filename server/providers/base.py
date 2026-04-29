@@ -39,7 +39,7 @@ class BaseProvider(ABC):
     def generate(self, input: ProviderInput) -> AsyncIterator[ProviderEvent]:
         """Return an async iterator of provider events.
 
-        Concrete subclasses implement this with `async def` + `yield` — that
+        Concrete subclasses implement this with `async def` + `yield` - that
         makes the function an async generator, which already returns an
         AsyncIterator directly. Declaring the abstract without `async` keeps
         the override signatures compatible (otherwise the base would be a

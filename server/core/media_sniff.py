@@ -1,5 +1,5 @@
 """Magic-byte verification for uploaded media. Catches Content-Type
-spoofing before any bytes hit disk — a client could otherwise upload
+spoofing before any bytes hit disk - a client could otherwise upload
 HTML claiming `Content-Type: image/png`, and `FileResponse` would
 later serve it inline with a media-type inferred from the extension."""
 

@@ -14,7 +14,7 @@ export function PlaygroundPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header — mirrors EffectPanel layout */}
+      {/* Header - mirrors EffectPanel layout */}
       <div className="flex shrink-0 items-start justify-between border-b px-5 py-3.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -66,9 +66,9 @@ export function PlaygroundPanel() {
         </button>
       </div>
 
-      {/* Tab content — form stays mounted across tab switches so its useState
+      {/* Tab content - form stays mounted across tab switches so its useState
           (prompt, image inputs, etc.) is preserved. History remounts on each
-          open which is fine — its state lives in the global store. */}
+          open which is fine - its state lives in the global store. */}
       <div className={cn('flex flex-1 flex-col overflow-hidden', rightTab !== 'form' && 'hidden')}>
         <PlaygroundForm />
       </div>

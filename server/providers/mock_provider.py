@@ -15,7 +15,7 @@ class MockProvider(BaseProvider):
 
     # Progress checkpoints (percent). Each step sleeps briefly so the
     # client sees the bar tick, but the whole run finishes in a few
-    # seconds — fast enough for rapid iteration.
+    # seconds - fast enough for rapid iteration.
     _STEPS: tuple[tuple[int, str], ...] = (
         (5,   "Queued..."),
         (20,  "Loading model..."),

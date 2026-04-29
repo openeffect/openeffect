@@ -18,7 +18,7 @@ export function parseTheme(value: unknown): ThemeSetting {
   return 'auto'
 }
 
-// Apply saved theme immediately — before React renders, prevents flash
+// Apply saved theme immediately - before React renders, prevents flash
 if (typeof window !== 'undefined') {
   const saved = localStorage.getItem('theme')
   if (saved === 'dark' || saved === 'light' || saved === 'auto') {

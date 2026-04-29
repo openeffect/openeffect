@@ -12,7 +12,7 @@ export async function initializeApp(): Promise<void> {
 }
 
 /**
- * Navigate home — close editor (with confirm), deselect effect, clear run.
+ * Navigate home - close editor (with confirm), deselect effect, clear run.
  */
 export function goHome(): void {
   const s = getState()

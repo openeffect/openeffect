@@ -13,7 +13,7 @@ interface ImageUploaderProps {
   onChange: (file: File | null) => void
   restoredUrl?: string | null
   /** Active-upload signal. Hides any preview and shows a centered spinner
-   *  with "Uploading…" — matches FileDropzone's busy state for visual
+   *  with "Uploading…" - matches FileDropzone's busy state for visual
    *  consistency. While true, the dropzone can't be re-clicked (the parent
    *  also disables Generate until upload completes). */
   uploading?: boolean
@@ -25,7 +25,7 @@ interface ImageUploaderProps {
 
 export function ImageUploader({ label, hint, required, error, value, onChange, restoredUrl, uploading, errorMessage }: ImageUploaderProps) {
   // Required-field validation paints the dropzone red. An upload error
-  // doesn't — it shows up as plain destructive-colored text below the
+  // doesn't - it shows up as plain destructive-colored text below the
   // empty cell, matching the asset / zip-install error pattern.
   const showErrorBorder = !!error
   const inputRef = useRef<HTMLInputElement>(null)
@@ -35,7 +35,7 @@ export function ImageUploader({ label, hint, required, error, value, onChange, r
   // back `restoredUrl` (the 512.webp thumbnail) once the upload settles.
   // The brief File-only window in between is covered by the `uploading`
   // spinner, so we never need a local blob URL. The only place blob URLs
-  // *could* still appear is the failed-upload state — but the file name
+  // *could* still appear is the failed-upload state - but the file name
   // in the empty-state cell is honest UX in that case (the file isn't on
   // the server, no preview is real).
 

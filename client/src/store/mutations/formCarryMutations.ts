@@ -49,7 +49,7 @@ export function mutateSetCarriedModel(s: AppState, id: string) {
 }
 
 /** Used by PlaygroundForm to remember the prompt across navigation
- *  away and back (within a session). Effects don't read these — their
+ *  away and back (within a session). Effects don't read these - their
  *  prompts are manifest-driven. */
 export function mutateSetCarriedPlaygroundPrompt(s: AppState, value: string) {
   s.formCarry.lastPlaygroundPrompt = value

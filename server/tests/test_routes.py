@@ -193,7 +193,7 @@ class TestFilesRoute:
         assert "id" in data
         # uuid7-shaped: dashes in the canonical layout
         assert "-" in data["id"]
-        # hash is server-internal — never returned to clients
+        # hash is server-internal - never returned to clients
         assert "hash" not in data
         # ext is encoded in `url`, no longer a top-level field
         assert "ext" not in data
@@ -207,7 +207,7 @@ class TestFilesRoute:
         }
 
     def test_upload_deduplication(self, client):
-        """Uploading the same content twice should return the same id —
+        """Uploading the same content twice should return the same id -
         the second upload finds the existing row by hash and returns it."""
         png = _png_bytes()
         resp1 = client.post(

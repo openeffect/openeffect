@@ -27,16 +27,16 @@ beforeEach(() => {
   })
 })
 
-describe('sseManager — tracking lifecycle', () => {
+describe('sseManager - tracking lifecycle', () => {
   // EventSource is undefined in the JSDOM/Node test environment (the module
-  // explicitly handles this case — `tracking still works, no wire opens`).
+  // explicitly handles this case - `tracking still works, no wire opens`).
   // These tests pin that contract so adding/removing jobs doesn't crash
   // when no SSE transport is available.
 
   it('trackJob is idempotent for the same job id', () => {
     expect(() => {
       trackJob('job-1')
-      trackJob('job-1')  // duplicate — must not double-add or throw
+      trackJob('job-1')  // duplicate - must not double-add or throw
     }).not.toThrow()
   })
 
@@ -103,7 +103,7 @@ describe('sseManager.bootstrap', () => {
   })
 
   it('does not overwrite a job already present in the store', async () => {
-    // The store already has run-A — bootstrap shouldn't clobber it
+    // The store already has run-A - bootstrap shouldn't clobber it
     // (the live SSE-driven entry is more current than what we'd seed).
     useStore.setState((s) => {
       s.run.jobs = new Map([
@@ -150,7 +150,7 @@ describe('sseManager.bootstrap', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     _api.getRuns.mockRejectedValueOnce(new Error('network blip'))
 
-    // Must not throw — the boot path is fire-and-forget.
+    // Must not throw - the boot path is fire-and-forget.
     await expect(bootstrap()).resolves.toBeUndefined()
     // Logged for observability, but no rethrow.
     expect(warn).toHaveBeenCalled()

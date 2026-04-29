@@ -74,7 +74,7 @@ export function EffectFormTab() {
   // component via `key` whenever manifest changes, so lazy init is sufficient.
   // Image fields are seeded from the cross-effect carry slice when a matching
   // role has been used recently. Non-image inputs are seeded from the
-  // by-name carry where the carried value is valid for the target schema —
+  // by-name carry where the carried value is valid for the target schema -
   // that's how a `scene_prompt` typed on Effect A flows over to Effect B
   // when both declare the same input key.
   const [values, setValues] = useState<Record<string, unknown>>(() => {
@@ -88,7 +88,7 @@ export function EffectFormTab() {
           const carried = imageCarry[schema.role]
           // The form uses two image-cell shapes: a raw `File` (pre-upload)
           // or `{ __restored, filename }` (already on the server). The
-          // carry slice normalizes on `File | string` to keep things flat —
+          // carry slice normalizes on `File | string` to keep things flat -
           // convert at the boundary so the form's render code stays unchanged.
           init[key] = carried instanceof File
             ? carried
@@ -107,7 +107,7 @@ export function EffectFormTab() {
     }
     return init
   })
-  // `selectedModel` initial value: manifest's `default_model` always wins —
+  // `selectedModel` initial value: manifest's `default_model` always wins -
   // it's the effect author's curated pick. Only when it's missing
   // (typically blank/unsaved effects in the editor) do we fall back to the
   // user's last-picked model from the carry slice, and only if it's
@@ -135,7 +135,7 @@ export function EffectFormTab() {
   const [uploadingKeys, setUploadingKeys] = useState<ReadonlySet<string>>(new Set())
   // Per-input upload error messages. Set by the eager-upload `.catch` and
   // cleared when the user re-picks the same cell. Surfaces under the
-  // ImageUploader as small destructive text — same shape as the asset and
+  // ImageUploader as small destructive text - same shape as the asset and
   // zip-install flows.
   const [uploadErrors, setUploadErrors] = useState<Record<string, string | undefined>>({})
   const formRef = useRef<HTMLDivElement>(null)
@@ -166,7 +166,7 @@ export function EffectFormTab() {
     }
   }
 
-  // Re-seed output + advanced values whenever (model, provider) changes —
+  // Re-seed output + advanced values whenever (model, provider) changes -
   // the provider-variant's params list (and defaults) may differ. An empty
   // prevSeedKey acts as a "skip this cycle" sentinel so the restore handler
   // doesn't get its freshly-set values overwritten.
@@ -178,8 +178,8 @@ export function EffectFormTab() {
     if (!skip) {
       // Carry-aware seeding: prefer the user's last-tweaked param value
       // (when valid for this variant) over the manifest/variant default.
-      // Locked params don't appear in `outputParams`/`advancedParams` —
-      // they're filtered by `lockedKeys` above — so carry can never bypass
+      // Locked params don't appear in `outputParams`/`advancedParams` -
+      // they're filtered by `lockedKeys` above - so carry can never bypass
       // a manifest-author lock.
       const paramCarry = useStore.getState().formCarry.lastModelParams
       const defaults: Record<string, string | number | boolean> = {}
@@ -207,9 +207,9 @@ export function EffectFormTab() {
 
   // Consume restoredParams when the store pushes a new value (Reuse button on
   // a historical run). Render-time prev-state comparison for the same reason
-  // as the provider auto-select above — avoid cascading renders from setState
+  // as the provider auto-select above - avoid cascading renders from setState
   // inside useEffect. Sentinel `undefined` init (restoredParams is never
-  // undefined) so the first render's comparison fires — otherwise a value
+  // undefined) so the first render's comparison fires - otherwise a value
   // seeded into the store before mount would match its own
   // `useState(restoredParams)` and the restore block would be skipped.
   const [prevRestored, setPrevRestored] = useState<typeof restoredParams | undefined>(undefined)
@@ -221,12 +221,12 @@ export function EffectFormTab() {
           ? restoredParams.modelId
           : defaultModel
       setSelectedModel(resolvedModelId)
-      // Mirror the actual selected model into carry — once applied to the
+      // Mirror the actual selected model into carry - once applied to the
       // form, this run's model is the user's "current" pick.
       if (resolvedModelId) {
         setState((s) => mutateSetCarriedModel(s, resolvedModelId), 'formCarry/setModel')
       }
-      // Tell the seed-defaults block to skip this cycle — otherwise it would
+      // Tell the seed-defaults block to skip this cycle - otherwise it would
       // overwrite the restored output/advanced values on the next render.
       setPrevSeedKey('')
 
@@ -262,7 +262,7 @@ export function EffectFormTab() {
               const fileId = restoredParams.inputs[key]
               if (typeof fileId === 'string' && fileId) {
                 next[key] = { __restored: true, filename: fileId }
-                // Mirror restored images into the carry slice too — once
+                // Mirror restored images into the carry slice too - once
                 // applied to the form, they're "loaded" in the workspace
                 // and should carry to the next effect like any other upload.
                 if (schema.role) {
@@ -297,7 +297,7 @@ export function EffectFormTab() {
       if (value instanceof File) {
         // Re-picking clears any prior failed-upload error for this cell.
         setUploadErrors((prev) => (prev[key] !== undefined ? { ...prev, [key]: undefined } : prev))
-        // Hold the File in carry immediately — covers a fast effect-switch
+        // Hold the File in carry immediately - covers a fast effect-switch
         // before the upload below completes.
         setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
         // Mark this key as uploading so the cell shows the busy spinner
@@ -317,7 +317,7 @@ export function EffectFormTab() {
         }
         // Eagerly upload to swap to a file_id-backed shape. Subsequent
         // effect mounts render the 512.webp thumbnail (~50KB) via URL
-        // instead of decoding the full File on every switch — that decode
+        // instead of decoding the full File on every switch - that decode
         // is what causes the per-switch lag for big images. Server-side
         // sha256 dedup makes a re-upload a no-op if the run flow ever
         // races and re-submits the same bytes.
@@ -338,7 +338,7 @@ export function EffectFormTab() {
           .catch((err) => {
             // Match the asset / zip-install error pattern: clear the
             // cell (form state + carry) and surface the error inline.
-            // The user re-picks to retry — leaving the failed File in
+            // The user re-picks to retry - leaving the failed File in
             // place would either re-upload at submit (wasted, the same
             // bytes that just failed) or render a stale preview.
             const msg = err instanceof Error ? err.message : 'Upload failed'
@@ -357,7 +357,7 @@ export function EffectFormTab() {
       } else if (value === null || value === undefined) {
         setState((s) => mutateClearCarriedImage(s, role), 'formCarry/clearImage')
         // Hide the busy spinner immediately if a pending upload was in
-        // flight for this cell — its eventual completion is harmless
+        // flight for this cell - its eventual completion is harmless
         // (the carry guard fails because we just cleared) but the
         // spinner shouldn't keep claiming "Uploading…" once the user
         // has explicitly cleared the cell.
@@ -373,7 +373,7 @@ export function EffectFormTab() {
       // Non-image input change: mirror by NAME so a `scene_prompt` typed
       // here can flow over to another effect that also declares
       // `scene_prompt`. Type-validation against the target's schema
-      // happens at restore time (in `isValidInputValue`), not here —
+      // happens at restore time (in `isValidInputValue`), not here -
       // this side just records what the user has.
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         setState((s) => mutateSetCarriedInput(s, key, value), 'formCarry/setInput')

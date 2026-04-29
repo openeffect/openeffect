@@ -20,7 +20,7 @@ export function PricingBadge({ tooltip }: { tooltip: ReactNode }) {
         </span>
       </TooltipTrigger>
       {/* `whitespace-pre` + `font-mono` so the cost string renders as a rate
-           card — multiple spaces survive, and every character has the same
+           card - multiple spaces survive, and every character has the same
            width so resolution / price / audio columns line up. */}
       <TooltipContent side="top" className="whitespace-pre font-mono">
         {tooltip}

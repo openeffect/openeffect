@@ -14,10 +14,10 @@ async def start_run(req: RunRequest, request: Request):
     run_service = request.app.state.run_service
     history = request.app.state.history_service
     try:
-        job_id = await run_service.start(req)
-        record = await history.get_by_id(job_id)
+        run_id = await run_service.start(req)
+        record = await history.get_by_id(run_id)
         serialized = await history.serialize(record) if record else None
-        return {"job_id": job_id, "record": serialized}
+        return {"run_id": run_id, "record": serialized}
     except ValueError as e:
         raise unprocessable(str(e), ErrorCode.INVALID_REQUEST)
     except PermissionError as e:
@@ -29,10 +29,10 @@ async def start_playground_run(req: PlaygroundRunRequest, request: Request):
     run_service = request.app.state.run_service
     history = request.app.state.history_service
     try:
-        job_id = await run_service.start_playground(req)
-        record = await history.get_by_id(job_id)
+        run_id = await run_service.start_playground(req)
+        record = await history.get_by_id(run_id)
         serialized = await history.serialize(record) if record else None
-        return {"job_id": job_id, "record": serialized}
+        return {"run_id": run_id, "record": serialized}
     except ValueError as e:
         raise unprocessable(str(e), ErrorCode.INVALID_REQUEST)
     except PermissionError as e:
@@ -41,10 +41,10 @@ async def start_playground_run(req: PlaygroundRunRequest, request: Request):
 
 @router.get("/runs/stream")
 async def stream_runs(request: Request):
-    """Multiplexed SSE — one connection, all in-flight jobs. Each `data`
-    payload carries its own `job_id` so the client can route events to
+    """Multiplexed SSE — one connection, all in-flight runs. Each `data`
+    payload carries its own `run_id` so the client can route events to
     the right store entry. The client holds this open for as long as it's
-    tracking any job and closes it when its tracked set empties."""
+    tracking any run and closes it when its tracked set empties."""
     run_service = request.app.state.run_service
 
     async def event_stream():

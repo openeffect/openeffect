@@ -39,7 +39,7 @@ class ErrorCode(str, Enum):
     OFFICIAL_READONLY = "OFFICIAL_READONLY"
 
     # Runs / provider
-    JOB_NOT_FOUND = "JOB_NOT_FOUND"
+    RUN_NOT_FOUND = "RUN_NOT_FOUND"
     RUN_FAILED = "RUN_FAILED"
 
 

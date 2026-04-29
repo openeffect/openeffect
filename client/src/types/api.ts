@@ -254,7 +254,7 @@ export interface PlaygroundRunRequest {
 }
 
 export interface RunResponse {
-  job_id: string
+  run_id: string
   /** The just-created run record — lets the client render the rich view
    *  (model, date, inputs, params) immediately without a separate GET. */
   record: RunRecord | null

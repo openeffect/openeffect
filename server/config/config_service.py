@@ -15,6 +15,12 @@ DEFAULTS: dict[str, Any] = {
     "theme": "dark",
 }
 
+# Schema version stamped into ~/.openeffect/config.json so future shape
+# changes (e.g. richer auth blob, new stored secrets) can migrate by
+# `if data.get("config_version", 0) < N: …` instead of guessing from the
+# absence of fields. Bump when changing the file's shape.
+CONFIG_VERSION = 1
+
 
 class ConfigService:
     """Reads / writes non-sensitive settings (theme, etc.) from the SQLite
@@ -129,7 +135,12 @@ class ConfigService:
         """Atomically replace the secrets file with `data`. Any leftover tmp
         file from a crashed write is unlinked first so `O_EXCL`'s `0o600`
         mode arg actually applies — `O_CREAT|O_TRUNC` wouldn't reset perms
-        on an already-existing file."""
+        on an already-existing file. `config_version` is always re-stamped
+        as the leading key so the file's first line tells you the schema."""
+        data = {
+            "config_version": CONFIG_VERSION,
+            **{k: v for k, v in data.items() if k != "config_version"},
+        }
         tmp_path = self._config_path.with_suffix(".json.tmp")
         tmp_path.unlink(missing_ok=True)
         fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

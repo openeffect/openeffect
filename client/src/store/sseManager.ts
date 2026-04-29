@@ -32,10 +32,10 @@ function ensureOpen(): void {
 
   es.addEventListener('progress', (e: MessageEvent) => {
     try {
-      const data = JSON.parse(e.data) as { job_id: string; progress: number; message: string }
+      const data = JSON.parse(e.data) as { run_id: string; progress: number; message: string }
       retries = 0
-      if (!tracked.has(data.job_id)) return
-      updateJobProgress(data.job_id, data.progress, data.message)
+      if (!tracked.has(data.run_id)) return
+      updateJobProgress(data.run_id, data.progress, data.message)
     } catch {
       // Malformed payload — skip.
     }
@@ -43,9 +43,9 @@ function ensureOpen(): void {
 
   es.addEventListener('completed', (e: MessageEvent) => {
     try {
-      const data = JSON.parse(e.data) as { job_id: string; output: FileRef | null }
-      if (tracked.has(data.job_id)) completeJob(data.job_id, data.output?.url ?? null)
-      untrackJob(data.job_id)
+      const data = JSON.parse(e.data) as { run_id: string; output: FileRef | null }
+      if (tracked.has(data.run_id)) completeJob(data.run_id, data.output?.url ?? null)
+      untrackJob(data.run_id)
     } catch {
       // Malformed payload — skip.
     }
@@ -53,9 +53,9 @@ function ensureOpen(): void {
 
   es.addEventListener('failed', (e: MessageEvent) => {
     try {
-      const data = JSON.parse(e.data) as { job_id: string; error: string }
-      if (tracked.has(data.job_id)) failJob(data.job_id, data.error)
-      untrackJob(data.job_id)
+      const data = JSON.parse(e.data) as { run_id: string; error: string }
+      if (tracked.has(data.run_id)) failJob(data.run_id, data.error)
+      untrackJob(data.run_id)
     } catch {
       // Malformed payload — skip.
     }

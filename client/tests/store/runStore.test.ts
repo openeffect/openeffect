@@ -3,7 +3,7 @@ import type { EffectManifest } from '../../src/types/api'
 
 vi.mock('../../src/utils/api', () => ({
   api: {
-    run: vi.fn().mockResolvedValue({ job_id: 'test-job-123', status: 'queued' }),
+    run: vi.fn().mockResolvedValue({ run_id: 'test-job-123', status: 'queued' }),
     upload: vi.fn().mockResolvedValue({ ref_id: 'uploaded-ref' }),
   },
 }))
@@ -232,10 +232,10 @@ describe('runStore', () => {
       const { api } = await import('../../src/utils/api')
       const runMock = vi.mocked(api.run)
 
-      runMock.mockResolvedValueOnce({ job_id: 'job-1', status: 'queued' })
+      runMock.mockResolvedValueOnce({ run_id: 'job-1', status: 'queued' })
       await startRun(mockManifest, {}, 'wan-2.7', 'fal', {}, {})
 
-      runMock.mockResolvedValueOnce({ job_id: 'job-2', status: 'queued' })
+      runMock.mockResolvedValueOnce({ run_id: 'job-2', status: 'queued' })
       await startRun(mockManifest, {}, 'wan-2.7', 'fal', {}, {})
 
       expect(getActiveCount()).toBe(2)

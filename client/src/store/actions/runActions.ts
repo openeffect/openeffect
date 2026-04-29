@@ -74,8 +74,8 @@ export async function startRun(
   const response = await api.run(request)
 
   setState((s) => {
-    s.run.jobs.set(response.job_id, {
-      jobId: response.job_id,
+    s.run.jobs.set(response.run_id, {
+      jobId: response.run_id,
       effectName: manifest.name,
       status: 'processing',
       progress: 0,
@@ -83,20 +83,20 @@ export async function startRun(
       videoUrl: null,
       error: null,
     })
-    s.run.viewingJobId = response.job_id
+    s.run.viewingJobId = response.run_id
     s.run.leftPanel = 'progress'
     // The server embeds the just-created record in the response so the
     // unified run view can render model/date/inputs/params immediately.
     if (response.record) mutateSetViewingRunRecord(s, response.record)
     // Mark this as the last-applied run so the Restore banner doesn't pop up
     // for the run we just submitted (the form already matches it).
-    mutateSetLastAppliedRunId(s, response.job_id)
+    mutateSetLastAppliedRunId(s, response.run_id)
   }, 'run/start')
 
-  trackJob(response.job_id)
-  navigate(`/effects/${manifest.id}`, { run: response.job_id })
+  trackJob(response.run_id)
+  navigate(`/effects/${manifest.id}`, { run: response.run_id })
   refreshLoadedHistories()
-  return response.job_id
+  return response.run_id
 }
 
 export function updateJobProgress(jobId: string, progress: number, message: string): void {

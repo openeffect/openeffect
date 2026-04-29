@@ -34,6 +34,11 @@ from services.model_service import (
 
 logger = logging.getLogger(__name__)
 
+# Schema version stamped into the runs.inputs JSON blob. Bump when changing
+# the blob's shape (rename keys, drop the inputs/model_inputs aliasing,
+# etc.) and add a migration in history_service so old rows round-trip.
+RECORD_VERSION = 1
+
 
 class ResultTooLargeError(Exception):
     """Provider returned a result video bigger than MAX_RESULT_VIDEO_SIZE."""
@@ -212,6 +217,11 @@ class RunService:
         }
 
         inputs_json = json.dumps({
+            # Stamp the schema version so future shape changes (rename keys,
+            # drop the inputs/model_inputs aliasing, etc.) can migrate by
+            # `if data.get("record_version", 0) < N: …` instead of
+            # shape-detection. Bump RECORD_VERSION when changing the layout.
+            "record_version": RECORD_VERSION,
             "inputs": saved_inputs,
             "model_inputs": model_inputs,
             "output": dict(request.output) if request.output else {},
@@ -284,6 +294,7 @@ class RunService:
             **image_inputs,
         }
         inputs_json = json.dumps({
+            "record_version": RECORD_VERSION,
             "inputs": saved_inputs,
             "output": dict(request.output) if request.output else {},
             "user_params": dict(request.user_params) if request.user_params else {},
@@ -390,10 +401,10 @@ class RunService:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
                 logger.warning(
-                    "SSE subscriber queue full (size=%d); dropping %s event for job %s",
+                    "SSE subscriber queue full (size=%d); dropping %s event for run %s",
                     queue.qsize(),
                     event.get("event"),
-                    event.get("data", {}).get("job_id"),
+                    event.get("data", {}).get("run_id"),
                 )
                 continue
 
@@ -486,7 +497,7 @@ class RunService:
                     await self._history.update_progress(job.job_id, job.progress, job.message)
                     self._broadcast({
                         "event": "progress",
-                        "data": {"job_id": job.job_id, "progress": job.progress, "message": job.message},
+                        "data": {"run_id": job.job_id, "progress": job.progress, "message": job.message},
                     })
                 elif event.type == "completed":
                     duration_ms = int((time.time() - job.started_at) * 1000)
@@ -509,7 +520,7 @@ class RunService:
                     self._broadcast({
                         "event": "completed",
                         "data": {
-                            "job_id": job.job_id,
+                            "run_id": job.job_id,
                             "output": output_ref,
                             "duration_ms": duration_ms,
                         },
@@ -520,7 +531,7 @@ class RunService:
                     await self._history.fail(job.job_id, event.error or "Unknown error")
                     self._broadcast({
                         "event": "failed",
-                        "data": {"job_id": job.job_id, "error": event.error, "code": "RUN_FAILED"},
+                        "data": {"run_id": job.job_id, "error": event.error, "code": "RUN_FAILED"},
                     })
 
         except Exception as e:
@@ -535,7 +546,7 @@ class RunService:
         await self._history.fail(job.job_id, error_msg)
         self._broadcast({
             "event": "failed",
-            "data": {"job_id": job.job_id, "error": error_msg, "code": "INTERNAL_ERROR"},
+            "data": {"run_id": job.job_id, "error": error_msg, "code": "INTERNAL_ERROR"},
         })
 
     def _schedule_eviction(self, job_id: str, delay: float = 60.0) -> None:

@@ -101,8 +101,8 @@ export async function startPlaygroundRun(args: {
   const response = await api.playgroundRun(request)
 
   setState((s) => {
-    s.run.jobs.set(response.job_id, {
-      jobId: response.job_id,
+    s.run.jobs.set(response.run_id, {
+      jobId: response.run_id,
       effectName: 'Playground',
       status: 'processing',
       progress: 0,
@@ -110,18 +110,18 @@ export async function startPlaygroundRun(args: {
       videoUrl: null,
       error: null,
     })
-    s.run.viewingJobId = response.job_id
+    s.run.viewingJobId = response.run_id
     s.run.leftPanel = 'progress'
     s.playground.isOpen = true
     if (response.record) mutateSetViewingRunRecord(s, response.record)
     // Mark this as the last-applied run so the Restore banner doesn't pop up
     // for the run we just submitted (the form already matches it).
-    mutateSetLastAppliedRunId(s, response.job_id)
+    mutateSetLastAppliedRunId(s, response.run_id)
   }, 'playground/run/start')
 
-  trackJob(response.job_id)
-  navigate('/playground', { run: response.job_id })
+  trackJob(response.run_id)
+  navigate('/playground', { run: response.run_id })
   refreshLoadedHistories()
 
-  return response.job_id
+  return response.run_id
 }

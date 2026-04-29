@@ -146,7 +146,7 @@ def _wait_for_record(client, job_id: str, statuses=("completed", "failed"), time
 
 
 class TestStartRun:
-    def test_happy_path_returns_job_id_and_record(self, client):
+    def test_happy_path_returns_run_id_and_record(self, client):
         FakeProvider.next_events = [
             ProviderEvent(type="progress", progress=50, message="Generating..."),
             ProviderEvent(type="completed", video_url=""),
@@ -160,7 +160,7 @@ class TestStartRun:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data["job_id"], str) and data["job_id"]
+        assert isinstance(data["run_id"], str) and data["run_id"]
         # Record is created synchronously in `start()`, so even if the
         # background task hasn't run yet, the record exists at processing.
         assert data["record"]["status"] in ("processing", "completed")
@@ -236,7 +236,7 @@ class TestStartPlaygroundRun:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data["job_id"]
+        assert data["run_id"]
         assert data["record"]["kind"] == "playground"
 
     def test_empty_prompt_returns_422(self, client):
@@ -287,7 +287,7 @@ class TestProviderFailureAndDelete:
             "output": {},
         })
         assert resp.status_code == 200
-        job_id = resp.json()["job_id"]
+        job_id = resp.json()["run_id"]
 
         final = _wait_for_record(client, job_id, statuses=("failed",))
         assert final is not None, "run never settled to failed"
@@ -318,7 +318,7 @@ class TestProviderFailureAndDelete:
                 "output": {},
             })
             assert resp.status_code == 200
-            job_id = resp.json()["job_id"]
+            job_id = resp.json()["run_id"]
             final = _wait_for_record(client, job_id, statuses=("failed",))
 
         assert final is not None
@@ -334,7 +334,7 @@ class TestProviderFailureAndDelete:
             "inputs": {"prompt": "ok"},
             "output": {},
         })
-        job_id = resp.json()["job_id"]
+        job_id = resp.json()["run_id"]
         _wait_for_record(client, job_id, statuses=("completed",))
 
         resp = client.delete(f"/api/runs/{job_id}")
@@ -357,7 +357,7 @@ class TestProviderFailureAndDelete:
             "inputs": {"prompt": "stuck"},
             "output": {},
         })
-        job_id = resp.json()["job_id"]
+        job_id = resp.json()["run_id"]
 
         # No need to wait — the row was inserted at processing inside `start()`
         # before the background task ran. Even if the task has begun, it

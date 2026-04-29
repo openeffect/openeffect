@@ -85,7 +85,7 @@ function HistoricalRunView({ record, activeJob }: {
 
   for (const [key, value] of Object.entries(allEntries)) {
     if (value == null || value === '') continue
-    const strVal = String(value)
+    const strVal = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
     if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/.test(value)) {
       // Image-input UUID — rendered separately from `record.input_files`.
       continue

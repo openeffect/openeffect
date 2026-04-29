@@ -66,7 +66,11 @@ class TestApiKeyFileStorage:
         self, service: ConfigService, config_path: Path
     ):
         await service.update({"fal_api_key": "sk-live-abc"})
-        assert json.loads(config_path.read_text()) == {"fal_api_key": "sk-live-abc"}
+        data = json.loads(config_path.read_text())
+        assert data == {"config_version": 1, "fal_api_key": "sk-live-abc"}
+        # Version must be the leading field so a `head -1 config.json`
+        # reveals the schema before any sensitive value follows.
+        assert next(iter(data)) == "config_version"
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX permission semantics")
     async def test_file_is_mode_0o600(
@@ -87,7 +91,10 @@ class TestApiKeyFileStorage:
         await service.update({"fal_api_key": "sk-old"})
         await service.update({"fal_api_key": "sk-new"})
         assert await service.get_api_key() == "sk-new"
-        assert json.loads(config_path.read_text()) == {"fal_api_key": "sk-new"}
+        assert json.loads(config_path.read_text()) == {
+            "config_version": 1,
+            "fal_api_key": "sk-new",
+        }
 
     async def test_empty_string_clears_key(
         self, service: ConfigService, config_path: Path

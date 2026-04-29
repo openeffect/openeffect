@@ -209,21 +209,21 @@ class TestBroadcast:
         run_service._broadcast_queues.add(queue_a)
         run_service._broadcast_queues.add(queue_b)
 
-        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 42}})
+        run_service._broadcast({"event": "progress", "data": {"run_id": "x", "progress": 42}})
 
         ev_a = await asyncio.wait_for(queue_a.get(), timeout=0.5)
         ev_b = await asyncio.wait_for(queue_b.get(), timeout=0.5)
-        assert ev_a == ev_b == {"event": "progress", "data": {"job_id": "x", "progress": 42}}
+        assert ev_a == ev_b == {"event": "progress", "data": {"run_id": "x", "progress": 42}}
 
     async def test_subscriber_added_after_event_misses_it(self, run_service):
         """Broadcast doesn't buffer history — late subscribers see future events only."""
         queue_a = asyncio.Queue[dict]()
         run_service._broadcast_queues.add(queue_a)
-        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 10}})
+        run_service._broadcast({"event": "progress", "data": {"run_id": "x", "progress": 10}})
 
         queue_b = asyncio.Queue[dict]()
         run_service._broadcast_queues.add(queue_b)
-        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 20}})
+        run_service._broadcast({"event": "progress", "data": {"run_id": "x", "progress": 20}})
 
         # A got both, B got only the second.
         assert (await queue_a.get())["data"]["progress"] == 10
@@ -239,7 +239,7 @@ class TestBroadcast:
         run_service._broadcast_queues.add(slow)
         run_service._broadcast_queues.add(fast)
 
-        run_service._broadcast({"event": "progress", "data": {"job_id": "x", "progress": 55}})
+        run_service._broadcast({"event": "progress", "data": {"run_id": "x", "progress": 55}})
 
         assert fast.qsize() == 1
         # Slow is still full with its seed; the broadcast silently dropped for it.

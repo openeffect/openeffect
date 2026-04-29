@@ -24,7 +24,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+# README.md is referenced by pyproject.toml's `readme` field, which
+# hatchling validates during metadata resolution.
+COPY pyproject.toml uv.lock README.md ./
 
 # --no-dev drops pytest/ruff/mypy; the venv lands at /app/.venv. Same
 # WORKDIR in the runtime stage keeps the venv's shebangs valid without
@@ -43,16 +45,16 @@ USER openeffect
 WORKDIR /app
 
 # Files are born owned by openeffect (--chown on every COPY) so no post-hoc
-# `chown -R` is needed — that otherwise doubles the venv's layer weight.
+# `chown -R` is needed - that otherwise doubles the venv's layer weight.
 COPY --from=python-builder --chown=openeffect:openeffect /app/.venv ./.venv
-COPY --chown=openeffect:openeffect run.py ./
+COPY --chown=openeffect:openeffect run.py LICENSE ./
 COPY --chown=openeffect:openeffect server/ ./server/
 COPY --chown=openeffect:openeffect effects/ ./effects/
 COPY --from=frontend --chown=openeffect:openeffect /build/dist/ ./client/dist/
 
 EXPOSE 3131
 
-# Bind 0.0.0.0 so Docker's port mapping can reach the process — container
+# Bind 0.0.0.0 so Docker's port mapping can reach the process - container
 # loopback is a distinct network namespace and a 127.0.0.1 bind would be
 # unreachable even from the host. Fail-closed against the LAN is enforced
 # on the host side in docker-compose.yml (`127.0.0.1:3131:3131`).

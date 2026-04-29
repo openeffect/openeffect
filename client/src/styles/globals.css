@@ -126,7 +126,7 @@ input[type='range']:hover::-moz-range-thumb {
   background: var(--text-tertiary);
 }
 
-/* Interactive elements — transitions only, hover/active/focus handled per-component */
+/* Interactive elements - transitions only, hover/active/focus handled per-component */
 button,
 a,
 input,

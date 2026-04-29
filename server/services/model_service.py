@@ -227,7 +227,7 @@ MODELS: list[dict[str, Any]] = [
             # longer compound output. effect_hidden so the effect-page form
             # doesn't show it; manifests can lock it on/off via model_overrides.
             {"name": "generate_multi_clip", "type": "boolean", "ui": "main",
-             "label": "Generate multi-clip", "default": True,
+             "label": "Generate multi-clip", "default": False,
              "effect_hidden": True},
 
             # ─── Advanced (collapsed) ───

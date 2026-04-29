@@ -139,7 +139,22 @@ export async function loadEffectHistory(effectId: string, offset = 0, force = fa
   const { effectStatus, effectId: cachedId } = getState().history
   if (offset === 0 && !force && effectStatus === 'succeeded' && cachedId === effectId) return
 
-  setState((s) => { s.history.effectStatus = 'loading' }, 'history/effectLoadStart')
+  const isEffectSwitch = offset === 0 && cachedId !== effectId
+
+  setState((s) => {
+    s.history.effectStatus = 'loading'
+    // Switching effects → drop the previous effect's items so the UI shows
+    // the loader instead of a brief flash of the previous effect's runs
+    // (the EffectHistoryTab's loader gate is `loading && items.length === 0`,
+    // so it needs the items cleared to fire). Same-effect refreshes
+    // (force=true after a run completes) keep the existing list visible —
+    // no blank-then-rehydrate flicker for runs that were already there.
+    if (isEffectSwitch) {
+      s.history.effectItems = new Map()
+      s.history.effectTotal = 0
+      s.history.effectId = effectId
+    }
+  }, 'history/effectLoadStart')
 
   try {
     const data = await api.getRuns(20, offset, effectId)

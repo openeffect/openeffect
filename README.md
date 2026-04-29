@@ -60,7 +60,7 @@ OpenEffect is **bring your own key** - the app runs on your machine, but generat
 1. **You can't realistically self-host video models.** State-of-the-art video diffusion needs 24-80 GB of GPU memory and minutes per clip. Closed models like Kling can't be self-hosted at all. The good open ones (Wan, etc.) need a beefy GPU most people don't have at home.
 2. **It's cheap to try.** fal.ai charges roughly **$0.05-$0.50 per video** depending on model and resolution. A handful of dollars buys hundreds of test runs - far less than any "AI video" subscription, with no monthly commitment and no auto-renewal.
 
-We picked [fal.ai](https://fal.ai) as the first provider because they expose the broadest open-vs-closed model selection behind one unified API. **We're not affiliated with fal.ai** - it was just the cleanest plug-in option. More providers (Replicate, Hugging Face Inference, your own GPU server) are on the roadmap. The app's storage stays local: your fal.ai key, your run history, and your generated videos all live in `~/.openeffect/` and never touch our servers, because there are no servers.
+We picked [fal.ai](https://fal.ai) as the first provider because they expose the broadest open-vs-closed model selection behind one unified API. **We're not affiliated with fal.ai** - it was just the cleanest plug-in option. More providers (Replicate, Hugging Face Inference, your own GPU server) are on the roadmap. The app's storage stays local - your fal.ai key, your run history, and your generated videos all live in `~/.openeffect/` and never touch our servers, because there are no servers.
 
 ## Build effects together
 

@@ -112,10 +112,10 @@ export function untrackJob(jobId: string): void {
 export async function bootstrap(): Promise<void> {
   try {
     const resp = await api.getRuns(100, 0, undefined, undefined, 'processing')
-    if (!resp.items.length) return
+    if (!resp.runs.length) return
 
     setState((s) => {
-      for (const record of resp.items as RunRecord[]) {
+      for (const record of resp.runs as RunRecord[]) {
         if (s.run.jobs.has(record.id)) continue
         s.run.jobs.set(record.id, {
           jobId: record.id,
@@ -129,7 +129,7 @@ export async function bootstrap(): Promise<void> {
       }
     }, 'sse/bootstrap')
 
-    for (const record of resp.items as RunRecord[]) {
+    for (const record of resp.runs as RunRecord[]) {
       trackJob(record.id)
     }
   } catch (e) {

@@ -13,7 +13,7 @@ vi.mock('../../src/utils/api', () => {
   return {
     api: {
       getRuns: vi.fn().mockResolvedValue({
-        items: [
+        runs: [
           { id: 'run-1', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'completed', progress: 100, output: videoRef, input_files: {}, inputs: null, error: null, created_at: '2025-01-01', updated_at: '2025-01-01', duration_ms: 5000, progress_msg: null },
           { id: 'run-2', effect_id: 'eff-1', effect_name: 'Effect 1', status: 'failed', progress: 0, output: null, input_files: {}, inputs: null, error: 'timeout', created_at: '2025-01-02', updated_at: '2025-01-02', duration_ms: null, progress_msg: null },
         ],

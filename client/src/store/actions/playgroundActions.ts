@@ -88,14 +88,17 @@ export async function startPlaygroundRun(args: {
     }
   }
 
+  // Same merge pattern as startRun: collapse the form's two buckets into a
+  // single flat `params` dict on the wire.
+  const params = { ...args.output, ...args.userParams }
+
   const request: PlaygroundRunRequest = {
     model_id: args.modelId,
     provider_id: args.providerId,
     prompt: args.prompt,
     negative_prompt: args.negativePrompt || undefined,
     image_inputs: Object.keys(resolvedImageInputs).length > 0 ? resolvedImageInputs : undefined,
-    output: Object.keys(args.output).length > 0 ? args.output : undefined,
-    user_params: Object.keys(args.userParams).length > 0 ? args.userParams : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   }
 
   const response = await api.playgroundRun(request)

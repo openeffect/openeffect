@@ -107,19 +107,19 @@ export async function saveEffect(): Promise<void> {
     // the user kept typing during the round-trip.
     const submittedYaml = yamlContent
     const result = await api.saveEffect(submittedYaml, editingEffectId)
-    const effectId = result.manifest.id
-    const savedFullId = `${result.manifest.namespace}/${result.manifest.slug}`
+    const effectId = result.effect.id
+    const savedFullId = `${result.effect.namespace}/${result.effect.slug}`
 
     setState((s) => {
       // Upsert the saved manifest. New effects go to the front (matches the
       // server's newest-first order); re-saves keep their current position.
       if (s.effects.items.has(effectId)) {
-        s.effects.items.set(effectId, result.manifest)
+        s.effects.items.set(effectId, result.effect)
       } else {
-        s.effects.items = new Map([[effectId, result.manifest], ...s.effects.items])
+        s.effects.items = new Map([[effectId, result.effect], ...s.effects.items])
       }
       s.editor.editingEffectId = effectId
-      s.editor.savedManifest = result.manifest
+      s.editor.savedManifest = result.effect
 
       // Reconcile the textarea with the saved id. The server can rewrite
       // the id line on a fresh-effect collision (e.g. `my/foo` →
@@ -172,21 +172,21 @@ export async function forkEffect(effect: EffectManifest): Promise<void> {
       .replace(/^name:\s*.+$/m, `name: ${effect.name} (Copy)`)
 
     const result = await api.saveEffect(yamlContent, null, effect.full_id)
-    const effectId = result.manifest.id
+    const effectId = result.effect.id
 
     const { yaml: savedYaml, files } = await api.getEffectEditorData(
-      result.manifest.namespace,
-      result.manifest.slug,
+      result.effect.namespace,
+      result.effect.slug,
     )
 
     setState((s) => {
       // Insert the new fork at the front so it appears at the top of the
       // gallery — matches the server's newest-first order.
-      s.effects.items = new Map([[effectId, result.manifest], ...s.effects.items])
+      s.effects.items = new Map([[effectId, result.effect], ...s.effects.items])
       mutateClearViewingJob(s)
       s.editor.yamlContent = savedYaml
       s.editor.lastSavedYaml = savedYaml
-      s.editor.savedManifest = result.manifest
+      s.editor.savedManifest = result.effect
       s.editor.editingEffectId = effectId
       s.editor.assetFiles = files
       s.editor.isOpen = true
@@ -224,21 +224,21 @@ export async function forkFromManifest(manifest: EffectManifest): Promise<void> 
     const yamlContent = manifestToYaml(forkData as unknown as Record<string, unknown>)
 
     const result = await api.saveEffect(yamlContent, null)
-    const effectId = result.manifest.id
+    const effectId = result.effect.id
 
     const { yaml: savedYaml, files } = await api.getEffectEditorData(
-      result.manifest.namespace,
-      result.manifest.slug,
+      result.effect.namespace,
+      result.effect.slug,
     )
 
     setState((s) => {
       // Insert the new fork at the front so it appears at the top of the
       // gallery — matches the server's newest-first order.
-      s.effects.items = new Map([[effectId, result.manifest], ...s.effects.items])
+      s.effects.items = new Map([[effectId, result.effect], ...s.effects.items])
       mutateClearViewingJob(s)
       s.editor.yamlContent = savedYaml
       s.editor.lastSavedYaml = savedYaml
-      s.editor.savedManifest = result.manifest
+      s.editor.savedManifest = result.effect
       s.editor.editingEffectId = effectId
       s.editor.assetFiles = files
       s.editor.isOpen = true

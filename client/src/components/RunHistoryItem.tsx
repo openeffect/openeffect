@@ -25,7 +25,7 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
   const availableModels = useStore(selectAvailableModels)
   const jobs = useStore(selectJobs)
   const modelName = availableModels.find((m) => m.id === item.model_id)?.name ?? item.model_id
-  const badges = parseRunBadges(item.inputs)
+  const badges = parseRunBadges(item.payload)
   // Server-resolved input file refs — keyed by role (start_frame, etc.).
   const inputFiles = Object.entries(item.input_files ?? {})
 
@@ -176,13 +176,12 @@ export function RunHistoryItem({ item, effectName, isOrphaned, isActive, onClick
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function parseRunBadges(inputs: unknown): [string, string][] {
-  if (!inputs || typeof inputs !== 'object') return []
-  const raw = inputs as Record<string, unknown>
+function parseRunBadges(payload: unknown): [string, string][] {
+  if (!payload || typeof payload !== 'object') return []
+  const raw = payload as Record<string, unknown>
   const allEntries = {
     ...(('inputs' in raw && typeof raw.inputs === 'object') ? raw.inputs as Record<string, unknown> : raw),
-    ...(('output' in raw && typeof raw.output === 'object') ? raw.output as Record<string, unknown> : {}),
-    ...(('user_params' in raw && typeof raw.user_params === 'object') ? raw.user_params as Record<string, unknown> : {}),
+    ...(('params' in raw && typeof raw.params === 'object') ? raw.params as Record<string, unknown> : {}),
   }
   const badges: [string, string][] = []
   for (const [key, value] of Object.entries(allEntries)) {

@@ -22,8 +22,10 @@ export interface ActiveJob {
 export interface RestoredParams {
   modelId: string
   inputs: Record<string, string>
-  output: Record<string, string | number>
-  userParams?: Record<string, unknown>
+  /** Flat dict of model params (main + advanced together). The form
+   *  splits them into the right rendering section using each param's
+   *  `ui` field from the model definition. */
+  params: Record<string, string | number | boolean>
 }
 
 export interface AssetFile {

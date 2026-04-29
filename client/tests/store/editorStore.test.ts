@@ -74,7 +74,7 @@ describe('saveEffect — id-collision sync', () => {
   it('rewrites yamlContent id line when server auto-suffixes the slug', async () => {
     _api.saveEffect.mockResolvedValueOnce({
       full_id: 'my/foo-2',
-      manifest: makeManifest({ slug: 'foo-2', full_id: 'my/foo-2' }),
+      effect: makeManifest({ slug: 'foo-2', full_id: 'my/foo-2' }),
     })
 
     await saveEffect()
@@ -94,7 +94,7 @@ describe('saveEffect — id-collision sync', () => {
       })
       return {
         full_id: 'my/foo-2',
-        manifest: makeManifest({ slug: 'foo-2', full_id: 'my/foo-2' }),
+        effect: makeManifest({ slug: 'foo-2', full_id: 'my/foo-2' }),
       }
     })
 
@@ -113,7 +113,7 @@ describe('saveEffect — id-collision sync', () => {
   it('does nothing to yamlContent when server returns the same id', async () => {
     _api.saveEffect.mockResolvedValueOnce({
       full_id: 'my/foo',
-      manifest: makeManifest({ full_id: 'my/foo' }),
+      effect: makeManifest({ full_id: 'my/foo' }),
     })
 
     await saveEffect()
@@ -130,7 +130,7 @@ describe('saveEffect — id-collision sync', () => {
     })
 
     const saved = makeManifest({ id: 'uuid-new', slug: 'new', full_id: 'my/new' })
-    _api.saveEffect.mockResolvedValueOnce({ full_id: 'my/new', manifest: saved })
+    _api.saveEffect.mockResolvedValueOnce({ full_id: 'my/new', effect: saved })
 
     await saveEffect()
 
@@ -152,7 +152,7 @@ describe('saveEffect — id-collision sync', () => {
     })
 
     const updated = makeManifest({ id: 'uuid-001', slug: 'foo', full_id: 'my/foo', name: 'Foo v2' })
-    _api.saveEffect.mockResolvedValueOnce({ full_id: 'my/foo', manifest: updated })
+    _api.saveEffect.mockResolvedValueOnce({ full_id: 'my/foo', effect: updated })
 
     await saveEffect()
 

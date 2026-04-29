@@ -242,8 +242,8 @@ async def save_effect(body: SaveEffectRequest, request: Request):
         raise bad_request(str(e), ErrorCode.SAVE_ERROR)
 
     loaded = loader.get_loaded(full_id)
-    manifest_data = _serialize_effect(loaded) if loaded else {}
-    return {"full_id": full_id, "manifest": manifest_data}
+    effect_data = _serialize_effect(loaded) if loaded else {}
+    return {"full_id": full_id, "effect": effect_data}
 
 
 @router.get("/effects/{namespace}/{slug}/editor")
@@ -256,7 +256,7 @@ async def get_effect_editor_data(namespace: str, slug: str, request: Request):
 
     existing = await install_service.get_effect(namespace, slug)
     if not existing:
-        raise not_found("Effect not found")
+        raise not_found("Effect not found", ErrorCode.EFFECT_NOT_FOUND)
 
     loaded = loader.get_loaded(f"{namespace}/{slug}")
     yaml_content = existing["manifest_yaml"]
@@ -287,7 +287,7 @@ async def export_effect(namespace: str, slug: str, request: Request):
 
     existing = await install_service.get_effect(namespace, slug)
     if not existing:
-        raise not_found("Effect not found")
+        raise not_found("Effect not found", ErrorCode.EFFECT_NOT_FOUND)
 
     loaded = loader.get_loaded(f"{namespace}/{slug}")
     effect_name = f"{namespace}-{slug}"

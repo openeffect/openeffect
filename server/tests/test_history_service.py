@@ -462,35 +462,35 @@ class TestRunRecordToDict:
         expected_keys = {
             "id", "kind", "effect_id", "effect_name", "model_id", "status",
             "progress", "progress_msg",
-            "output", "input_files", "inputs",
+            "output", "input_files", "payload",
             "error", "created_at", "updated_at", "duration_ms",
         }
         assert set(d.keys()) == expected_keys
 
-    async def test_to_dict_parses_inputs_json(self, service):
+    async def test_to_dict_parses_payload_json(self, service):
         inputs = {"prompt": "city night", "intensity": "0.8"}
         job = _make_job("job-inputs-parse")
-        await service.create_processing(job, inputs_json=json.dumps(inputs))
+        await service.create_processing(job, payload_json=json.dumps(inputs))
         record = await service.get_by_id("job-inputs-parse")
         assert record is not None
         d = record.to_dict()
-        assert isinstance(d["inputs"], dict)
-        assert d["inputs"]["prompt"] == "city night"
+        assert isinstance(d["payload"], dict)
+        assert d["payload"]["prompt"] == "city night"
 
     async def test_to_dict_handles_null_inputs(self, service):
         await service.create_processing(_make_job("job-null-inputs"))
         record = await service.get_by_id("job-null-inputs")
         assert record is not None
         d = record.to_dict()
-        assert d["inputs"] is None
+        assert d["payload"] is None
 
     async def test_to_dict_handles_malformed_inputs(self, service):
         job = _make_job("job-bad-json")
-        await service.create_processing(job, inputs_json="not valid json {{{")
+        await service.create_processing(job, payload_json="not valid json {{{")
         record = await service.get_by_id("job-bad-json")
         assert record is not None
         d = record.to_dict()
-        assert d["inputs"] == "not valid json {{{"
+        assert d["payload"] == "not valid json {{{"
 
 
 class TestInputFiles:
@@ -510,18 +510,17 @@ class TestInputFiles:
         # manifest's input field name (`image`); `model_inputs` carries
         # the canonical role (`start_frame`); both point at the same
         # file_id.
-        inputs_json = json.dumps({
+        payload_json = json.dumps({
             "inputs": {"image": "file-A", "prompt": "hello"},
             "model_inputs": {
                 "prompt": "hello",
                 "negative_prompt": "",
                 "start_frame": "file-A",
             },
-            "output": {},
-            "user_params": {},
+            "params": {},
         })
         await service.create_processing(
-            job, inputs_json=inputs_json, input_ids=["file-A"],
+            job, payload_json=payload_json, input_ids=["file-A"],
         )
         record = await service.get_by_id("job-effect-1")
         assert record is not None
@@ -536,17 +535,16 @@ class TestInputFiles:
         already role-keyed. Verify that path resolves correctly."""
         await _plant_file(service, "file-B")
         job = _make_job("job-pg-1", effect_id=None, effect_name=None)
-        inputs_json = json.dumps({
+        payload_json = json.dumps({
             "inputs": {
                 "prompt": "hello",
                 "negative_prompt": "",
                 "start_frame": "file-B",
             },
-            "output": {},
-            "user_params": {},
+            "params": {},
         })
         await service.create_processing(
-            job, inputs_json=inputs_json, input_ids=["file-B"],
+            job, payload_json=payload_json, input_ids=["file-B"],
             kind="playground",
         )
         record = await service.get_by_id("job-pg-1")
@@ -562,7 +560,7 @@ class TestInputFiles:
         await _plant_file(service, "file-start")
         await _plant_file(service, "file-end")
         job = _make_job("job-effect-2")
-        inputs_json = json.dumps({
+        payload_json = json.dumps({
             "inputs": {"start": "file-start", "end": "file-end", "prompt": "x"},
             "model_inputs": {
                 "prompt": "x",
@@ -570,11 +568,10 @@ class TestInputFiles:
                 "start_frame": "file-start",
                 "end_frame": "file-end",
             },
-            "output": {},
-            "user_params": {},
+            "params": {},
         })
         await service.create_processing(
-            job, inputs_json=inputs_json,
+            job, payload_json=payload_json,
             input_ids=["file-start", "file-end"],
         )
         record = await service.get_by_id("job-effect-2")

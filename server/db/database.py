@@ -99,27 +99,39 @@ class Database:
 
 
 async def init_db(db_path: Path) -> None:
+    """Schema conventions:
+      - Lifecycle timestamps are ISO-8601 UTC strings (Python `datetime.isoformat()`).
+        Effects use `installed_at` for row birth (domain language); runs use the
+        generic `created_at`. Both tables track `updated_at` for the latest mutation.
+      - Booleans are stored as INTEGER 0/1 (SQLite has no native BOOLEAN).
+      - Enum-like TEXT columns document their value set inline; CHECK constraints
+        are deferred until after the schema settles.
+    """
     async with aiosqlite.connect(str(db_path)) as db:
         await db.execute("PRAGMA foreign_keys=ON")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS runs (
                 id                  TEXT PRIMARY KEY,
-                kind                TEXT NOT NULL DEFAULT 'effect',
+                kind                TEXT NOT NULL DEFAULT 'effect',  -- 'effect' | 'playground'
+                -- effect_id is intentionally NOT a foreign key: runs survive effect
+                -- deletion so history stays intact. effect_name snapshots the name at
+                -- creation so the UI can render "Effect Foo (uninstalled)" without
+                -- needing the effects row anymore.
                 effect_id           TEXT,
                 effect_name         TEXT,
                 model_id            TEXT NOT NULL,
-                status              TEXT NOT NULL,
-                progress            INTEGER DEFAULT 0,
+                status              TEXT NOT NULL,                   -- 'processing' | 'completed' | 'failed'
+                progress            INTEGER DEFAULT 0,               -- 0..100
                 progress_msg        TEXT,
-                input_ids           TEXT,         -- JSON array of files.id
-                output_id           TEXT,         -- files.id of the result blob
-                inputs              TEXT,
-                error               TEXT,
+                input_ids           TEXT,                            -- JSON array of files.id (for refcount tracking)
+                output_id           TEXT,                            -- files.id of the result blob
+                payload             TEXT,                            -- JSON: {record_version, inputs, params, ...}
+                error               TEXT,                            -- plain message from provider/exception on failure
                 created_at          TEXT NOT NULL,
                 updated_at          TEXT NOT NULL,
                 duration_ms         INTEGER,
-                provider_request_id TEXT,
-                provider_endpoint   TEXT
+                provider_request_id TEXT,                            -- provider-side id (e.g. fal request id)
+                provider_endpoint   TEXT                             -- URL the provider request was POSTed to
             )
         """)
         await db.execute("""
@@ -127,14 +139,14 @@ async def init_db(db_path: Path) -> None:
                 id            TEXT PRIMARY KEY,
                 namespace     TEXT NOT NULL,
                 slug          TEXT NOT NULL,
-                source        TEXT NOT NULL,
-                state         TEXT NOT NULL DEFAULT 'installing',  -- installing | ready | uninstalling
-                source_url    TEXT,
+                source        TEXT NOT NULL,                                 -- 'official' | 'installed' | 'local'
+                state         TEXT NOT NULL DEFAULT 'installing',            -- 'installing' | 'ready' | 'uninstalling'
+                source_url    TEXT,                                          -- install URL when source='installed'
                 manifest_yaml TEXT NOT NULL,
                 version       TEXT,
                 installed_at  TEXT NOT NULL,
-                updated_at    TEXT,
-                is_favorite   INTEGER DEFAULT 0,
+                updated_at    TEXT NOT NULL,                                 -- set equal to installed_at on insert
+                is_favorite   INTEGER DEFAULT 0,                             -- 0 | 1
                 UNIQUE(namespace, slug)
             )
         """)
@@ -166,7 +178,7 @@ async def init_db(db_path: Path) -> None:
                 value TEXT NOT NULL
             )
         """)
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id ON runs(effect_id, created_at DESC)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_effect_id_created_at ON runs(effect_id, created_at DESC)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)")
         # Default `/api/runs` (no effect_id filter) does ORDER BY created_at DESC;
         # without this the composite index above can't help (leading column

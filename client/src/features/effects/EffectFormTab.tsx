@@ -27,6 +27,7 @@ import {
   effectAdvancedParams,
   effectMainParams,
   lockedKeys,
+  mainParams,
   paramDefault,
   providerVariant,
 } from '@/utils/modelParams'
@@ -229,15 +230,28 @@ export function EffectFormTab() {
       // overwrite the restored output/advanced values on the next render.
       setPrevSeedKey('')
 
-      if (restoredParams.output) {
-        setOutputValues(restoredParams.output as Record<string, string | number>)
-        // Mirror to model param carry so a follow-on effect switch sees
-        // the just-applied param values.
-        for (const [key, value] of Object.entries(restoredParams.output)) {
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-            setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
-          }
+      // Split the flat restored `params` back into the form's two visual
+      // buckets (main + advanced) using the model variant's schema. Anything
+      // not in `mainParams` falls into `advancedValues` so unknown/dropped
+      // keys still round-trip through Reuse.
+      if (restoredParams.params) {
+        const restoredVariant = providerVariant(
+          availableModels.find((m) => m.id === resolvedModelId),
+          selectedProvider,
+          variantKey,
+        )
+        const mainKeys = new Set(mainParams(restoredVariant).map((p) => p.key))
+        const main: Record<string, string | number | boolean> = {}
+        const advanced: Record<string, string | number | boolean> = {}
+        for (const [key, value] of Object.entries(restoredParams.params)) {
+          if (mainKeys.has(key)) main[key] = value
+          else advanced[key] = value
+          // Mirror to model-param carry so a follow-on effect switch sees
+          // the just-applied param values.
+          setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
         }
+        setOutputValues(main)
+        setAdvancedValues(advanced)
       }
 
       const next: Record<string, unknown> = {}
@@ -268,14 +282,6 @@ export function EffectFormTab() {
         }
       }
       setValues(next)
-
-      const restored = restoredParams.userParams ?? {}
-      setAdvancedValues(restored)
-      for (const [key, value] of Object.entries(restored)) {
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-          setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
-        }
-      }
     }
   }
 

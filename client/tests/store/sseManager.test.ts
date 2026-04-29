@@ -64,7 +64,7 @@ describe('sseManager.bootstrap', () => {
     _api.getRuns.mockResolvedValueOnce({
       total: 2,
       active_count: 2,
-      items: [
+      runs: [
         {
           id: 'run-A', model_id: 'wan-2.7', status: 'processing',
           kind: 'effect', effect_id: 'e1', effect_name: 'Foo',
@@ -120,7 +120,7 @@ describe('sseManager.bootstrap', () => {
     })
     _api.getRuns.mockResolvedValueOnce({
       total: 1, active_count: 1,
-      items: [{
+      runs: [{
         id: 'run-A', model_id: 'wan-2.7', status: 'processing',
         kind: 'effect', effect_id: 'e1', effect_name: 'StaleName',
         progress: 10, progress_msg: 'Old message',
@@ -138,7 +138,7 @@ describe('sseManager.bootstrap', () => {
 
   it('is a no-op when there are no processing runs', async () => {
     _api.getRuns.mockResolvedValueOnce({
-      total: 0, active_count: 0, items: [],
+      total: 0, active_count: 0, runs: [],
     })
 
     await bootstrap()

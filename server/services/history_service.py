@@ -21,7 +21,7 @@ class RunRecord:
     progress_msg: str | None = None
     input_ids: str | None = None        # JSON list of files.id
     output_id: str | None = None
-    inputs: str | None = None
+    payload: str | None = None          # JSON: {record_version, inputs, model_inputs?, params}
     error: str | None = None
     created_at: str = ""
     updated_at: str = ""
@@ -37,29 +37,27 @@ class RunRecord:
         — output and input_files come back empty in that case."""
         refs = file_refs or {}
 
-        parsed_inputs: Any = None
-        if self.inputs:
+        parsed_payload: Any = None
+        if self.payload:
             try:
-                parsed_inputs = json.loads(self.inputs)
+                parsed_payload = json.loads(self.payload)
             except (json.JSONDecodeError, TypeError):
-                parsed_inputs = self.inputs
+                parsed_payload = self.payload
 
-        # input_files: keys are the input role (start_frame, end_frame,
-        # etc.); values are FileRefs. Effect runs persist BOTH a
-        # role-keyed `model_inputs` map (canonical) AND a form-keyed
-        # `inputs` map (the manifest's input field names) — these alias
-        # the same file ids, so emitting from both would surface the
-        # same image twice (once as `start_frame`, once as `image`).
-        # Playground runs only persist `inputs`, already role-keyed.
-        # Pick whichever is present, in that order.
+        # input_files: keys are the input role (start_frame, end_frame, etc.);
+        # values are FileRefs. Effect runs carry both a role-keyed `model_inputs`
+        # (canonical, what was sent to the model) and a form-keyed `inputs` (the
+        # manifest field values, kept for "Open in form" restore). Picking
+        # `model_inputs` first avoids surfacing the same image twice. Playground
+        # runs only carry `inputs`, already role-keyed.
         input_files: dict[str, dict[str, Any]] = {}
-        if isinstance(parsed_inputs, dict):
+        if isinstance(parsed_payload, dict):
             section: dict[str, Any] | None = None
-            mi = parsed_inputs.get("model_inputs")
+            mi = parsed_payload.get("model_inputs")
             if isinstance(mi, dict):
                 section = mi
-            elif isinstance(parsed_inputs.get("inputs"), dict):
-                section = parsed_inputs["inputs"]
+            elif isinstance(parsed_payload.get("inputs"), dict):
+                section = parsed_payload["inputs"]
             if section is not None:
                 for k, v in section.items():
                     if isinstance(v, str) and v in refs:
@@ -80,7 +78,7 @@ class RunRecord:
             "progress_msg": self.progress_msg,
             "output": output,
             "input_files": input_files,
-            "inputs": parsed_inputs,
+            "payload": parsed_payload,
             "error": self.error,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -106,7 +104,7 @@ def _row_to_record(row: Any) -> RunRecord:
         progress_msg=data.get("progress_msg"),
         input_ids=data.get("input_ids"),
         output_id=data.get("output_id"),
-        inputs=data.get("inputs"),
+        payload=data.get("payload"),
         error=data.get("error"),
         created_at=data.get("created_at", ""),
         updated_at=data.get("updated_at", ""),
@@ -177,7 +175,7 @@ class HistoryService:
     async def create_processing(
         self,
         job: Any,
-        inputs_json: str | None = None,
+        payload_json: str | None = None,
         input_ids: list[str] | None = None,
         kind: RunKind = "effect",
     ) -> RunRecord:
@@ -201,14 +199,14 @@ class HistoryService:
                 """INSERT INTO runs (
                        id, kind, effect_id, effect_name, model_id,
                        status, progress, progress_msg, input_ids,
-                       inputs, created_at, updated_at
+                       payload, created_at, updated_at
                    ) VALUES (?, ?, ?, ?, ?, 'processing', 0, 'Starting...', ?, ?, ?, ?)""",
                 (job.job_id, kind, job.effect_id, job.effect_name, job.model_id,
-                 ids_json, inputs_json, now, now),
+                 ids_json, payload_json, now, now),
             )
         return RunRecord(
             id=job.job_id, kind=kind, effect_id=job.effect_id, effect_name=job.effect_name,
-            model_id=job.model_id, status="processing", inputs=inputs_json,
+            model_id=job.model_id, status="processing", payload=payload_json,
             input_ids=ids_json, created_at=now, updated_at=now,
         )
 

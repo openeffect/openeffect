@@ -9,7 +9,7 @@ from schemas.run import PlaygroundRunRequest, RunRequest
 router = APIRouter()
 
 
-@router.post("/run")
+@router.post("/runs")
 async def start_run(req: RunRequest, request: Request):
     run_service = request.app.state.run_service
     history = request.app.state.history_service
@@ -24,7 +24,7 @@ async def start_run(req: RunRequest, request: Request):
         raise unauthorized(str(e), ErrorCode.NO_API_KEY)
 
 
-@router.post("/playground/run")
+@router.post("/playground/runs")
 async def start_playground_run(req: PlaygroundRunRequest, request: Request):
     run_service = request.app.state.run_service
     history = request.app.state.history_service

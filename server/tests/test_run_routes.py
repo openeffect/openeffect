@@ -1,4 +1,4 @@
-"""HTTP-level tests for /api/run and /api/playground/run.
+"""HTTP-level tests for /api/runs and /api/playground/runs.
 
 A stub `ModelProviderFactory.create` returns a `FakeProvider` whose event
 stream is set per-test, so we can exercise the route shape without touching
@@ -142,7 +142,7 @@ def _wait_for_record(client, job_id: str, statuses=("completed", "failed"), time
     return None
 
 
-# ─── POST /api/run ───────────────────────────────────────────────────────────
+# ─── POST /api/runs ──────────────────────────────────────────────────────────
 
 
 class TestStartRun:
@@ -151,12 +151,12 @@ class TestStartRun:
             ProviderEvent(type="progress", progress=50, message="Generating..."),
             ProviderEvent(type="completed", video_url=""),
         ]
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "a cat"},
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 200
         data = resp.json()
@@ -168,12 +168,12 @@ class TestStartRun:
         assert data["record"]["effect_name"] == "HDR"
 
     def test_unknown_effect_returns_422(self, client):
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "does-not-exist",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {},
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 422
         body = resp.json()
@@ -183,23 +183,23 @@ class TestStartRun:
     def test_incompatible_model_returns_422(self, client):
         # Inputs satisfy the manifest — we want the model check to fire, not
         # our required-field check (which would shadow it if inputs were empty).
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "not-a-real-model",
             "provider_id": "fal",
             "inputs": {"prompt": "a cat"},
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 422
         assert resp.json()["detail"]["code"] == "INVALID_REQUEST"
 
     def test_text_exceeds_max_length_returns_422(self, client):
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "x" * 501},
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 422
         body = resp.json()
@@ -207,12 +207,12 @@ class TestStartRun:
         assert "at most 500 characters" in body["detail"]["error"]
 
     def test_missing_required_input_returns_422(self, client):
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {},  # 'prompt' is required
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 422
         body = resp.json()
@@ -220,18 +220,17 @@ class TestStartRun:
         assert "Required input 'Prompt'" in body["detail"]["error"]
 
 
-# ─── POST /api/playground/run ────────────────────────────────────────────────
+# ─── POST /api/playground/runs ───────────────────────────────────────────────
 
 
 class TestStartPlaygroundRun:
     def test_happy_path(self, client):
         FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
-        resp = client.post("/api/playground/run", json={
+        resp = client.post("/api/playground/runs", json={
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "prompt": "make it pop",
-            "output": {},
-            "user_params": {},
+            "params": {},
             "image_inputs": {},
         })
         assert resp.status_code == 200
@@ -240,12 +239,11 @@ class TestStartPlaygroundRun:
         assert data["record"]["kind"] == "playground"
 
     def test_empty_prompt_returns_422(self, client):
-        resp = client.post("/api/playground/run", json={
+        resp = client.post("/api/playground/runs", json={
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "prompt": "",
-            "output": {},
-            "user_params": {},
+            "params": {},
             "image_inputs": {},
         })
         assert resp.status_code == 422
@@ -254,12 +252,11 @@ class TestStartPlaygroundRun:
         assert "Prompt is required" in body["detail"]["error"]
 
     def test_unknown_model_returns_422(self, client):
-        resp = client.post("/api/playground/run", json={
+        resp = client.post("/api/playground/runs", json={
             "model_id": "bogus-model",
             "provider_id": "fal",
             "prompt": "hi",
-            "output": {},
-            "user_params": {},
+            "params": {},
             "image_inputs": {},
         })
         assert resp.status_code == 422
@@ -279,12 +276,12 @@ class TestProviderFailureAndDelete:
         FakeProvider.next_events = [
             ProviderEvent(type="failed", error="Provider exploded"),
         ]
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "boom"},
-            "output": {},
+            "params": {},
         })
         assert resp.status_code == 200
         job_id = resp.json()["run_id"]
@@ -310,12 +307,12 @@ class TestProviderFailureAndDelete:
             "services.run_service.ModelProviderFactory.create",
             side_effect=lambda *a, **kw: _RaisingProvider(),
         ):
-            resp = client.post("/api/run", json={
+            resp = client.post("/api/runs", json={
                 "effect_id": "test-uuid-001",
                 "model_id": "wan-2.7",
                 "provider_id": "fal",
                 "inputs": {"prompt": "x"},
-                "output": {},
+                "params": {},
             })
             assert resp.status_code == 200
             job_id = resp.json()["run_id"]
@@ -327,12 +324,12 @@ class TestProviderFailureAndDelete:
 
     def test_delete_completed_run_drops_row(self, client):
         FakeProvider.next_events = [ProviderEvent(type="completed", video_url="")]
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "ok"},
-            "output": {},
+            "params": {},
         })
         job_id = resp.json()["run_id"]
         _wait_for_record(client, job_id, statuses=("completed",))
@@ -350,12 +347,12 @@ class TestProviderFailureAndDelete:
         such a row must 409 — wiping a still-live job would leak its
         bumped input refs."""
         FakeProvider.next_events = []
-        resp = client.post("/api/run", json={
+        resp = client.post("/api/runs", json={
             "effect_id": "test-uuid-001",
             "model_id": "wan-2.7",
             "provider_id": "fal",
             "inputs": {"prompt": "stuck"},
-            "output": {},
+            "params": {},
         })
         job_id = resp.json()["run_id"]
 

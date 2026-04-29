@@ -196,8 +196,7 @@ class RunService:
         params, negative_prompt = self._resolve_provider_params(
             model_id=request.model_id,
             provider_id=request.provider_id,
-            output=request.output,
-            user_params=request.user_params,
+            params=request.params,
             default_negative_prompt=default_neg,
             manifest=manifest,
         )
@@ -216,20 +215,18 @@ class RunService:
             **image_refs_by_role,
         }
 
-        inputs_json = json.dumps({
-            # Stamp the schema version so future shape changes (rename keys,
-            # drop the inputs/model_inputs aliasing, etc.) can migrate by
-            # `if data.get("record_version", 0) < N: …` instead of
-            # shape-detection. Bump RECORD_VERSION when changing the layout.
+        payload_json = json.dumps({
+            # Stamp the schema version so future shape changes can migrate by
+            # `if data.get("record_version", 0) < N: …` instead of guessing
+            # from absent fields. Bump RECORD_VERSION when changing the layout.
             "record_version": RECORD_VERSION,
-            "inputs": saved_inputs,
-            "model_inputs": model_inputs,
-            "output": dict(request.output) if request.output else {},
-            "user_params": dict(request.user_params) if request.user_params else {},
+            "inputs": saved_inputs,           # manifest-keyed form values
+            "model_inputs": model_inputs,     # canonical: prompt + negative_prompt + role-keyed images
+            "params": dict(request.params) if request.params else {},
         })
 
         await self._history.create_processing(
-            job, inputs_json=inputs_json, input_ids=input_ids,
+            job, payload_json=payload_json, input_ids=input_ids,
         )
 
         await self._dispatch_provider_run(
@@ -280,8 +277,7 @@ class RunService:
         params, negative_prompt = self._resolve_provider_params(
             model_id=request.model_id,
             provider_id=request.provider_id,
-            output=request.output,
-            user_params=request.user_params,
+            params=request.params,
             default_negative_prompt=request.negative_prompt or "",
             manifest=None,
         )
@@ -293,15 +289,14 @@ class RunService:
             "negative_prompt": negative_prompt,
             **image_inputs,
         }
-        inputs_json = json.dumps({
+        payload_json = json.dumps({
             "record_version": RECORD_VERSION,
             "inputs": saved_inputs,
-            "output": dict(request.output) if request.output else {},
-            "user_params": dict(request.user_params) if request.user_params else {},
+            "params": dict(request.params) if request.params else {},
         })
 
         await self._history.create_processing(
-            job, inputs_json=inputs_json, input_ids=input_ids, kind="playground",
+            job, payload_json=payload_json, input_ids=input_ids, kind="playground",
         )
 
         await self._dispatch_provider_run(
@@ -322,27 +317,22 @@ class RunService:
         *,
         model_id: str,
         provider_id: str,
-        output: dict[str, Any] | None,
-        user_params: dict[str, Any] | None,
+        params: dict[str, Any] | None,
         default_negative_prompt: str,
         manifest: EffectManifest | None,
     ) -> tuple[dict[str, Any], str]:
-        """Merge raw user params, route through the model registry, and pull
-        out a negative_prompt override if one was supplied via user_params.
-        Returns the cleaned `params` (no `negative_prompt` key) and the
-        resolved negative_prompt string."""
-        raw_params: dict[str, Any] = {}
-        if output:
-            raw_params.update(output)
-        if user_params:
-            raw_params.update(user_params)
-        params = PromptBuilder.build_provider_io(
+        """Route raw user params through the model registry and pull out a
+        negative_prompt override if one was supplied. Returns the cleaned
+        `params` (no `negative_prompt` key) and the resolved negative_prompt
+        string."""
+        raw_params: dict[str, Any] = dict(params or {})
+        resolved = PromptBuilder.build_provider_io(
             model_id, provider_id, raw_params=raw_params, manifest=manifest,
         )
         negative_prompt = default_negative_prompt
-        if "negative_prompt" in params:
-            negative_prompt = str(params.pop("negative_prompt"))
-        return params, negative_prompt
+        if "negative_prompt" in resolved:
+            negative_prompt = str(resolved.pop("negative_prompt"))
+        return resolved, negative_prompt
 
     async def _dispatch_provider_run(
         self,

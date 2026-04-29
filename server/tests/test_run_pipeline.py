@@ -113,7 +113,7 @@ class TestStartRun:
             model_id="wan-2.7",
             provider_id="fal",
             inputs={"prompt": "hello"},
-            output={},
+            params={},
         ))
         assert job_id is not None
         assert len(job_id) > 0
@@ -124,22 +124,22 @@ class TestStartRun:
         assert record.status == "processing"
         assert record.effect_name == "Test Effect"
 
-    async def test_stores_inputs_as_structured_json(self, run_service, history):
+    async def test_stores_payload_as_structured_json(self, run_service, history):
         job_id = await run_service.start(RunRequest(
             effect_id="test-uuid-001",
             model_id="wan-2.7",
             provider_id="fal",
             inputs={"prompt": "city night"},
-            output={"duration": 5},
-            user_params={"guidance_scale": 3.5},
+            params={"duration": 5, "guidance_scale": 3.5},
         ))
 
         record = await history.get_by_id(job_id)
-        data = json.loads(record.inputs)
-        # Raw user inputs are stored field-keyed so a form can re-hydrate them
+        data = json.loads(record.payload)
+        # Raw form values are stored field-keyed so a form can re-hydrate them
         assert data["inputs"]["prompt"] == "city night"
-        assert data["output"]["duration"] == 5
-        assert data["user_params"]["guidance_scale"] == 3.5
+        # All model params (main + advanced) live in a single flat dict
+        assert data["params"]["duration"] == 5
+        assert data["params"]["guidance_scale"] == 3.5
         # model_inputs holds the normalized, resolved shape (prompt templates expanded)
         assert "model_inputs" in data
         assert data["model_inputs"]["prompt"] == "Test city night"  # template "Test {{ prompt }}" resolved
@@ -155,7 +155,7 @@ class TestStartRun:
                 model_id="wan-2.7",
                 provider_id="fal",
                 inputs={},
-                output={},
+                params={},
             ))
 
     async def test_rejects_incompatible_model(self, run_service):
@@ -167,7 +167,7 @@ class TestStartRun:
                 model_id="nonexistent-model",
                 provider_id="fal",
                 inputs={},
-                output={},
+                params={},
             ))
 
     async def test_increments_ref_count_for_image_inputs(self, run_service, database):
@@ -188,7 +188,7 @@ class TestStartRun:
             model_id="wan-2.7",
             provider_id="fal",
             inputs={"image": "abc123hash", "prompt": "test"},
-            output={},
+            params={},
         ))
 
         row = await database.fetchone(
@@ -288,7 +288,7 @@ async def _insert_processing_run(
             """INSERT INTO runs (
                    id, kind, effect_id, effect_name, model_id,
                    status, progress, progress_msg, input_ids,
-                   inputs, created_at, updated_at,
+                   payload, created_at, updated_at,
                    provider_request_id, provider_endpoint
                ) VALUES (?, 'effect', ?, ?, ?, 'processing', 50, 'Generating',
                          '[]', '{}', ?, ?, ?, ?)""",
@@ -391,7 +391,7 @@ class TestRecoverStuckJobs:
             await conn.execute(
                 """INSERT INTO runs (
                        id, kind, effect_id, effect_name, model_id,
-                       status, progress, input_ids, inputs,
+                       status, progress, input_ids, payload,
                        created_at, updated_at
                    ) VALUES (?, 'effect', ?, ?, ?, 'completed', 100, '[]', '{}', ?, ?)""",
                 ("done-1", "test-uuid-001", "Done", "wan-2.7", now, now),
@@ -440,7 +440,7 @@ async def _seed_and_execute(
         job_id=job_id, effect_id="test-uuid-001",
         effect_name="Test", model_id="wan-2.7",
     )
-    await history.create_processing(job, inputs_json="{}", input_ids=[])
+    await history.create_processing(job, payload_json="{}", input_ids=[])
     provider_input = ProviderInput(
         prompt="hello", negative_prompt="", image_inputs={}, parameters={},
     )

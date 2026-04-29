@@ -145,7 +145,12 @@ export interface RunRecord {
    *  walks the stored input list and resolves each id to a FileRef so
    *  the client doesn't have to UUID-pattern-match `inputs` itself. */
   input_files: Record<string, FileRef>
-  inputs: unknown
+  /** Stored record blob: `{ record_version, inputs, model_inputs?, params }`.
+   *  `inputs` is form-keyed (manifest field values) for effect runs and
+   *  already-canonical for playground. `model_inputs` is the canonical
+   *  role-keyed view (effect runs only). `params` is all model variant
+   *  params, flat. */
+  payload: unknown
   error: string | null
   created_at: string
   updated_at: string
@@ -239,8 +244,10 @@ export interface RunRequest {
   model_id: string
   provider_id: string
   inputs: Record<string, string>
-  output: Record<string, string | number | boolean>
-  user_params?: Record<string, number | string | boolean>
+  /** All model variant params (main + advanced flattened). The form
+   *  splits them visually based on each param's `ui` field, but on the
+   *  wire it's one flat dict matching the model definition's shape. */
+  params?: Record<string, string | number | boolean>
 }
 
 export interface PlaygroundRunRequest {
@@ -249,8 +256,7 @@ export interface PlaygroundRunRequest {
   prompt: string
   negative_prompt?: string
   image_inputs?: Record<string, string>
-  output?: Record<string, string | number | boolean>
-  user_params?: Record<string, number | string | boolean>
+  params?: Record<string, string | number | boolean>
 }
 
 export interface RunResponse {
@@ -261,7 +267,7 @@ export interface RunResponse {
 }
 
 export interface RunsResponse {
-  items: RunRecord[]
+  runs: RunRecord[]
   total: number
   active_count: number
 }

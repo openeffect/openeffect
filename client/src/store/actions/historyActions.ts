@@ -36,10 +36,10 @@ export async function loadHistory(offset = 0, force = false): Promise<void> {
     const data = await api.getRuns(50, offset)
     setState((s) => {
       if (offset === 0) {
-        s.history.items = new Map(data.items.map((r) => [r.id, r]))
+        s.history.items = new Map(data.runs.map((r) => [r.id, r]))
       } else {
         // Map preserves insertion order — appending pages keeps newest-first
-        for (const r of data.items) s.history.items.set(r.id, r)
+        for (const r of data.runs) s.history.items.set(r.id, r)
       }
       s.history.total = data.total
       s.history.activeCount = data.active_count
@@ -145,11 +145,11 @@ export async function loadEffectHistory(effectId: string, offset = 0, force = fa
     const data = await api.getRuns(20, offset, effectId)
     setState((s) => {
       if (offset === 0) {
-        s.history.effectItems = new Map(data.items.map((r) => [r.id, r]))
+        s.history.effectItems = new Map(data.runs.map((r) => [r.id, r]))
         s.history.effectTotal = data.total
         s.history.effectId = effectId
       } else {
-        for (const r of data.items) s.history.effectItems.set(r.id, r)
+        for (const r of data.runs) s.history.effectItems.set(r.id, r)
       }
       s.history.effectStatus = 'succeeded'
     }, 'history/effectLoad')
@@ -179,10 +179,10 @@ export async function loadPlaygroundHistory(offset = 0, force = false): Promise<
     const data = await api.getRuns(20, offset, undefined, 'playground')
     setState((s) => {
       if (offset === 0) {
-        s.history.playgroundItems = new Map(data.items.map((r) => [r.id, r]))
+        s.history.playgroundItems = new Map(data.runs.map((r) => [r.id, r]))
         s.history.playgroundTotal = data.total
       } else {
-        for (const r of data.items) s.history.playgroundItems.set(r.id, r)
+        for (const r of data.runs) s.history.playgroundItems.set(r.id, r)
       }
       s.history.playgroundStatus = 'succeeded'
       s.history.playgroundLoaded = true

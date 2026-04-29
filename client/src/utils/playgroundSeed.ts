@@ -1,7 +1,7 @@
 import type { EffectManifest, InputFieldSchema, ModelInfo, ModelParamEntry, RunRecord } from '@/types/api'
 import type { RestoredParams } from '@/store/types'
 import { parseRunInputs } from './runRecord'
-import { mainParams, resolveModelParams } from './modelParams'
+import { resolveModelParams } from './modelParams'
 
 const ROLE_LABELS: Record<string, string> = {
   start_frame: 'Start frame',
@@ -22,10 +22,9 @@ function humanizeRole(role: string): string {
  */
 export function effectToPlaygroundParams(
   manifest: EffectManifest,
-  availableModels: ModelInfo[],
+  _availableModels: ModelInfo[],
 ): RestoredParams {
   const modelId = manifest.generation.default_model
-  const model = availableModels.find((m) => m.id === modelId)
 
   // Pick the effective template for this model; keep placeholders intact
   const override = manifest.generation.model_overrides?.[modelId]?.prompt
@@ -33,27 +32,20 @@ export function effectToPlaygroundParams(
   const negativePrompt = manifest.generation.negative_prompt ?? ''
 
   // Resolve effective params (top-level + per-model override) and unwrap
-  // each entry to its scalar value, then split by output vs advanced. Effects
-  // are always launched from an image input, so use the image_to_video variant
-  // from the default provider (values still land in the form regardless of
-  // which provider the user later picks — server filters by known keys).
+  // each entry to its scalar value. The form's restore step is what splits
+  // these into main vs advanced sections at render time, using the variant's
+  // schema — so all params just go into one flat dict here.
   const merged = resolveModelParams(manifest, modelId)
-  const defaultProvider = model?.providers?.find((p) => p.is_available) ?? model?.providers?.[0]
-  const variant = defaultProvider?.variants?.image_to_video
-  const outputKeys = new Set(mainParams(variant).map((p) => p.key))
-  const output: Record<string, string | number> = {}
-  const userParams: Record<string, unknown> = {}
+  const params: Record<string, string | number | boolean> = {}
   for (const [k, entry] of Object.entries(merged)) {
     const v = 'value' in entry ? entry.value : entry.default
-    if (outputKeys.has(k)) output[k] = v
-    else userParams[k] = v
+    params[k] = v
   }
 
   return {
     modelId,
     inputs: { prompt, negative_prompt: negativePrompt },
-    output,
-    userParams,
+    params,
   }
 }
 
@@ -66,12 +58,11 @@ export function effectToPlaygroundParams(
  * Only called for effect runs (the UI gates the button on record.kind === 'effect').
  */
 export function runToPlaygroundParams(record: RunRecord): RestoredParams {
-  const { modelInputs, output, userParams } = parseRunInputs(record)
+  const { modelInputs, params } = parseRunInputs(record)
   return {
     modelId: record.model_id,
     inputs: modelInputs,
-    output,
-    userParams,
+    params,
   }
 }
 
@@ -110,10 +101,7 @@ export function playgroundRunToManifest(record: RunRecord): EffectManifest {
   }
 
   const mergedParams: Record<string, ModelParamEntry> = {}
-  for (const [k, v] of Object.entries(parsed.output)) {
-    mergedParams[k] = { default: v }
-  }
-  for (const [k, v] of Object.entries(parsed.userParams)) {
+  for (const [k, v] of Object.entries(parsed.params)) {
     if (typeof v === 'number' || typeof v === 'string') {
       mergedParams[k] = { default: v }
     } else if (typeof v === 'boolean') {

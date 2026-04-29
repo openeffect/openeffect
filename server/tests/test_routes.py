@@ -153,31 +153,31 @@ class TestRunsRoute:
         resp = client.get("/api/runs")
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {"items": [], "total": 0, "active_count": 0}
+        assert data == {"runs": [], "total": 0, "active_count": 0}
 
     def test_runs_respects_limit_and_offset_params(self, client):
         resp = client.get("/api/runs?limit=10&offset=0")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["items"] == []
+        assert data["runs"] == []
 
     def test_runs_supports_effect_id_filter(self, client):
         resp = client.get("/api/runs?effect_id=openeffect/hdr")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["items"] == []
+        assert data["runs"] == []
 
     def test_delete_nonexistent_run_returns_404(self, client):
         resp = client.delete("/api/runs/nonexistent-id-12345")
         assert resp.status_code == 404
         data = resp.json()
-        assert data["detail"]["code"] == "NOT_FOUND"
+        assert data["detail"]["code"] == "RUN_NOT_FOUND"
 
     def test_get_nonexistent_run_returns_404(self, client):
         resp = client.get("/api/runs/nonexistent-id-12345")
         assert resp.status_code == 404
         data = resp.json()
-        assert data["detail"]["code"] == "NOT_FOUND"
+        assert data["detail"]["code"] == "RUN_NOT_FOUND"
 
 
 class TestFilesRoute:

@@ -232,26 +232,24 @@ export function PlaygroundForm() {
         setState((s) => mutateSetCarriedImage(s, role, value), 'formCarry/setImage')
       }
 
-      if (restoredParams.output) {
-        setOutputValues(restoredParams.output as Record<string, string | number | boolean>)
-        // Mirror to model param carry so a follow-on switch sees the
-        // just-applied param values.
-        for (const [key, value] of Object.entries(restoredParams.output)) {
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-            setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
-          }
-        }
-      } else {
-        setOutputValues({})
+      // Split the flat restored `params` back into the form's two visual
+      // buckets using the model variant's schema. Anything not in `mainParams`
+      // falls into `advancedValues` so unknown keys still round-trip.
+      const restoredVariant = providerVariant(
+        restoredModel ?? availableModels.find((m) => m.id === selectedModel),
+        selectedProvider,
+        VARIANT_KEY,
+      )
+      const mainKeys = new Set(mainParams(restoredVariant).map((p) => p.key))
+      const main: Record<string, string | number | boolean> = {}
+      const advanced: Record<string, string | number | boolean> = {}
+      for (const [key, value] of Object.entries(restoredParams.params ?? {})) {
+        if (mainKeys.has(key)) main[key] = value
+        else advanced[key] = value
+        setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
       }
-
-      const restoredUserParams = (restoredParams.userParams ?? {}) as Record<string, unknown>
-      setAdvancedValues(restoredUserParams)
-      for (const [key, value] of Object.entries(restoredUserParams)) {
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-          setState((s) => mutateSetCarriedParam(s, key, value), 'formCarry/setParam')
-        }
-      }
+      setOutputValues(main)
+      setAdvancedValues(advanced)
     }
   }
 

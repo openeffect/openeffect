@@ -115,13 +115,13 @@ export const api = {
 
   // Run
   run: (req: RunRequest) =>
-    request<RunResponse>('/api/run', {
+    request<RunResponse>('/api/runs', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
 
   playgroundRun: (req: PlaygroundRunRequest) =>
-    request<RunResponse>('/api/playground/run', {
+    request<RunResponse>('/api/playground/runs', {
       method: 'POST',
       body: JSON.stringify(req),
     }),
@@ -166,7 +166,7 @@ export const api = {
     effectId: string | null,
     forkFrom?: string,
   ) =>
-    request<{ full_id: string; manifest: EffectManifest }>('/api/effects/save', {
+    request<{ full_id: string; effect: EffectManifest }>('/api/effects/save', {
       method: 'POST',
       body: JSON.stringify({
         yaml_content: yamlContent,

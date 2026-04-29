@@ -74,12 +74,12 @@ function HistoricalRunView({ record, activeJob }: {
   const isCompleted = effectiveStatus === 'completed' && !!effectiveVideoUrl
   const isFailed = effectiveStatus === 'failed'
 
-  const { inputs, output, userParams } = parseRunInputs(record)
+  const { inputs, params } = parseRunInputs(record)
 
   // Flatten non-image params into categorized display lists.
   // Image inputs are surfaced via `record.input_files` (server-resolved
   // FileRefs), not by UUID-pattern-matching the params blob.
-  const allEntries = { ...inputs, ...output, ...userParams }
+  const allEntries = { ...inputs, ...params }
   const longText: [string, string][] = []
   const badges: [string, string][] = []
 

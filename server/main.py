@@ -165,7 +165,7 @@ def create_app() -> FastAPI:
     # built `client/dist` is served from this same FastAPI instance; in dev
     # Vite proxies `/api/*` to here so the browser only sees :5173. Allowing
     # cross-origin requests would just open the door to drive-by CSRF (a tab
-    # on any site could POST to http://127.0.0.1:3131/api/run and drain the
+    # on any site could POST to http://127.0.0.1:3131/api/runs and drain the
     # user's fal credits).
     app = FastAPI(title="OpenEffect", version="0.1.0", lifespan=lifespan)
 

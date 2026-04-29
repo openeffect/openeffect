@@ -2,54 +2,49 @@ import type { RunRecord } from '@/types/api'
 import type { RestoredParams } from '@/store/types'
 
 /**
- * Parse the structured `inputs` JSON stored on a RunRecord into typed fields.
+ * Parse the structured `payload` JSON stored on a RunRecord.
  *
- * Both effect and playground records use the unified wrapper shape:
- *   { inputs: ..., output: ..., user_params: ... }
+ * Both effect and playground records use the same wrapper shape:
+ *   { record_version, inputs, model_inputs?, params }
  *
- * Effect runs also store `model_inputs` — the normalized, role-keyed, fully-
- * resolved shape that was sent to the provider (the template with user values
- * substituted, images re-keyed by role instead of field name). This is what
- * the "Open in playground" flow consumes, since the playground form already
- * expects that shape and the data is stable across effect deletion.
- *
- * Playground runs don't store `model_inputs` because their `inputs` is already
- * in the normalized shape — parseRunInputs returns `modelInputs: {}` for them.
+ * - `inputs` is form-keyed (manifest field values) for effect runs and
+ *   already-canonical (prompt + negative_prompt + role-keyed images) for
+ *   playground runs.
+ * - `model_inputs` is the canonical role-keyed view sent to the provider
+ *   (effect runs only — playground's `inputs` is already that shape).
+ * - `params` is all model variant params (main + advanced flattened), matching
+ *   the shape of the model definition itself.
  */
 export function parseRunInputs(record: RunRecord): {
   inputs: Record<string, string>
   modelInputs: Record<string, string>
-  output: Record<string, string | number>
-  userParams: Record<string, unknown>
+  params: Record<string, string | number | boolean>
 } {
-  const raw = typeof record.inputs === 'string'
-    ? (JSON.parse(record.inputs) as Record<string, unknown>)
-    : (record.inputs as Record<string, unknown> | null)
+  const raw = typeof record.payload === 'string'
+    ? (JSON.parse(record.payload) as Record<string, unknown>)
+    : (record.payload as Record<string, unknown> | null)
 
   if (raw && typeof raw === 'object' && 'inputs' in raw) {
     return {
       inputs: ((raw.inputs as Record<string, string> | undefined) ?? {}),
       modelInputs: ((raw.model_inputs as Record<string, string> | undefined) ?? {}),
-      output: ((raw.output as Record<string, string | number> | undefined) ?? {}),
-      userParams: ((raw.user_params as Record<string, unknown> | undefined) ?? {}),
+      params: ((raw.params as Record<string, string | number | boolean> | undefined) ?? {}),
     }
   }
 
   return {
     inputs: ((raw ?? {}) as Record<string, string>),
     modelInputs: {},
-    output: {},
-    userParams: {},
+    params: {},
   }
 }
 
 /** Build a `RestoredParams` object suitable for `mutateSetRestoredParams`. */
 export function buildRestoredParamsFromRecord(record: RunRecord): RestoredParams {
-  const { inputs, output, userParams } = parseRunInputs(record)
+  const { inputs, params } = parseRunInputs(record)
   return {
     modelId: record.model_id ?? '',
     inputs,
-    output,
-    userParams,
+    params,
   }
 }

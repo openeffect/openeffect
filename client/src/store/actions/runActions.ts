@@ -59,16 +59,17 @@ export async function startRun(
 ): Promise<string> {
   const inputs = await prepareInputs(manifest, values)
 
+  // Form keeps two visual buckets (main + advanced) for rendering, but the
+  // wire (and storage) shape is one flat `params` dict matching the model
+  // definition. Merge here at the boundary.
+  const params = { ...outputValues, ...(advancedValues as Record<string, string | number | boolean>) }
+
   const request: RunRequest = {
     effect_id: manifest.id,
     model_id: selectedModel || manifest.generation.default_model,
     provider_id: selectedProvider,
     inputs,
-    output: outputValues,
-    user_params:
-      Object.keys(advancedValues).length > 0
-        ? (advancedValues as Record<string, number | string | boolean>)
-        : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   }
 
   const response = await api.run(request)

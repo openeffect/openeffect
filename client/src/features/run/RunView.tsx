@@ -198,7 +198,7 @@ function HistoricalRunView({ record, activeJob }: {
       {isCompleted && effectiveVideoUrl && (
         <div className="flex flex-1 items-center justify-center p-6 pt-0">
           <div className="w-full max-w-3xl">
-            <VideoPlayer src={effectiveVideoUrl} autoPlay />
+            <VideoPlayer src={effectiveVideoUrl} />
           </div>
         </div>
       )}
@@ -424,7 +424,7 @@ function ResultView({
       {/* Video */}
       <div className="flex flex-1 items-center justify-center p-6 pt-0">
         <div className="w-full max-w-3xl">
-          {job.videoUrl && <VideoPlayer src={job.videoUrl} autoPlay />}
+          {job.videoUrl && <VideoPlayer src={job.videoUrl} />}
         </div>
       </div>
       <BackToEditorButton className="shrink-0 pb-4 text-center" />

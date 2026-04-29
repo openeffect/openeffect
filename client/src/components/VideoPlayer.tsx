@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/Button'
 
 interface VideoPlayerProps {
   src: string
-  autoPlay?: boolean
 }
 
-export function VideoPlayer({ src, autoPlay = true }: VideoPlayerProps) {
+export function VideoPlayer({ src }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [isPlaying, setIsPlaying] = useState(autoPlay)
+  // Click-to-play: result videos start paused so the user is ready to
+  // watch (and hear) the generated output. The `onPlay`/`onPause`
+  // listeners below drive the icon from real element state.
+  const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
 
@@ -63,7 +65,6 @@ export function VideoPlayer({ src, autoPlay = true }: VideoPlayerProps) {
       <video
         ref={videoRef}
         src={src}
-        autoPlay={autoPlay}
         loop
         playsInline
         className="max-h-[60vh] w-full"

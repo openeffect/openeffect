@@ -11,13 +11,7 @@ Open magic for your media - an AI video-effects tool.
 [![Python](https://img.shields.io/pypi/pyversions/openeffect.svg)](https://pypi.org/project/openeffect/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/openeffect/openeffect/blob/main/LICENSE)
 
-<img src="https://raw.githubusercontent.com/openeffect/openeffect/main/docs/assets/paparazzi-flash-input.jpg" width="24%" />
-<img src="https://raw.githubusercontent.com/openeffect/openeffect/main/docs/assets/paparazzi-flash-output.gif" width="24%" />
-<img src="https://raw.githubusercontent.com/openeffect/openeffect/main/docs/assets/set-on-fire-input.jpg" width="24%" />
-<img src="https://raw.githubusercontent.com/openeffect/openeffect/main/docs/assets/set-on-fire-output.gif" width="24%" />
-
-<br/>
-<br/>
+![Demo](https://raw.githubusercontent.com/openeffect/openeffect/main/docs/assets/demo.gif)
 
 </div>
 

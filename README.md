@@ -65,7 +65,7 @@ The two examples up top are seed content - a starter set of effects (atmosphere,
 - **Install** an effect with one click - drop a `.zip` into the Install effect dialog, or paste a URL to a remote `manifest.yaml`.
 - **Share** what you make. Publish on your own GitHub and post the install URL anywhere - Discord, gists, wherever your audience is.
 
-The long-term plan is a separate **community-catalog repo** where anyone can browse, install, and remix without ever leaving the app - coming soon. If you've made something cool in the meantime, [open an issue](https://github.com/openeffect/openeffect/issues) and we'll feature it.
+The long-term plan is a separate **community-catalog repo** where anyone can browse, install, and remix without ever leaving the app - coming soon. If you've made something cool in the meantime, [open a PR](https://github.com/openeffect/openeffect/compare) with your effect under `effects/<namespace>/<slug>/`.
 
 ## Features
 

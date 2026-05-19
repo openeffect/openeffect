@@ -82,7 +82,7 @@ The long-term plan is a separate **community-catalog repo** where anyone can bro
 
 ## Writing your own effect
 
-The fastest path is the in-app editor - click `+` in the header, fill in the manifest, and upload a sample preview and an input image. Effects are plain YAML - here's the full bundled [Eyes Glow](https://github.com/openeffect/openeffect/blob/main/effects/atmosphere/eyes-glow/manifest.yaml) manifest (more under [`effects/`](https://github.com/openeffect/openeffect/tree/main/effects)):
+The fastest path is the in-app editor - click `+` in the header, fill in the manifest, and upload a sample preview and an input image. Effects are plain YAML - here's the full bundled [Eyes Glow](https://github.com/openeffect/openeffect/blob/main/effects/openeffect/eyes-glow/manifest.yaml) manifest (more under [`effects/`](https://github.com/openeffect/openeffect/tree/main/effects)):
 
 ```yaml
 manifest_version: 1

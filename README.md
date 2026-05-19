@@ -52,7 +52,7 @@ Whichever path you pick, the browser opens at `http://localhost:3131`. Paste a [
 OpenEffect is **bring your own key** - the app runs on your machine, but generation itself happens on whichever cloud provider you point it at. Two reasons:
 
 1. **You can't realistically self-host video models.** State-of-the-art video diffusion needs 24-80 GB of GPU memory and minutes per clip. Closed models like Kling can't be self-hosted at all. The good open ones (Wan, etc.) need a beefy GPU most people don't have at home.
-2. **It's cheap to try.** fal.ai charges roughly **$0.05-$0.50 per video** depending on model and resolution. A handful of dollars buys hundreds of test runs - far less than any "AI video" subscription, with no monthly commitment and no auto-renewal.
+2. **It's cheap to try.** fal.ai charges roughly **$0.05-$0.50 per video** depending on model, resolution, and duration. A handful of dollars buys hundreds of test runs - far less than any "AI video" subscription, with no monthly commitment and no auto-renewal.
 
 We picked [fal.ai](https://fal.ai) as the first provider because they expose the broadest open-vs-closed model selection behind one unified API. **We're not affiliated with fal.ai** - it was just the cleanest plug-in option. More providers (Replicate, Hugging Face Inference, your own GPU server) are on the roadmap. The app's storage stays local - your fal.ai key, your run history, and your generated videos all live in `~/.openeffect/` and never touch our servers, because there are no servers.
 
@@ -70,7 +70,7 @@ The long-term plan is a separate **community-catalog repo** where anyone can bro
 ## Features
 
 - 🎬 **Curated effect library** - atmosphere, camera moves, transforms, more landing as the catalog grows
-- 🧠 **Multi-model, multi-provider** - Kling, PixVerse, Wan; more models and providers landing as the catalog grows
+- 🧠 **Multi-model, multi-provider** - Kling, PixVerse, Sora, Wan; more models and providers landing as the catalog grows
 - 🔑 **BYOK** - bring your own [fal.ai](https://fal.ai) key, pay only for what you generate
 - 📁 **Local-first storage** - your runs, effects, and config live in `~/.openeffect/`
 - 📜 **Run history** - every generation saved with its inputs and the resulting video
@@ -201,6 +201,7 @@ Have an idea? [Open an issue](https://github.com/openeffect/openeffect/issues) -
 OpenEffect is glue. The heavy lifting belongs to the model authors:
 - [Kling](https://kling.ai) (Kuaishou)
 - [PixVerse](https://pixverse.ai)
+- [Sora](https://openai.com/index/sora-2/) (OpenAI)
 - [Wan](https://wan.video) (Alibaba)
 
 ...and to [fal.ai](https://fal.ai) for the unified inference API. Not affiliated with any of the above - they're independent products that happen to make this one possible.

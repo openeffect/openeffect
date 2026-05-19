@@ -32,8 +32,8 @@ export function ModelSelector({
   const selectedProviderInfo = providers.find((p) => p.id === selectedProvider)
   const hasMultipleProviders = providers.filter((p) => p.is_available).length > 1
 
-  // Group compatible models by family (Wan / Kling / PixVerse …) and preserve
-  // registry order within each family.
+  // Group compatible models by family (Kling / PixVerse / Sora / Wan …) and
+  // preserve registry order within each family.
   const filtered = availableModels.filter((m) => compatibleModels.includes(m.id))
   const byGroup = new Map<string, ModelInfo[]>()
   for (const model of filtered) {

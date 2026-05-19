@@ -265,6 +265,60 @@ MODELS: list[dict[str, Any]] = [
             },
         },
     },
+    # ── Sora 2 ────────────────────────────────────────────────────────────
+    # Image-to-video, audio always included. Tiny wire surface: no
+    # negative_prompt, no end_frame, no seed/cfg. Duration is a discrete
+    # enum {4,8,12,16,20} - the slider's `step: 4` over min 4/max 20
+    # produces exactly that set without extra client-side validation.
+    {
+        "id": "sora-2",
+        "name": "Sora 2",
+        "group": "Sora",
+        "description": "Best for narrative shots with built-in audio",
+        "inputs": [
+            {"role": "start_frame", "type": "image", "required": True},
+            {"role": "prompt",      "type": "text",  "required": True},
+        ],
+        "params": [
+            # ─── Main (user-facing) ───
+            {"name": "duration", "type": "slider", "ui": "main",
+             "label": "Duration (seconds)",
+             "default": 4, "min": 4, "max": 20, "step": 4,
+             "price_affecting": True},
+            {"name": "resolution", "type": "select", "ui": "main",
+             "label": "Resolution", "default": "auto",
+             "options": [
+                 {"value": "auto", "label": "Auto"},
+                 {"value": "720p", "label": "720p"},
+             ],
+             "user_only": True},
+            {"name": "aspect_ratio", "type": "select", "ui": "main",
+             "label": "Aspect Ratio", "default": "auto",
+             "options": [
+                 {"value": "auto", "label": "Auto"},
+                 {"value": "16:9", "label": "16:9"},
+                 {"value": "9:16", "label": "9:16"},
+             ],
+             "user_only": True},
+        ],
+        "providers": {
+            "fal": {
+                "accepted_image_mimes": FAL_IMAGE_MIMES,
+                "endpoint": "fal-ai/sora-2/image-to-video",
+                # Flat rate; audio always included.
+                "cost": "$0.10/s",
+                "inputs": {
+                    "start_frame": "image_url",
+                    "prompt":      "prompt",
+                },
+                "params": {
+                    "duration":     {"wire": "duration"},
+                    "resolution":   {"wire": "resolution"},
+                    "aspect_ratio": {"wire": "aspect_ratio"},
+                },
+            },
+        },
+    },
     # ── Wan 2.7 ───────────────────────────────────────────────────────────
     # fal's v2.7 accepts `duration` natively as an integer 2-15 s, so no
     # transform is needed - the canonical flows straight to the wire.

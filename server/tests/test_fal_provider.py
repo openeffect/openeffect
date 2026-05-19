@@ -185,6 +185,51 @@ class TestGenerate:
         _ = [e async for e in provider.generate(inp)]
         assert submitted["endpoint"] == "fal-ai/kling-video/v3/standard/image-to-video"
 
+    async def test_sora2_happy_path_wires_sora_body(self, monkeypatch):
+        """End-to-end wire check for sora-2: `start_frame` → `image_url`,
+        duration + aspect_ratio pass through unchanged, and none of the
+        legacy keys (negative_prompt / cfg_scale / generate_audio) leak
+        into the fal request body. Sora 2's wire surface is intentionally
+        minimal; a regression that re-introduces them would silently
+        send unsupported params to fal."""
+        async def fake_upload(self, path, **_kwargs):
+            return f"https://fal.cdn/{os.path.basename(path)}"
+
+        submitted: dict = {}
+
+        async def fake_subscribe(
+            self, endpoint, *, arguments,
+            with_logs=True, on_enqueue=None, on_queue_update=None, **_kwargs,
+        ):
+            submitted["endpoint"] = endpoint
+            submitted["arguments"] = arguments
+            if on_enqueue:
+                await on_enqueue("req-sora")
+            return {"video": {"url": "https://fal.cdn/sora.mp4"}}
+
+        monkeypatch.setattr("fal_client.AsyncClient.upload_file", fake_upload)
+        monkeypatch.setattr("fal_client.AsyncClient.subscribe", fake_subscribe)
+
+        provider = FalProvider(api_key="k")
+        inp = _mk_input(
+            model_id="sora-2",
+            image_inputs={"start_frame": "/tmp/s.jpg"},
+            duration=8,
+            aspect_ratio="16:9",
+        )
+        events = [e async for e in provider.generate(inp)]
+        assert events[-1].type == "completed"
+        assert submitted["endpoint"] == "fal-ai/sora-2/image-to-video"
+
+        args = submitted["arguments"]
+        assert args["image_url"] == "https://fal.cdn/s.jpg"
+        assert args["prompt"] == "test prompt"
+        assert args["duration"] == 8
+        assert args["aspect_ratio"] == "16:9"
+        # Sora 2 doesn't accept these - they must not appear on the wire.
+        for forbidden in ("negative_prompt", "cfg_scale", "generate_audio", "start_frame"):
+            assert forbidden not in args
+
     async def test_subscribe_exception_yields_failed(self, monkeypatch):
         async def fake_upload(self, path, **_kwargs):
             return "https://fal.cdn/x"

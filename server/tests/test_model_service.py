@@ -57,6 +57,11 @@ class TestGetCompatibleModelIds:
         assert "pixverse-v6" in start_only
         assert "pixverse-v6" not in both
 
+        # Sora 2's canonical declares only start_frame (no end_frame) -
+        # in start-only, excluded from start+end effects.
+        assert "sora-2" in start_only
+        assert "sora-2" not in both
+
     def test_pixverse_excluded_when_end_frame_required(self):
         """Regression: a model whose canonical declares a role but whose
         provider(s) don't wire it must not appear as compatible. Picking
@@ -126,6 +131,27 @@ class TestProviderMaps:
         provider = get_provider("pixverse-v6", "fal")
         assert provider["params"]["generate_audio"]["wire"] == "generate_audio_switch"
 
+    def test_sora2_fal_image_inputs(self):
+        """Sora 2 wires only start_frame; no end_frame or negative_prompt."""
+        provider = get_provider("sora-2", "fal")
+        assert provider["endpoint"] == "fal-ai/sora-2/image-to-video"
+        assert provider["inputs"]["start_frame"] == "image_url"
+        assert "end_frame" not in provider["inputs"]
+        assert "negative_prompt" not in provider["inputs"]
+
+    def test_sora2_fal_param_surface(self):
+        """Sora 2's wire surface is minimal: duration / resolution /
+        aspect_ratio, and nothing else. A regression that re-introduces
+        cfg/seed/generate_audio/negative_prompt as canonical wires would
+        leak unsupported keys onto the fal request body."""
+        provider = get_provider("sora-2", "fal")
+        params = provider["params"]
+        assert params["duration"]["wire"] == "duration"
+        assert params["resolution"]["wire"] == "resolution"
+        assert params["aspect_ratio"]["wire"] == "aspect_ratio"
+        for forbidden in ("negative_prompt", "cfg_scale", "seed", "generate_audio"):
+            assert forbidden not in params
+
 
 class TestModelImageInputs:
     def test_model_supported_image_keys(self):
@@ -136,13 +162,15 @@ class TestModelImageInputs:
         # PixVerse V6 declares both on the canonical; the fal provider's
         # pixverse endpoint wires only start_frame.
         assert set(model_supported_image_keys(MODELS_BY_ID["pixverse-v6"])) == {"start_frame", "end_frame"}
+        # Sora 2 declares only start_frame.
+        assert set(model_supported_image_keys(MODELS_BY_ID["sora-2"])) == {"start_frame"}
 
     def test_start_frame_is_required(self):
-        for model_id in ("wan-2.7", "kling-3.0", "pixverse-v6"):
+        for model_id in ("kling-3.0", "pixverse-v6", "sora-2", "wan-2.7"):
             assert model_input_required(MODELS_BY_ID[model_id], "start_frame")
 
     def test_end_frame_is_not_required(self):
-        for model_id in ("wan-2.7", "kling-3.0", "pixverse-v6"):
+        for model_id in ("kling-3.0", "pixverse-v6", "sora-2", "wan-2.7"):
             assert not model_input_required(MODELS_BY_ID[model_id], "end_frame")
 
 
@@ -155,6 +183,8 @@ class TestGenerateAudio:
     def test_models_without_audio(self):
         # Wan 2.7 does not expose an AI-audio toggle
         assert not model_has_generate_audio(MODELS_BY_ID["wan-2.7"])
+        # Sora 2 generates audio implicitly - no canonical toggle to surface.
+        assert not model_has_generate_audio(MODELS_BY_ID["sora-2"])
 
 
 class TestCanonicalToWire:

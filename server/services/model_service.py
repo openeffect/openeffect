@@ -571,6 +571,8 @@ def _client_params_for(model: dict[str, Any], provider: dict[str, Any]) -> list[
 
     The client consumes canonical names. A param is included if:
       - `type == "image"` (image input slot from model.inputs), OR
+      - `type == "text"` (text input role from model.inputs - prompt /
+        negative_prompt), OR
       - It's a declared `model.params` entry with `ui` in (main, advanced).
 
     User-only params are included so the UI can render them as runtime
@@ -602,7 +604,23 @@ def _client_params_for(model: dict[str, Any], provider: dict[str, Any]) -> list[
             "required": bool(entry.get("required", False)),
         })
 
-    # 2) Tunable params (from model.params, filtered by provider support).
+    # 2) Text inputs (from model.inputs, filtered by provider support).
+    # Lets the client gate prompt-shaped controls (e.g. hide the Negative
+    # prompt textarea on models that don't accept one, like Sora 2).
+    for entry in model.get("inputs", []):
+        if entry.get("type") != "text":
+            continue
+        role = entry["role"]
+        if not provider_has_input(provider, role):
+            continue
+        out.append({
+            "key": role,
+            "role": role,
+            "type": "text",
+            "required": bool(entry.get("required", False)),
+        })
+
+    # 3) Tunable params (from model.params, filtered by provider support).
     provider_params = provider.get("params", {})
     for entry in model.get("params", []):
         name = entry["name"]

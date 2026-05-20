@@ -5,6 +5,13 @@ import type { EffectManifest, ModelInfo, ModelParam, ModelParamEntry, ModelVaria
 export const imageInputs = (v: ModelVariant | undefined): ModelParam[] =>
   v ? v.params.filter((p) => p.type === 'image') : []
 
+/** Text input roles the model declares AND the provider wires (e.g.
+ *  `prompt`, `negative_prompt`). Lets the Playground gate prompt-shaped
+ *  controls on per-model support - models without `negative_prompt` (Sora 2)
+ *  shouldn't surface that textarea at all. */
+export const textInputs = (v: ModelVariant | undefined): ModelParam[] =>
+  v ? v.params.filter((p) => p.type === 'text') : []
+
 /** Params rendered in the Playground UI's main section. Playground shows
  *  every tunable canonical regardless of `effect_hidden` - there's no
  *  manifest-author scope there. */

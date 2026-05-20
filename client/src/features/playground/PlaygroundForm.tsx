@@ -30,6 +30,7 @@ import {
   imageInputs as imageInputParams,
   mainParams,
   providerVariant,
+  textInputs as textInputParams,
 } from '@/utils/modelParams'
 
 // Only one variant in the registry today - kept as a constant so re-adding
@@ -97,6 +98,7 @@ export function PlaygroundForm() {
   const variant = providerVariant(modelInfo, selectedProvider, VARIANT_KEY)
   const imageSlots = imageInputParams(variant)
   const supportedRoles = imageSlots.map((p) => p.key)
+  const supportedTextRoles = new Set(textInputParams(variant).map((p) => p.key))
   const outputParams: ModelParam[] = mainParams(variant)
   const advancedParams: ModelParam[] = advancedParamsOf(variant)
   const compatibleModels = availableModels.map((m) => m.id)
@@ -459,20 +461,24 @@ export function PlaygroundForm() {
           />
         </div>
 
-        {/* Negative prompt */}
-        <div className="space-y-2">
-          <Label variant="form">Negative prompt</Label>
-          <Textarea
-            value={negativePrompt}
-            onChange={(e) => {
-              const v = e.target.value
-              setNegativePrompt(v)
-              setState((s) => mutateSetCarriedPlaygroundNegativePrompt(s, v), 'formCarry/setNegativePrompt')
-            }}
-            placeholder="What to avoid..."
-            rows={2}
-          />
-        </div>
+        {/* Negative prompt - hidden for models that don't accept one
+            (e.g. Sora 2). The carried value stays in state so switching
+            back to a supporting model restores what the user typed. */}
+        {supportedTextRoles.has('negative_prompt') && (
+          <div className="space-y-2">
+            <Label variant="form">Negative prompt</Label>
+            <Textarea
+              value={negativePrompt}
+              onChange={(e) => {
+                const v = e.target.value
+                setNegativePrompt(v)
+                setState((s) => mutateSetCarriedPlaygroundNegativePrompt(s, v), 'formCarry/setNegativePrompt')
+              }}
+              placeholder="What to avoid..."
+              rows={2}
+            />
+          </div>
+        )}
 
         {/* Output params (model-specific) */}
         {outputParams.length > 0 && (

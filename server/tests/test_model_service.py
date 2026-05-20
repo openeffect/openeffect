@@ -139,6 +139,37 @@ class TestProviderMaps:
         assert "end_frame" not in provider["inputs"]
         assert "negative_prompt" not in provider["inputs"]
 
+    def test_sora2_client_params_omit_negative_prompt(self):
+        """Regression for the Playground "Sora 2 still shows Negative
+        prompt" bug. The client-facing param list must include `prompt`
+        (Sora 2 requires it) but must NOT include `negative_prompt`
+        (Sora 2 doesn't accept one) - the Playground keys off this
+        list to decide which prompt textareas to render."""
+        from services.model_service import _client_params_for
+
+        model = MODELS_BY_ID["sora-2"]
+        provider = get_provider("sora-2", "fal")
+        params = _client_params_for(model, provider)
+        text_inputs = [p for p in params if p["type"] == "text"]
+        text_keys = {p["key"] for p in text_inputs}
+
+        assert "prompt" in text_keys
+        assert "negative_prompt" not in text_keys
+
+    def test_kling_client_params_include_negative_prompt(self):
+        """Counter-case to the sora-2 regression: models that DO wire
+        negative_prompt (kling/pixverse/wan) must expose it on the
+        client-facing list so the Playground keeps rendering it."""
+        from services.model_service import _client_params_for
+
+        for model_id in ("kling-3.0", "pixverse-v6", "wan-2.7"):
+            model = MODELS_BY_ID[model_id]
+            provider = get_provider(model_id, "fal")
+            params = _client_params_for(model, provider)
+            text_keys = {p["key"] for p in params if p["type"] == "text"}
+            assert "prompt" in text_keys, f"prompt missing for {model_id}"
+            assert "negative_prompt" in text_keys, f"negative_prompt missing for {model_id}"
+
     def test_sora2_fal_param_surface(self):
         """Sora 2's wire surface is minimal: duration / resolution /
         aspect_ratio, and nothing else. A regression that re-introduces
